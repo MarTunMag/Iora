@@ -76,6 +76,8 @@ Zone arrays are separate per-TF `array<LightZone>` instances (same `LightZone` t
 | `is_broken` | `bool` | `false` | break flag |
 | `break_time` | `int` | `0` | break bar time |
 
+**Note:** The `tf_index` field present in `iora_structure.pine`'s `LightZone` is intentionally omitted here. That field exists for multi-indicator external break detection across arbitrary TF pairs. In this indicator, zones are in strictly typed per-TF arrays and the TF identity is implicit in which array holds them.
+
 ---
 
 ### S2 — Inputs
@@ -83,6 +85,12 @@ Zone arrays are separate per-TF `array<LightZone>` instances (same `LightZone` t
 | Input | Type | Default | Group | Purpose |
 |-------|------|---------|-------|---------|
 | `Doji Body %` | `float` | `5.0` | Zone Detection | HA doji threshold |
+| `Zone Age M1` | `int` | `50` | Zone Age | Max bars before M1 zones expire |
+| `Zone Age M5` | `int` | `50` | Zone Age | Max bars before M5 zones expire |
+| `Zone Age M15` | `int` | `50` | Zone Age | Max bars before M15 zones expire |
+| `Zone Age H1` | `int` | `50` | Zone Age | Max bars before H1 zones expire |
+| `Zone Age H4` | `int` | `50` | Zone Age | Max bars before H4 zones expire |
+| `Zone Age D` | `int` | `50` | Zone Age | Max bars before D zones expire |
 | `Show Dashboard` | `bool` | `true` | Display | Toggle dashboard table |
 | `Dashboard Position` | `string` | `"Top Right"` | Display | Table position (options: Top Right, Top Left, Bottom Right, Bottom Left) |
 | `Show Entry Signals` | `bool` | `true` | Display | Toggle entry/exit markers |
@@ -90,11 +98,13 @@ Zone arrays are separate per-TF `array<LightZone>` instances (same `LightZone` t
 
 No TF toggles — all 6 TFs are always active (they're all required for the state machine).
 
+Zone age inputs follow the same pattern as `iora_zones.pine` and `iora_structure.pine`. The `tf_max_age()` helper reads these to compute expiry in milliseconds.
+
 ---
 
 ### S3 — HA Detection
 
-Reuse the exact `ha_detect()` function from `iora_structure.pine`:
+Extended `ha_detect()` based on `iora_structure.pine` version, with additional outputs for cross-TF propagation. The base logic is identical (HA color flip, run extreme scan, HH/LH/HL/LL classification), but the return tuple includes the previous zone boundaries needed by TFState:
 
 ```
 ha_detect(float doji_pct) =>
@@ -102,23 +112,35 @@ ha_detect(float doji_pct) =>
     // Color transition detection (red→blue = demand, blue→red = supply)
     // Run extreme scan (up to 50 bars back)
     // HH/LH/HL/LL classification vs previous same-type zone
-    // Returns: [fire, ztop, zbot, is_sup, origin_time, hi_cls, lo_cls]
+    //
+    // var float prev_run_hi tracks previous supply top (for HH/LH classification)
+    // var float prev_run_lo tracks previous demand bottom (for LL/HL classification)
+    //
+    // Returns 9 values:
+    //   [fire, ztop, zbot, is_sup, origin_time, hi_cls, lo_cls, prev_sup_top, prev_dem_bot]
+    //
+    // prev_sup_top = the supply top BEFORE the current zone updated it (for cross-TF comparison)
+    // prev_dem_bot = the demand bottom BEFORE the current zone updated it
 ```
+
+The two extra fields (`prev_sup_top`, `prev_dem_bot`) are captured before the `prev_run_hi/lo` update in the existing code. This is the only change from `iora_structure.pine`'s version.
 
 6 `request.security()` calls on `ticker.standard(syminfo.tickerid)`:
 
 ```
-[f_d,  zt_d,  zb_d,  s_d,  tm_d,  hi_d,  lo_d]  = request.security(_sym, "1D",  ha_detect(i_doji))
-[f_h4, zt_h4, zb_h4, s_h4, tm_h4, hi_h4, lo_h4] = request.security(_sym, "240", ha_detect(i_doji))
-[f_h1, zt_h1, zb_h1, s_h1, tm_h1, hi_h1, lo_h1] = request.security(_sym, "60",  ha_detect(i_doji))
-[f_m15,zt_m15,zb_m15,s_m15,tm_m15,hi_m15,lo_m15] = request.security(_sym, "15",  ha_detect(i_doji))
-[f_m5, zt_m5, zb_m5, s_m5, tm_m5, hi_m5, lo_m5]  = request.security(_sym, "5",   ha_detect(i_doji))
-[f_m1, zt_m1, zb_m1, s_m1, tm_m1, hi_m1, lo_m1]  = request.security(_sym, "1",   ha_detect(i_doji))
+[f_d,  zt_d,  zb_d,  s_d,  tm_d,  hi_d,  lo_d,  pst_d,  pdb_d]  = request.security(_sym, "1D",  ha_detect(i_doji))
+[f_h4, zt_h4, zb_h4, s_h4, tm_h4, hi_h4, lo_h4, pst_h4, pdb_h4] = request.security(_sym, "240", ha_detect(i_doji))
+[f_h1, zt_h1, zb_h1, s_h1, tm_h1, hi_h1, lo_h1, pst_h1, pdb_h1] = request.security(_sym, "60",  ha_detect(i_doji))
+[f_m15,zt_m15,zb_m15,s_m15,tm_m15,hi_m15,lo_m15,pst_m15,pdb_m15] = request.security(_sym, "15",  ha_detect(i_doji))
+[f_m5, zt_m5, zb_m5, s_m5, tm_m5, hi_m5, lo_m5, pst_m5, pdb_m5]  = request.security(_sym, "5",   ha_detect(i_doji))
+[f_m1, zt_m1, zb_m1, s_m1, tm_m1, hi_m1, lo_m1, pst_m1, pdb_m1]  = request.security(_sym, "1",   ha_detect(i_doji))
 ```
 
 Edge detection: `fire = fire_raw and not fire_raw[1]` (same pattern as existing indicators).
 
 **Note:** M1 on M1 chart — the `request.security("1", ...)` call echoes the current bar. This is fine because M1 data IS the chart data. The security call ensures consistent execution model with the other TFs.
+
+**Note:** `max_bars_back` must be set explicitly on the `var` state variables inside `ha_detect()` (specifically `prev_run_hi`, `prev_run_lo`, and the HA state variables) since they are accessed with dynamic indices inside `request.security()`. Use `max_bars_back(variable, 5000)` after declaration.
 
 ---
 
@@ -130,6 +152,27 @@ Per-TF zone arrays (6 arrays, one per TF). Same management as `iora_structure.pi
 2. **Break detection:** body-close only (`close > zone.top` for supply, `close < zone.bottom` for demand)
 3. **New zone push:** on HA fire event, validate and push to array
 4. **Count overflow:** cap at 20 supply + 20 demand per TF
+
+**TFState field population on zone fire events:**
+
+When a new zone fires on a TF (edge-detected `fire` is true):
+
+```
+if is_supply:
+    // Shift current to previous
+    st.prev_sup_top := st.last_sup_top    // save previous for cross-TF comparison
+    // Update current
+    st.last_sup_top := ztop
+    st.last_sup_bot := zbot
+    st.last_sup_cls := hi_cls             // "HH" or "LH" from ha_detect()
+else:  // demand
+    st.prev_dem_bot := st.last_dem_bot    // save previous for cross-TF comparison
+    st.last_dem_top := ztop
+    st.last_dem_bot := zbot
+    st.last_dem_cls := lo_cls             // "LL" or "HL" from ha_detect()
+```
+
+This runs BEFORE zone counting and break detection so the state reflects the current zone.
 
 **Additional zone counting (not in existing indicators):**
 
@@ -194,11 +237,24 @@ On early detection:
 
 ---
 
-### S6 — H1 Zone Counter + Exhaustion Clock
+### S6 — Zone Counters + Exhaustion Clock
+
+#### H4 Zone Counter
+
+H4 zones are counted relative to D bias, using the same impulse/correction logic as H1:
+
+- **Reset:** On D structural event (D bias change via cross-TF propagation from H4→D)
+- **Impulse zones:** H4 zones in D bias direction (bearish D → H4 supply zones = impulse)
+- **Correction zones:** H4 zones opposing D bias (bearish D → H4 demand zones = correction)
+- **h4_zone_count** = total H4 zones since last D event
+- **Terminal:** `h4_zone_count >= 8` (same 5+3 pattern at H4 level)
+- Used by S7 context mode: `h4_zone_count <= 5` gates RIDE, `>= 8` contributes to FLIP
+
+#### H1 Zone Counter
 
 The zone count from S4 is interpreted here for H1 specifically:
 
-#### Counting Rules
+#### H1 Counting Rules
 
 - **Impulse zones:** H1 zones in H4 bias direction (bearish H4 → H1 supply zones with LH tops descending)
 - **Correction zones:** H1 zones opposing H4 bias (bearish H4 → H1 demand zones with HL bots ascending)
@@ -309,13 +365,15 @@ A `var int cascade_step` tracks progress (0 = waiting, 1-5 = in cascade). Resets
 
 #### RIDE SHORT Cascade (5 steps)
 
-| Step | Trigger | Check |
-|------|---------|-------|
-| 1 | H1 LH fires | `h1_phase == "correction"` AND `H1 last_sup_cls == "LH"` |
-| 2 | H1 LH overlaps H4 supply | `H1 last_sup_top >= H4 supply bottom AND H1 last_sup_top <= H4 supply top` |
-| 3 | M15 LH fires inside H1 supply | `M15 last_sup_top >= H1 last_sup_bot AND M15 last_sup_top <= H1 last_sup_top` |
-| 4 | M5 LH fires inside M15 demand | `M5 last_sup_top >= M15 last_dem_bot AND M5 last_sup_top <= M15 last_dem_top` |
-| 5 | M1 CHoCH (LH) fires inside M5 demand | **ENTRY TRIGGER** |
+Each step nests inside the zone that represents the turning point one level up. Steps 1-3 nest inside supply zones (the reversal areas where sellers step in). Steps 4-5 nest inside the most recent demand zone at the level above — this is the **correction pullback** zone that is being rejected. The M5 LH forming inside M15 demand means the M15 demand's pullback is failing. The M1 LH inside M5 demand means the M5 correction is also failing. This cascading failure of corrections IS the entry.
+
+| Step | Trigger | Nesting Logic | Check |
+|------|---------|---------------|-------|
+| 1 | H1 LH fires | Correction peak at H1 | `h1_phase == "correction"` AND `H1 last_sup_cls == "LH"` |
+| 2 | H1 LH overlaps H4 supply | Entry zone = H4 push zone | `H1 last_sup_top >= H4 supply bottom AND H1 last_sup_top <= H4 supply top` |
+| 3 | M15 LH fires inside H1 supply | Bearish sub-wave starting inside H1 reversal zone | `M15 last_sup_top >= H1 last_sup_bot AND M15 last_sup_top <= H1 last_sup_top` |
+| 4 | M5 LH fires inside M15 demand | M15 correction pullback failing — sellers rejecting the last M15 demand | `M5 last_sup_top >= M15 last_dem_bot AND M5 last_sup_top <= M15 last_dem_top` |
+| 5 | M1 CHoCH (LH) fires inside M5 demand | M5 correction also failing — final micro confirmation | **ENTRY TRIGGER** |
 
 #### RIDE LONG Cascade (mirror)
 
@@ -341,11 +399,15 @@ A `var int cascade_step` tracks progress (0 = waiting, 1-5 = in cascade). Resets
 
 #### SCALP Cascade (simplified — 3 steps)
 
+Direction is always **opposite** to the H1 BOS that just fired:
+- H1 bullish BOS (sweep up) → SCALP SHORT (retracement down to H1 demand, M1 LH triggers)
+- H1 bearish BOS (sweep down) → SCALP LONG (retracement up to H1 supply, M1 HL triggers)
+
 | Step | Trigger | Check |
 |------|---------|-------|
 | 1 | H1 BOS fired | `H1 last_event == "iBOS"` recently |
-| 2 | Price inside H1 zone | `close >= H1 zone bottom AND close <= H1 zone top` |
-| 3 | M1 CHoCH at H1 zone | **SCALP ENTRY** |
+| 2 | Price inside H1 zone | `close >= H1 zone bottom AND close <= H1 zone top` (the zone from the BOS leg) |
+| 3 | M1 CHoCH opposing BOS direction | M1 LH (CHoCH) for short scalp, M1 HL (CHoCH) for long scalp. **SCALP ENTRY** |
 
 #### Entry Signal Output
 
@@ -359,13 +421,15 @@ Visual: triangle plotshape on chart. Up-green for long, down-red for short. Labe
 
 #### Exit Signals (informational)
 
-| Signal | Detection | Visual |
-|--------|-----------|--------|
-| M15 CHoCH opposing inside H1 zone | M15 event check + containment | Yellow X marker |
-| Body close inside breaker zone | Close within any active breaker | Orange X marker |
-| H1 zone count 5 + correction TL break | Counter + phase check | Red X marker |
+| Signal | Detection | Visual | Phase |
+|--------|-----------|--------|-------|
+| M15 CHoCH opposing inside H1 zone | M15 event check + containment | Yellow X marker | Phase 1 |
+| H1 zone count 5 + correction starting | Counter + phase check | Red X marker | Phase 1 |
+| Body close inside breaker zone | Close within any active breaker | Orange X marker | **Phase 2** — requires breaker zone arrays (deferred) |
 
 Exit signals are plotted but do not gate entries. They inform the trader.
+
+**Phase 2 note:** The breaker-based exit signal requires replicating breaker zone detection internally (the `BreakerZone` UDT and `manage_breakers()` from `iora_structure.pine`). This adds significant complexity. Phase 1 ships without breaker exit signals — the trader can visually reference breaker zones from `iora_structure.pine` on chart. Phase 2 will add breaker arrays and the exit signal.
 
 ---
 
@@ -397,7 +461,7 @@ Pine `table` object, positioned per input setting. Updated every bar.
 | D | "BULL ▲" / "BEAR ▼" / "—" (colored) | "—" | "—" |
 | H4 | bias + direction | `h4_zone_count` / 8 | "impulse" / "correction" |
 | H1 | bias + direction | `impulse_count`i + `correction_count`c | "impulse" / "correction" / "terminal" |
-| M15 | bias + direction | "—" | "nested" if inside H1 zone, else "—" |
+| M15 | bias + direction | "—" | "nested" if M15's last zone price falls within an active H1 zone's top/bottom boundaries, else "—". Specifically: M15 last supply top is between H1 supply bottom and top (bearish nesting), or M15 last demand bottom is between H1 demand bottom and top (bullish nesting). |
 | M5 | bias + direction | "—" | "—" |
 | M1 | bias + direction | "—" | "waiting" / "TRIGGER" |
 | MODE | context mode + direction | — | cascade step N/5 or N/3 |
@@ -424,6 +488,8 @@ Pine `table` object, positioned per input setting. Updated every bar.
 | `max_labels_count` | 500 | ~50 (zone role labels) |
 | `max_boxes_count` | 500 | 0 (no boxes — zones drawn by iora_zones.pine) |
 | `calc_bars_count` | 5000 | 5000 |
+
+**`max_bars_back` requirement:** The `var` state variables inside `ha_detect()` (specifically `prev_run_hi`, `prev_run_lo`, HA open/close) are accessed with dynamic indices inside `request.security()`. Set `max_bars_back(variable, 5000)` after declaration for each `var` series used in the function. This prevents the "cannot determine referencing length" Pine compilation error. Same applies to zone array fields accessed with dynamic loop indices in `manage_zones()`.
 
 ## Build Order (Incremental Compilation)
 
