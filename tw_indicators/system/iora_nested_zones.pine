@@ -140,3 +140,27 @@ detect_zones(float doji_pct) =>
         last_origin := nz(ext_time, time[1])
 
     [last_ztop, last_zbot, last_is_sup, last_origin]
+
+// =============================================================================
+// S5 — DATA REQUESTS
+// =============================================================================
+
+string _base_sym = ticker.standard(syminfo.tickerid)
+
+[p1_zt, p1_zb, p1_sup, p1_tm] = request.security(_base_sym, i_p1_tf,  detect_zones(i_doji_pct))
+[g1_zt, g1_zb, g1_sup, g1_tm] = request.security(_base_sym, na(p1_gc_tf) ? "1" : p1_gc_tf,  detect_zones(i_doji_pct))
+[p2_zt, p2_zb, p2_sup, p2_tm] = request.security(_base_sym, i_p2_tf,  detect_zones(i_doji_pct))
+[g2_zt, g2_zb, g2_sup, g2_tm] = request.security(_base_sym, na(p2_gc_tf) ? "1" : p2_gc_tf,  detect_zones(i_doji_pct))
+[p3_zt, p3_zb, p3_sup, p3_tm] = request.security(_base_sym, i_p3_tf,  detect_zones(i_doji_pct))
+[g3_zt, g3_zb, g3_sup, g3_tm] = request.security(_base_sym, na(p3_gc_tf) ? "1" : p3_gc_tf,  detect_zones(i_doji_pct))
+
+// =============================================================================
+// S6 — EDGE DETECTION
+// =============================================================================
+
+bool p1_new = not na(p1_zt) and (na(p1_zt[1]) or p1_zt != p1_zt[1] or p1_zb != p1_zb[1])
+bool g1_new = not na(g1_zt) and (na(g1_zt[1]) or g1_zt != g1_zt[1] or g1_zb != g1_zb[1])
+bool p2_new = not na(p2_zt) and (na(p2_zt[1]) or p2_zt != p2_zt[1] or p2_zb != p2_zb[1])
+bool g2_new = not na(g2_zt) and (na(g2_zt[1]) or g2_zt != g2_zt[1] or g2_zb != g2_zb[1])
+bool p3_new = not na(p3_zt) and (na(p3_zt[1]) or p3_zt != p3_zt[1] or p3_zb != p3_zb[1])
+bool g3_new = not na(g3_zt) and (na(g3_zt[1]) or g3_zt != g3_zt[1] or g3_zb != g3_zb[1])
