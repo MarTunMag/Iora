@@ -402,6 +402,12 @@ if fm1
 // S5 — BIAS + STRUCTURE DETECTION
 // =============================================================================
 
+// Counter declarations (used in S5 resets and incremented in S6)
+var int h4_impulse_count    = 0
+var int h4_correction_count = 0
+var int h1_impulse_count    = 0
+var int h1_correction_count = 0
+
 // --- Internal breaks: update bias from own-TF zone breaks ---
 if brkd
     st_d.prev_bias := st_d.bias
@@ -493,6 +499,8 @@ if ebrkh1
     st_h1.last_event_time := time
     st_h1.bias := dir
     st_h1.zone_count := 0
+    h1_impulse_count := 0
+    h1_correction_count := 0
 
 if ebrkh4
     int dir = ebrkh4_sup ? 1 : -1
@@ -502,6 +510,8 @@ if ebrkh4
     st_h4.last_event_time := time
     st_h4.bias := dir
     st_h4.zone_count := 0
+    h4_impulse_count := 0
+    h4_correction_count := 0
 
 // --- Cross-TF propagation: H1 zone fires → check against H4 boundaries ---
 // HH/LL = BOS (trend continues), LH/HL = CHoCH (reversal signal)
@@ -517,6 +527,8 @@ if fh1 and not na(st_h4.prev_sup_top) and not na(st_h4.prev_dem_bot)
             st_h4.last_event_time := time
             st_h4.bias := h4_dir
             st_h1.zone_count := 0
+            h1_impulse_count := 0
+            h1_correction_count := 0
         else
             // H4 LH detected early (corrective — does not update bias)
             int h4_dir = 1
@@ -534,6 +546,8 @@ if fh1 and not na(st_h4.prev_sup_top) and not na(st_h4.prev_dem_bot)
             st_h4.last_event_time := time
             st_h4.bias := h4_dir
             st_h1.zone_count := 0
+            h1_impulse_count := 0
+            h1_correction_count := 0
         else
             // H4 HL detected early (corrective — does not update bias)
             int h4_dir = -1
@@ -552,6 +566,8 @@ if fh4 and not na(st_d.prev_sup_top) and not na(st_d.prev_dem_bot)
             st_d.last_event_time := time
             st_d.bias := d_dir
             st_h4.zone_count := 0
+            h4_impulse_count := 0
+            h4_correction_count := 0
         else
             int d_dir = 1
             st_d.last_event := (st_d.prev_bias == 0 or d_dir == st_d.prev_bias) ? "iBOS" : "iCHoCH"
@@ -566,11 +582,69 @@ if fh4 and not na(st_d.prev_sup_top) and not na(st_d.prev_dem_bot)
             st_d.last_event_time := time
             st_d.bias := d_dir
             st_h4.zone_count := 0
+            h4_impulse_count := 0
+            h4_correction_count := 0
         else
             int d_dir = -1
             st_d.last_event := (st_d.prev_bias == 0 or d_dir == st_d.prev_bias) ? "iBOS" : "iCHoCH"
             st_d.last_event_dir := d_dir
             st_d.last_event_time := time
+
+// =============================================================================
+// S6 — ZONE COUNTERS + EXHAUSTION CLOCK
+// =============================================================================
+
+// --- H4 zone counter (relative to D bias) ---
+if fh4
+    if st_d.bias == -1
+        if sh4
+            h4_impulse_count += 1
+        else
+            h4_correction_count += 1
+    else if st_d.bias == 1
+        if not sh4
+            h4_impulse_count += 1
+        else
+            h4_correction_count += 1
+
+int h4_zone_count = h4_impulse_count + h4_correction_count
+
+// --- H1 zone counter (relative to H4 bias) ---
+if fh1
+    if st_h4.bias == -1
+        if sh1
+            h1_impulse_count += 1
+        else
+            h1_correction_count += 1
+    else if st_h4.bias == 1
+        if not sh1
+            h1_impulse_count += 1
+        else
+            h1_correction_count += 1
+
+int h1_zone_count = h1_impulse_count + h1_correction_count
+
+// --- H1 phase detection ---
+var string h1_phase = ""
+
+bool h1_is_bos   = st_h1.last_event == "iBOS" or st_h1.last_event == "eBOS"
+bool h1_is_choch = st_h1.last_event == "iCHoCH" or st_h1.last_event == "eCHoCH"
+
+if h1_is_bos and st_h1.last_event_dir == st_h4.bias
+    h1_phase := "impulse"
+else if h1_is_choch and st_h1.last_event_dir != st_h4.bias
+    h1_phase := "correction"
+
+// --- Terminal detection ---
+bool h1_terminal = h1_zone_count >= 8 or (h1_impulse_count >= 5 and h1_correction_count >= 3)
+
+// --- Counter-zone proximity ---
+bool at_counter_zone = false
+if h1_zone_count >= 6
+    if st_h4.bias == -1 and not na(st_h4.last_dem_bot) and not na(st_d.last_dem_bot)
+        at_counter_zone := st_h4.last_dem_bot < st_d.last_dem_bot and close >= st_h4.last_dem_bot and close <= st_h4.last_dem_top
+    else if st_h4.bias == 1 and not na(st_h4.last_sup_top) and not na(st_d.last_sup_top)
+        at_counter_zone := st_h4.last_sup_top > st_d.last_sup_top and close >= st_h4.last_sup_bot and close <= st_h4.last_sup_top
 
 // TEMP debug — bias status line
 plot(st_d.bias,  "D bias",  display = display.status_line)
