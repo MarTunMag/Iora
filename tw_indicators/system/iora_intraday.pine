@@ -186,6 +186,187 @@ bool fm15 = fm15_raw and not fm15_raw[1]
 bool fm5  = fm5_raw  and not fm5_raw[1]
 bool fm1  = fm1_raw  and not fm1_raw[1]
 
+// =============================================================================
+// S4 — ZONE STATE MANAGEMENT
+// =============================================================================
+
+method manage_zones(array<LightZone> zones, bool fire, float ztop, float zbot, bool is_sup, int z_time, string hi_txt, string lo_txt, string tf_str) =>
+    int tf_ms  = timeframe.in_seconds(tf_str) * 1000
+    int max_ms = tf_max_age(tf_str) * tf_ms
+    int lookback = 20
+
+    bool did_break = false
+    bool brk_is_supply = false
+    bool brk_is_hh_or_ll = false
+    string brk_label = ""
+    float brk_price = 0.0
+    int brk_origin = 0
+    float brk_top = 0.0
+    float brk_bot = 0.0
+
+    if zones.size() > 0
+        for i = zones.size() - 1 to 0
+            LightZone z = zones.get(i)
+            bool expired = (time - z.origin_time) > max_ms
+            if expired
+                zones.remove(i)
+                continue
+            // Body-close break only
+            bool broken = z.is_supply ? (close > z.top) : (close < z.bottom)
+            if broken
+                z.is_broken := true
+                z.break_time := time
+                if not did_break
+                    did_break := true
+                    brk_is_supply := z.is_supply
+                    brk_is_hh_or_ll := z.is_hh_or_ll
+                    brk_label := z.label_txt
+                    brk_price := z.is_supply ? z.top : z.bottom
+                    brk_origin := z.origin_time
+                    brk_top := z.top
+                    brk_bot := z.bottom
+
+    bool valid = not na(ztop) and not na(zbot) and not na(z_time) and ztop > zbot
+    if fire and (time - z_time) < max_ms and valid
+        string cls_txt = is_sup ? hi_txt : lo_txt
+        bool is_hh_ll = (cls_txt == "HH" or cls_txt == "LL")
+        zones.push(LightZone.new(ztop, zbot, is_sup, is_hh_ll, cls_txt, z_time, false, 0))
+
+        int sup_count = 0
+        int dem_count = 0
+        for j = 0 to zones.size() - 1
+            LightZone zj = zones.get(j)
+            if zj.is_supply
+                sup_count += 1
+            else
+                dem_count += 1
+        while sup_count > lookback
+            for j = 0 to zones.size() - 1
+                LightZone zj = zones.get(j)
+                if zj.is_supply
+                    zones.remove(j)
+                    sup_count -= 1
+                    break
+        while dem_count > lookback
+            for j = 0 to zones.size() - 1
+                LightZone zj = zones.get(j)
+                if not zj.is_supply
+                    zones.remove(j)
+                    dem_count -= 1
+                    break
+
+    [did_break, brk_is_supply, brk_is_hh_or_ll, brk_label, brk_price, brk_origin, brk_top, brk_bot]
+
+method remove_broken(array<LightZone> zones) =>
+    if zones.size() > 0
+        for i = zones.size() - 1 to 0
+            LightZone z = zones.get(i)
+            if z.is_broken
+                zones.remove(i)
+
+// Zone arrays
+var array<LightZone> zones_d   = array.new<LightZone>()
+var array<LightZone> zones_h4  = array.new<LightZone>()
+var array<LightZone> zones_h1  = array.new<LightZone>()
+var array<LightZone> zones_m15 = array.new<LightZone>()
+var array<LightZone> zones_m5  = array.new<LightZone>()
+var array<LightZone> zones_m1  = array.new<LightZone>()
+
+// TFState instances
+var TFState st_d   = TFState.new()
+var TFState st_h4  = TFState.new()
+var TFState st_h1  = TFState.new()
+var TFState st_m15 = TFState.new()
+var TFState st_m5  = TFState.new()
+var TFState st_m1  = TFState.new()
+
+// TFState population on zone fire events
+if fd
+    if sd
+        st_d.prev_sup_top := st_d.last_sup_top
+        st_d.last_sup_top := ztd
+        st_d.last_sup_bot := zbd
+        st_d.last_sup_cls := hid
+    else
+        st_d.prev_dem_bot := st_d.last_dem_bot
+        st_d.last_dem_top := ztd
+        st_d.last_dem_bot := zbd
+        st_d.last_dem_cls := lod
+    st_d.zone_count += 1
+
+if fh4
+    if sh4
+        st_h4.prev_sup_top := st_h4.last_sup_top
+        st_h4.last_sup_top := zth4
+        st_h4.last_sup_bot := zbh4
+        st_h4.last_sup_cls := hih4
+    else
+        st_h4.prev_dem_bot := st_h4.last_dem_bot
+        st_h4.last_dem_top := zth4
+        st_h4.last_dem_bot := zbh4
+        st_h4.last_dem_cls := loh4
+    st_h4.zone_count += 1
+
+if fh1
+    if sh1
+        st_h1.prev_sup_top := st_h1.last_sup_top
+        st_h1.last_sup_top := zth1
+        st_h1.last_sup_bot := zbh1
+        st_h1.last_sup_cls := hih1
+    else
+        st_h1.prev_dem_bot := st_h1.last_dem_bot
+        st_h1.last_dem_top := zth1
+        st_h1.last_dem_bot := zbh1
+        st_h1.last_dem_cls := loh1
+    st_h1.zone_count += 1
+
+if fm15
+    if sm15
+        st_m15.prev_sup_top := st_m15.last_sup_top
+        st_m15.last_sup_top := ztm15
+        st_m15.last_sup_bot := zbm15
+        st_m15.last_sup_cls := him15
+    else
+        st_m15.prev_dem_bot := st_m15.last_dem_bot
+        st_m15.last_dem_top := ztm15
+        st_m15.last_dem_bot := zbm15
+        st_m15.last_dem_cls := lom15
+    st_m15.zone_count += 1
+
+if fm5
+    if sm5
+        st_m5.prev_sup_top := st_m5.last_sup_top
+        st_m5.last_sup_top := ztm5
+        st_m5.last_sup_bot := zbm5
+        st_m5.last_sup_cls := him5
+    else
+        st_m5.prev_dem_bot := st_m5.last_dem_bot
+        st_m5.last_dem_top := ztm5
+        st_m5.last_dem_bot := zbm5
+        st_m5.last_dem_cls := lom5
+    st_m5.zone_count += 1
+
+if fm1
+    if sm1
+        st_m1.prev_sup_top := st_m1.last_sup_top
+        st_m1.last_sup_top := ztm1
+        st_m1.last_sup_bot := zbm1
+        st_m1.last_sup_cls := him1
+    else
+        st_m1.prev_dem_bot := st_m1.last_dem_bot
+        st_m1.last_dem_top := ztm1
+        st_m1.last_dem_bot := zbm1
+        st_m1.last_dem_cls := lom1
+    st_m1.zone_count += 1
+
+// manage_zones() execution for all 6 TFs
+[brkd,   brkd_sup,   brkd_hh,   brkd_lbl,   brkd_px,   brkd_org,   brkd_t,   brkd_b]   = zones_d.manage_zones(fd,   ztd,   zbd,   sd,   tmd,   hid,   lod,   "1D")
+[brkh4,  brkh4_sup,  brkh4_hh,  brkh4_lbl,  brkh4_px,  brkh4_org,  brkh4_t,  brkh4_b]  = zones_h4.manage_zones(fh4,  zth4,  zbh4,  sh4,  tmh4,  hih4,  loh4,  "240")
+[brkh1,  brkh1_sup,  brkh1_hh,  brkh1_lbl,  brkh1_px,  brkh1_org,  brkh1_t,  brkh1_b]  = zones_h1.manage_zones(fh1,  zth1,  zbh1,  sh1,  tmh1,  hih1,  loh1,  "60")
+[brkm15, brkm15_sup, brkm15_hh, brkm15_lbl, brkm15_px, brkm15_org, brkm15_t, brkm15_b] = zones_m15.manage_zones(fm15, ztm15, zbm15, sm15, tmm15, him15, lom15, "15")
+[brkm5,  brkm5_sup,  brkm5_hh,  brkm5_lbl,  brkm5_px,  brkm5_org,  brkm5_t,  brkm5_b]  = zones_m5.manage_zones(fm5,  ztm5,  zbm5,  sm5,  tmm5,  him5,  lom5,  "5")
+[brkm1,  brkm1_sup,  brkm1_hh,  brkm1_lbl,  brkm1_px,  brkm1_org,  brkm1_t,  brkm1_b]  = zones_m1.manage_zones(fm1,  ztm1,  zbm1,  sm1,  tmm1,  him1,  lom1,  "1")
+
 // TEMP debug — shows zone fire events per TF
 plotchar(fd,   "D fire",   "D", location.abovebar, size = size.tiny, display = display.none)
 plotchar(fh4,  "H4 fire",  "4", location.abovebar, size = size.tiny, display = display.none)
@@ -193,3 +374,11 @@ plotchar(fh1,  "H1 fire",  "1", location.abovebar, size = size.tiny, display = d
 plotchar(fm15, "M15 fire", "F", location.abovebar, size = size.tiny, display = display.none)
 plotchar(fm5,  "M5 fire",  "5", location.abovebar, size = size.tiny, display = display.none)
 plotchar(fm1,  "M1 fire",  "m", location.abovebar, size = size.tiny, display = display.none)
+
+// Broken zone cleanup
+zones_d.remove_broken()
+zones_h4.remove_broken()
+zones_h1.remove_broken()
+zones_m15.remove_broken()
+zones_m5.remove_broken()
+zones_m1.remove_broken()
