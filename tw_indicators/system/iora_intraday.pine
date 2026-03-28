@@ -673,6 +673,130 @@ else if (st_h1.last_event == "iBOS" or st_h1.last_event == "eBOS") and not na(st
 // SKIP (default — layers not aligned or ambiguous)
 // context_mode already "SKIP", context_dir already 0
 
+// =============================================================================
+// S8 — ENTRY CASCADE
+// =============================================================================
+
+is_inside(float price, float zone_bot, float zone_top) =>
+    not na(price) and not na(zone_bot) and not na(zone_top) and price >= zone_bot and price <= zone_top
+
+// Cascade state
+var int    cascade_step = 0
+var string cascade_mode = ""
+var int    cascade_dir  = 0
+var string prev_context = "SKIP"
+
+// Reset cascade on mode change
+if context_mode != prev_context
+    cascade_step := 0
+    cascade_mode := ""
+    cascade_dir  := 0
+prev_context := context_mode
+
+// --- RIDE SHORT Cascade (5 steps) ---
+if context_mode == "RIDE" and context_dir == -1
+    if cascade_step == 0 and fh1 and sh1 and st_h1.last_sup_cls == "LH" and h1_phase == "correction"
+        cascade_step := 1
+        cascade_mode := "RIDE"
+        cascade_dir  := -1
+    if cascade_step == 1 and is_inside(st_h1.last_sup_top, st_h4.last_sup_bot, st_h4.last_sup_top)
+        cascade_step := 2
+    if cascade_step == 2 and fm15 and sm15 and st_m15.last_sup_cls == "LH" and is_inside(st_m15.last_sup_top, st_h1.last_sup_bot, st_h1.last_sup_top)
+        cascade_step := 3
+    if cascade_step == 3 and fm5 and sm5 and st_m5.last_sup_cls == "LH" and is_inside(st_m5.last_sup_top, st_m15.last_dem_bot, st_m15.last_dem_top)
+        cascade_step := 4
+    if cascade_step == 4 and fm1 and sm1 and st_m1.last_sup_cls == "LH" and is_inside(st_m1.last_sup_top, st_m5.last_dem_bot, st_m5.last_dem_top)
+        cascade_step := 5
+
+// --- RIDE LONG Cascade (5 steps) ---
+if context_mode == "RIDE" and context_dir == 1
+    if cascade_step == 0 and fh1 and not sh1 and st_h1.last_dem_cls == "HL" and h1_phase == "correction"
+        cascade_step := 1
+        cascade_mode := "RIDE"
+        cascade_dir  := 1
+    if cascade_step == 1 and is_inside(st_h1.last_dem_bot, st_h4.last_dem_bot, st_h4.last_dem_top)
+        cascade_step := 2
+    if cascade_step == 2 and fm15 and not sm15 and st_m15.last_dem_cls == "HL" and is_inside(st_m15.last_dem_bot, st_h1.last_dem_bot, st_h1.last_dem_top)
+        cascade_step := 3
+    if cascade_step == 3 and fm5 and not sm5 and st_m5.last_dem_cls == "HL" and is_inside(st_m5.last_dem_bot, st_m15.last_sup_bot, st_m15.last_sup_top)
+        cascade_step := 4
+    if cascade_step == 4 and fm1 and not sm1 and st_m1.last_dem_cls == "HL" and is_inside(st_m1.last_dem_bot, st_m5.last_sup_bot, st_m5.last_sup_top)
+        cascade_step := 5
+
+// --- FLIP LONG Cascade (5 steps) ---
+if context_mode == "FLIP" and context_dir == 1
+    if cascade_step == 0 and fh1 and not sh1 and st_h1.last_dem_cls == "HL" and at_counter_zone
+        cascade_step := 1
+        cascade_mode := "FLIP"
+        cascade_dir  := 1
+    if cascade_step == 1 and (st_h1.last_event == "iBOS" or st_h1.last_event == "eBOS") and st_h1.last_event_dir == 1
+        cascade_step := 2
+    if cascade_step == 2 and fm15 and not sm15 and st_m15.last_dem_cls == "HL" and is_inside(st_m15.last_dem_bot, st_h1.last_dem_bot, st_h1.last_dem_top)
+        cascade_step := 3
+    if cascade_step == 3 and fm5 and not sm5 and st_m5.last_dem_cls == "HL" and is_inside(st_m5.last_dem_bot, st_m15.last_sup_bot, st_m15.last_sup_top)
+        cascade_step := 4
+    if cascade_step == 4 and fm1 and not sm1 and st_m1.last_dem_cls == "HL" and is_inside(st_m1.last_dem_bot, st_m5.last_sup_bot, st_m5.last_sup_top)
+        cascade_step := 5
+
+// --- FLIP SHORT Cascade (5 steps) ---
+if context_mode == "FLIP" and context_dir == -1
+    if cascade_step == 0 and fh1 and sh1 and st_h1.last_sup_cls == "LH" and at_counter_zone
+        cascade_step := 1
+        cascade_mode := "FLIP"
+        cascade_dir  := -1
+    if cascade_step == 1 and (st_h1.last_event == "iBOS" or st_h1.last_event == "eBOS") and st_h1.last_event_dir == -1
+        cascade_step := 2
+    if cascade_step == 2 and fm15 and sm15 and st_m15.last_sup_cls == "LH" and is_inside(st_m15.last_sup_top, st_h1.last_sup_bot, st_h1.last_sup_top)
+        cascade_step := 3
+    if cascade_step == 3 and fm5 and sm5 and st_m5.last_sup_cls == "LH" and is_inside(st_m5.last_sup_top, st_m15.last_dem_bot, st_m15.last_dem_top)
+        cascade_step := 4
+    if cascade_step == 4 and fm1 and sm1 and st_m1.last_sup_cls == "LH" and is_inside(st_m1.last_sup_top, st_m5.last_dem_bot, st_m5.last_dem_top)
+        cascade_step := 5
+
+// --- SCALP Cascade (3 steps) ---
+if context_mode == "SCALP"
+    int scalp_dir = context_dir
+    if cascade_step == 0
+        cascade_step := 1
+        cascade_mode := "SCALP"
+        cascade_dir  := scalp_dir
+    if cascade_step == 1
+        bool in_zone = scalp_dir == -1 ? is_inside(close, st_h1.last_dem_bot, st_h1.last_dem_top) : is_inside(close, st_h1.last_sup_bot, st_h1.last_sup_top)
+        if in_zone
+            cascade_step := 2
+    if cascade_step == 2 and fm1
+        bool m1_trigger = scalp_dir == -1 ? (sm1 and st_m1.last_sup_cls == "LH") : (not sm1 and st_m1.last_dem_cls == "HL")
+        if m1_trigger
+            cascade_step := 3
+
+// --- Entry signal output ---
+// IMPORTANT: max_step must be at global scope — it is referenced by the dashboard (S9)
+int max_step = cascade_mode == "SCALP" ? 3 : 5
+bool entry_fire = cascade_step >= max_step
+
+var int    entry_dir   = 0
+var float  entry_price = na
+var string entry_mode  = ""
+
+if entry_fire
+    entry_dir   := cascade_dir
+    entry_price := cascade_dir == 1 ? st_m1.last_dem_top : st_m1.last_sup_bot
+    entry_mode  := cascade_mode
+    cascade_step := 0
+
+plotshape(i_signals and entry_fire and entry_dir == 1,  "Long Entry",  shape.triangleup,   location.belowbar, color.new(#4CAF50, 0), size = size.small)
+plotshape(i_signals and entry_fire and entry_dir == -1, "Short Entry", shape.triangledown, location.abovebar, color.new(#F44336, 0), size = size.small)
+
+// --- Exit signals (Phase 1 — informational) ---
+bool m15_opposing = (st_m15.last_event == "iCHoCH" or st_m15.last_event == "eCHoCH") and st_m15.last_event_dir != st_h1.bias
+bool m15_inside_h1 = st_h1.bias == -1 ? is_inside(close, st_h1.last_dem_bot, st_h1.last_dem_top) : is_inside(close, st_h1.last_sup_bot, st_h1.last_sup_top)
+bool exit_m15 = m15_opposing and m15_inside_h1
+
+bool exit_exhaust = h1_impulse_count >= 5 and h1_phase == "correction"
+
+plotshape(i_signals and exit_m15,     "M15 Exit",     shape.xcross, location.abovebar, color.new(#FFD600, 0), size = size.tiny)
+plotshape(i_signals and exit_exhaust, "Exhaust Exit",  shape.xcross, location.abovebar, color.new(#F44336, 0), size = size.tiny)
+
 // TEMP debug — bias status line
 plot(st_d.bias,  "D bias",  display = display.status_line)
 plot(st_h4.bias, "H4 bias", display = display.status_line)
