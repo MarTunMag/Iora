@@ -262,3 +262,68 @@ if p3_ok
             if g3_zt <= p3_dem_z.top and g3_zb >= p3_dem_z.bottom
                 string lbl = tf_label(p3_gc_tf) + " ▶ " + tf_label(i_p3_tf)
                 create_confirmed(g3_zt, g3_zb, false, g3_tm, lbl, i_p3_clr, p3_dem_z.top, p3_dem_z.bottom, confirmed, i_max_zones)
+
+// =============================================================================
+// S8 — BREAK MANAGEMENT
+// =============================================================================
+
+// Parent zone break checks
+if p1_ok
+    if not p1_sup_z.is_broken and close > p1_sup_z.top
+        p1_sup_z.is_broken := true
+    if not p1_dem_z.is_broken and close < p1_dem_z.bottom
+        p1_dem_z.is_broken := true
+if p2_ok
+    if not p2_sup_z.is_broken and close > p2_sup_z.top
+        p2_sup_z.is_broken := true
+    if not p2_dem_z.is_broken and close < p2_dem_z.bottom
+        p2_dem_z.is_broken := true
+if p3_ok
+    if not p3_sup_z.is_broken and close > p3_sup_z.top
+        p3_sup_z.is_broken := true
+    if not p3_dem_z.is_broken and close < p3_dem_z.bottom
+        p3_dem_z.is_broken := true
+
+// Confirmed zone break checks + parent cascade + box extension
+if confirmed.size() > 0
+    for j = confirmed.size() - 1 to 0
+        ConfirmedZone cz = confirmed.get(j)
+        bool cz_broken = false
+
+        // Body-close break on confirmed zone itself
+        if cz.is_supply and close > cz.top
+            cz_broken := true
+        else if not cz.is_supply and close < cz.bottom
+            cz_broken := true
+
+        // Parent invalidation: check if the parent zone that contained this confirmed zone is now broken
+        // Match by parent_top and parent_bot against all parent zones
+        if not cz_broken
+            if p1_ok
+                if cz.is_supply and p1_sup_z.is_broken and cz.parent_top == p1_sup_z.top and cz.parent_bot == p1_sup_z.bottom
+                    cz_broken := true
+                if not cz.is_supply and p1_dem_z.is_broken and cz.parent_top == p1_dem_z.top and cz.parent_bot == p1_dem_z.bottom
+                    cz_broken := true
+            if p2_ok and not cz_broken
+                if cz.is_supply and p2_sup_z.is_broken and cz.parent_top == p2_sup_z.top and cz.parent_bot == p2_sup_z.bottom
+                    cz_broken := true
+                if not cz.is_supply and p2_dem_z.is_broken and cz.parent_top == p2_dem_z.top and cz.parent_bot == p2_dem_z.bottom
+                    cz_broken := true
+            if p3_ok and not cz_broken
+                if cz.is_supply and p3_sup_z.is_broken and cz.parent_top == p3_sup_z.top and cz.parent_bot == p3_sup_z.bottom
+                    cz_broken := true
+                if not cz.is_supply and p3_dem_z.is_broken and cz.parent_top == p3_dem_z.top and cz.parent_bot == p3_dem_z.bottom
+                    cz_broken := true
+
+        if cz_broken
+            if not na(cz.bx)
+                box.delete(cz.bx)
+            if not na(cz.lbl)
+                label.delete(cz.lbl)
+            confirmed.remove(j)
+        else
+            // Extend box and reposition label to current bar
+            if not na(cz.bx)
+                box.set_right(cz.bx, time)
+            if not na(cz.lbl)
+                label.set_x(cz.lbl, time)
