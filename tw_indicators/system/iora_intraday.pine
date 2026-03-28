@@ -101,6 +101,8 @@ ha_detect(float doji_pct) =>
     max_bars_back(lo1_time, 5000)
     max_bars_back(out_prev_sup, 5000)
     max_bars_back(out_prev_dem, 5000)
+    max_bars_back(hi1_txt, 5000)
+    max_bars_back(lo1_txt, 5000)
 
     bool  fire      = false
     float ztop      = 0.0
@@ -518,9 +520,9 @@ if ebrkh4
 if fh1 and not na(st_h4.prev_sup_top) and not na(st_h4.prev_dem_bot)
     if sh1
         // H1 supply fired — compare top to prev H4 supply top
-        st_h4.prev_bias := st_h4.bias
         if zth1 > st_h4.prev_sup_top
-            // H4 HH detected early
+            // H4 HH detected early — structural, updates bias
+            st_h4.prev_bias := st_h4.bias
             int h4_dir = 1
             st_h4.last_event := (st_h4.prev_bias == 0 or h4_dir == st_h4.prev_bias) ? "iBOS" : "iCHoCH"
             st_h4.last_event_dir := h4_dir
@@ -530,16 +532,14 @@ if fh1 and not na(st_h4.prev_sup_top) and not na(st_h4.prev_dem_bot)
             h1_impulse_count := 0
             h1_correction_count := 0
         else
-            // H4 LH detected early (corrective — does not update bias)
-            int h4_dir = 1
-            st_h4.last_event := (st_h4.prev_bias == 0 or h4_dir == st_h4.prev_bias) ? "iBOS" : "iCHoCH"
-            st_h4.last_event_dir := h4_dir
+            // H4 LH detected early — corrective, does NOT update bias or prev_bias
+            st_h4.last_event_dir := 1
             st_h4.last_event_time := time
     else
         // H1 demand fired — compare bot to prev H4 demand bot
-        st_h4.prev_bias := st_h4.bias
         if zbh1 < st_h4.prev_dem_bot
-            // H4 LL detected early
+            // H4 LL detected early — structural, updates bias
+            st_h4.prev_bias := st_h4.bias
             int h4_dir = -1
             st_h4.last_event := (st_h4.prev_bias == 0 or h4_dir == st_h4.prev_bias) ? "iBOS" : "iCHoCH"
             st_h4.last_event_dir := h4_dir
@@ -549,17 +549,15 @@ if fh1 and not na(st_h4.prev_sup_top) and not na(st_h4.prev_dem_bot)
             h1_impulse_count := 0
             h1_correction_count := 0
         else
-            // H4 HL detected early (corrective — does not update bias)
-            int h4_dir = -1
-            st_h4.last_event := (st_h4.prev_bias == 0 or h4_dir == st_h4.prev_bias) ? "iBOS" : "iCHoCH"
-            st_h4.last_event_dir := h4_dir
+            // H4 HL detected early — corrective, does NOT update bias or prev_bias
+            st_h4.last_event_dir := -1
             st_h4.last_event_time := time
 
 // Same pattern for H4→D propagation
 if fh4 and not na(st_d.prev_sup_top) and not na(st_d.prev_dem_bot)
     if sh4
-        st_d.prev_bias := st_d.bias
         if zth4 > st_d.prev_sup_top
+            st_d.prev_bias := st_d.bias
             int d_dir = 1
             st_d.last_event := (st_d.prev_bias == 0 or d_dir == st_d.prev_bias) ? "iBOS" : "iCHoCH"
             st_d.last_event_dir := d_dir
@@ -569,13 +567,11 @@ if fh4 and not na(st_d.prev_sup_top) and not na(st_d.prev_dem_bot)
             h4_impulse_count := 0
             h4_correction_count := 0
         else
-            int d_dir = 1
-            st_d.last_event := (st_d.prev_bias == 0 or d_dir == st_d.prev_bias) ? "iBOS" : "iCHoCH"
-            st_d.last_event_dir := d_dir
+            st_d.last_event_dir := 1
             st_d.last_event_time := time
     else
-        st_d.prev_bias := st_d.bias
         if zbh4 < st_d.prev_dem_bot
+            st_d.prev_bias := st_d.bias
             int d_dir = -1
             st_d.last_event := (st_d.prev_bias == 0 or d_dir == st_d.prev_bias) ? "iBOS" : "iCHoCH"
             st_d.last_event_dir := d_dir
@@ -585,9 +581,7 @@ if fh4 and not na(st_d.prev_sup_top) and not na(st_d.prev_dem_bot)
             h4_impulse_count := 0
             h4_correction_count := 0
         else
-            int d_dir = -1
-            st_d.last_event := (st_d.prev_bias == 0 or d_dir == st_d.prev_bias) ? "iBOS" : "iCHoCH"
-            st_d.last_event_dir := d_dir
+            st_d.last_event_dir := -1
             st_d.last_event_time := time
 
 // =============================================================================
@@ -631,6 +625,10 @@ bool h1_is_bos   = st_h1.last_event == "iBOS" or st_h1.last_event == "eBOS"
 bool h1_is_choch = st_h1.last_event == "iCHoCH" or st_h1.last_event == "eCHoCH"
 
 if h1_is_bos and st_h1.last_event_dir == st_h4.bias
+    h1_phase := "impulse"
+else if h1_is_bos and st_h1.last_event_dir != st_h4.bias
+    h1_phase := "correction"
+else if h1_is_choch and st_h1.last_event_dir == st_h4.bias
     h1_phase := "impulse"
 else if h1_is_choch and st_h1.last_event_dir != st_h4.bias
     h1_phase := "correction"
@@ -774,6 +772,9 @@ if context_mode == "SCALP"
 int max_step = cascade_mode == "SCALP" ? 3 : 5
 bool entry_fire = cascade_step >= max_step
 
+// Capture cascade display state BEFORE reset (for dashboard S9)
+int cascade_step_display = cascade_step
+
 var int    entry_dir   = 0
 var float  entry_price = na
 var string entry_mode  = ""
@@ -864,7 +865,7 @@ if i_dash
         table.cell(dash, 3, 5, "—",   text_size = size.tiny)
 
         // M1 row
-        string m1_phase = cascade_step >= max_step ? "TRIGGER" : "waiting"
+        string m1_phase = cascade_step_display >= max_step ? "TRIGGER" : "waiting"
         color m1_clr = m1_phase == "TRIGGER" ? color.new(#FFD600, 0) : color.white
         table.cell(dash, 0, 6, "M1",  text_size = size.tiny)
         table.cell(dash, 1, 6, bias_text(st_m1.bias), text_color = bias_color(st_m1.bias), text_size = size.tiny)
@@ -889,7 +890,7 @@ if i_dash
         table.cell(dash, 0, 7, "MODE", bgcolor = mode_bg, text_size = size.tiny)
         table.cell(dash, 1, 7, mode_txt, bgcolor = mode_bg, text_size = size.tiny)
         table.cell(dash, 2, 7, "", bgcolor = mode_bg, text_size = size.tiny)
-        string step_txt = cascade_step > 0 ? (str.tostring(cascade_step) + "/" + str.tostring(max_step)) : "—"
+        string step_txt = cascade_step_display > 0 ? (str.tostring(cascade_step_display) + "/" + str.tostring(max_step)) : "—"
         table.cell(dash, 3, 7, step_txt, bgcolor = mode_bg, text_size = size.tiny)
 
 // Broken zone cleanup
