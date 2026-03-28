@@ -1,0 +1,45 @@
+//@version=6
+indicator("Iora Nested Zones", overlay = true, max_boxes_count = 100, max_labels_count = 100, calc_bars_count = 5000)
+
+// =============================================================================
+// S1 — TYPES
+// =============================================================================
+
+type ParentZone
+    float   top         = 0.0
+    float   bottom      = 0.0
+    bool    is_supply   = false
+    int     origin_time = 0
+    bool    is_broken   = true
+
+type ConfirmedZone
+    float   top         = na
+    float   bottom      = na
+    bool    is_supply   = false
+    int     origin_time = na
+    string  pair_label  = ""
+    box     bx          = na
+    label   lbl         = na
+    float   parent_top  = na
+    float   parent_bot  = na
+
+// =============================================================================
+// S2 — INPUTS
+// =============================================================================
+
+string GRP_PAIR = "Pairs"
+bool   i_p1_on  = input.bool(true,  "Pair 1",    group = GRP_PAIR, inline = "p1")
+string i_p1_tf  = input.string("1D", "",          group = GRP_PAIR, inline = "p1", options = ["1M", "1W", "1D", "240", "60", "15"])
+bool   i_p2_on  = input.bool(true,  "Pair 2",    group = GRP_PAIR, inline = "p2")
+string i_p2_tf  = input.string("240", "",         group = GRP_PAIR, inline = "p2", options = ["1M", "1W", "1D", "240", "60", "15"])
+bool   i_p3_on  = input.bool(false, "Pair 3",    group = GRP_PAIR, inline = "p3")
+string i_p3_tf  = input.string("60", "",          group = GRP_PAIR, inline = "p3", options = ["1M", "1W", "1D", "240", "60", "15"])
+
+string GRP_CLR = "Colors"
+color  i_p1_clr = input.color(#FFFFFF, "Pair 1",  group = GRP_CLR)
+color  i_p2_clr = input.color(#26C6DA, "Pair 2",  group = GRP_CLR)
+color  i_p3_clr = input.color(#FF6D00, "Pair 3",  group = GRP_CLR)
+
+string GRP_STY = "Style"
+float  i_doji_pct  = input.float(5.0, "Doji Body %",        group = GRP_STY, minval = 0.1, maxval = 50.0)
+int    i_max_zones = input.int(20,    "Max Confirmed Zones", group = GRP_STY, minval = 1, maxval = 50)
