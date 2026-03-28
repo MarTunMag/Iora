@@ -101,8 +101,6 @@ ha_detect(float doji_pct) =>
     max_bars_back(lo1_time, 5000)
     max_bars_back(out_prev_sup, 5000)
     max_bars_back(out_prev_dem, 5000)
-    max_bars_back(hi1_txt, 5000)
-    max_bars_back(lo1_txt, 5000)
 
     bool  fire      = false
     float ztop      = 0.0
