@@ -646,6 +646,33 @@ if h1_zone_count >= 6
     else if st_h4.bias == 1 and not na(st_h4.last_sup_top) and not na(st_d.last_sup_top)
         at_counter_zone := st_h4.last_sup_top > st_d.last_sup_top and close >= st_h4.last_sup_bot and close <= st_h4.last_sup_top
 
+// =============================================================================
+// S7 — CONTEXT MODE
+// =============================================================================
+
+// No `var` — recomputed every bar from the state tuple
+string context_mode = "SKIP"
+int    context_dir  = 0
+
+// FLIP (highest priority — terminal exhaustion overrides everything)
+bool flip_conditions = h1_terminal and at_counter_zone and (st_h1.last_event == "iCHoCH" or st_h1.last_event == "eCHoCH") and st_h1.last_event_dir != st_h4.bias
+if flip_conditions
+    context_mode := "FLIP"
+    context_dir  := st_h4.bias == -1 ? 1 : -1
+
+// RIDE (with-trend — D and H4 aligned, H4 not exhausted, H1 correcting)
+else if st_d.bias != 0 and st_h4.bias == st_d.bias and h4_zone_count <= 5 and h1_phase == "correction"
+    context_mode := "RIDE"
+    context_dir  := st_d.bias
+
+// SCALP (counter-trend hedge — H1 BOS sweep just fired, within 4-hour window)
+else if (st_h1.last_event == "iBOS" or st_h1.last_event == "eBOS") and not na(st_h1.last_event_time) and (time - st_h1.last_event_time) < 3600000 * 4
+    context_mode := "SCALP"
+    context_dir  := st_h1.last_event_dir * -1
+
+// SKIP (default — layers not aligned or ambiguous)
+// context_mode already "SKIP", context_dir already 0
+
 // TEMP debug — bias status line
 plot(st_d.bias,  "D bias",  display = display.status_line)
 plot(st_h4.bias, "H4 bias", display = display.status_line)
