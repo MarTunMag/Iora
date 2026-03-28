@@ -43,3 +43,100 @@ color  i_p3_clr = input.color(#FF6D00, "Pair 3",  group = GRP_CLR)
 string GRP_STY = "Style"
 float  i_doji_pct  = input.float(5.0, "Doji Body %",        group = GRP_STY, minval = 0.1, maxval = 50.0)
 int    i_max_zones = input.int(20,    "Max Confirmed Zones", group = GRP_STY, minval = 1, maxval = 50)
+
+// =============================================================================
+// S3 — HELPERS
+// =============================================================================
+
+tf_label(string tf) =>
+    switch tf
+        "1M"  => "MN"
+        "1W"  => "W"
+        "1D"  => "D"
+        "240" => "H4"
+        "60"  => "H1"
+        "15"  => "M15"
+        "5"   => "M5"
+        "1"   => "M1"
+        => tf
+
+grandchild_tf(string parent_tf) =>
+    switch parent_tf
+        "1M"  => "1D"
+        "1W"  => "240"
+        "1D"  => "60"
+        "240" => "15"
+        "60"  => "5"
+        "15"  => "1"
+        => na
+
+string p1_gc_tf = grandchild_tf(i_p1_tf)
+string p2_gc_tf = grandchild_tf(i_p2_tf)
+string p3_gc_tf = grandchild_tf(i_p3_tf)
+
+int chart_s = timeframe.in_seconds()
+
+bool p1_ok = i_p1_on and timeframe.in_seconds(i_p1_tf) > chart_s and (not na(p1_gc_tf) ? timeframe.in_seconds(p1_gc_tf) > chart_s : false)
+bool p2_ok = i_p2_on and timeframe.in_seconds(i_p2_tf) > chart_s and (not na(p2_gc_tf) ? timeframe.in_seconds(p2_gc_tf) > chart_s : false)
+bool p3_ok = i_p3_on and timeframe.in_seconds(i_p3_tf) > chart_s and (not na(p3_gc_tf) ? timeframe.in_seconds(p3_gc_tf) > chart_s : false)
+
+// =============================================================================
+// S4 — ZONE DETECTION
+// =============================================================================
+
+detect_zones(float doji_pct) =>
+    float haC = (open + high + low + close) / 4.0
+    float haO = float(na)
+    haO := na(haO[1]) ? (open + close) / 2.0 : (nz(haO[1]) + nz(haC[1])) / 2.0
+    float haH = math.max(high, math.max(haO, haC))
+    float haL = math.min(low, math.min(haO, haC))
+
+    bool is_blue = haC >= haO
+    bool is_red  = haC < haO
+
+    int max_run = math.min(50, bar_index)
+
+    var float last_ztop   = na
+    var float last_zbot   = na
+    var int   last_is_sup = 0
+    var int   last_origin = na
+
+    if is_blue and is_red[1]
+        float run_lo_ohlc = low[1]
+        int   ext_time    = time[1]
+        int   k           = 2
+        while k < max_run and is_red[k]
+            if low[k] < run_lo_ohlc
+                run_lo_ohlc := low[k]
+                ext_time    := time[k]
+            k += 1
+
+        float body = math.abs(haC - haO)
+        float rng  = haH - haL
+        bool  doji = rng > 0.0 and (body / rng * 100.0) < doji_pct
+
+        last_ztop   := doji ? nz(haH, high) : nz(haH[1], high[1])
+        last_zbot   := nz(run_lo_ohlc, low[1])
+        last_is_sup := -1
+        last_origin := nz(ext_time, time[1])
+
+    else if is_red and is_blue[1]
+        float run_hi_ohlc = high[1]
+        int   ext_time    = time[1]
+        int   k           = 2
+        while k < max_run and is_blue[k]
+            if high[k] > run_hi_ohlc
+                run_hi_ohlc := high[k]
+                ext_time    := time[k]
+            k += 1
+
+        float body = math.abs(haC - haO)
+        float rng  = haH - haL
+        bool  doji = rng > 0.0 and (body / rng * 100.0) < doji_pct
+
+        last_ztop   := nz(run_hi_ohlc, high[1])
+        last_zbot   := doji ? nz(haL, low) : nz(haL[1], low[1])
+        last_is_sup := 1
+        last_origin := nz(ext_time, time[1])
+
+    [last_ztop, last_zbot, last_is_sup, last_origin]
