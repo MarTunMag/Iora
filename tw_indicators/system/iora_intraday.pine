@@ -1,0 +1,70 @@
+//@version=6
+indicator("Iora Intraday", overlay = true, max_labels_count = 500, max_lines_count = 500, calc_bars_count = 5000)
+
+// =============================================================================
+// S1 — TYPES
+// =============================================================================
+
+type LightZone
+    float   top         = 0.0
+    float   bottom      = 0.0
+    bool    is_supply   = false
+    bool    is_hh_or_ll = false
+    string  label_txt   = ""
+    int     origin_time = 0
+    bool    is_broken   = false
+    int     break_time  = 0
+
+type TFState
+    int     bias            = 0
+    int     prev_bias       = 0
+    float   last_sup_top    = na
+    float   last_sup_bot    = na
+    float   last_dem_top    = na
+    float   last_dem_bot    = na
+    string  last_sup_cls    = ""
+    string  last_dem_cls    = ""
+    float   prev_sup_top    = na
+    float   prev_dem_bot    = na
+    string  last_event      = ""
+    int     last_event_dir  = 0
+    int     last_event_time = na
+    int     zone_count      = 0
+
+// =============================================================================
+// S2 — INPUTS
+// =============================================================================
+
+string GRP_ZONE = "Zone Detection"
+float  i_doji   = input.float(5.0, "Doji Body %", group = GRP_ZONE, minval = 0.1, maxval = 50.0)
+
+string GRP_AGE   = "Zone Age (max bars per TF)"
+int    i_age_m1  = input.int(50, "M1",  group = GRP_AGE, minval = 1)
+int    i_age_m5  = input.int(50, "M5",  group = GRP_AGE, minval = 1)
+int    i_age_m15 = input.int(50, "M15", group = GRP_AGE, minval = 1)
+int    i_age_h1  = input.int(50, "H1",  group = GRP_AGE, minval = 1)
+int    i_age_h4  = input.int(50, "H4",  group = GRP_AGE, minval = 1)
+int    i_age_d   = input.int(50, "D",   group = GRP_AGE, minval = 1)
+
+string GRP_DISP  = "Display"
+bool   i_dash    = input.bool(true, "Show Dashboard", group = GRP_DISP)
+string i_dash_pos = input.string("Top Right", "Dashboard Position", options = ["Top Right", "Top Left", "Bottom Right", "Bottom Left"], group = GRP_DISP)
+bool   i_signals = input.bool(true, "Show Entry Signals", group = GRP_DISP)
+bool   i_roles   = input.bool(true, "Show Zone Roles", group = GRP_DISP)
+
+// =============================================================================
+// S2b — HELPERS
+// =============================================================================
+
+tf_max_age(string tf) =>
+    int sec = timeframe.in_seconds(tf)
+    int out = sec <= 60 ? i_age_m1 : sec <= 300 ? i_age_m5 : sec <= 900 ? i_age_m15 : sec <= 3600 ? i_age_h1 : sec <= 14400 ? i_age_h4 : i_age_d
+    out
+
+tf_label(string tf) =>
+    int sec = timeframe.in_seconds(tf)
+    string out = sec <= 60 ? "M1" : sec <= 300 ? "M5" : sec <= 900 ? "M15" : sec <= 3600 ? "H1" : sec <= 14400 ? "H4" : "D"
+    out
+
+// TEMP — remove after S3 is added
+plot(close, "debug", display = display.none)
