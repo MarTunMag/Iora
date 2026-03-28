@@ -264,6 +264,37 @@ method remove_broken(array<LightZone> zones) =>
             if z.is_broken
                 zones.remove(i)
 
+check_external_break(array<LightZone> parent_zones) =>
+    bool did_break = false
+    bool brk_is_supply = false
+    bool brk_is_hh_or_ll = false
+    string brk_label = ""
+    float brk_price = 0.0
+    int brk_origin = 0
+    float brk_top = 0.0
+    float brk_bot = 0.0
+
+    if parent_zones.size() > 0
+        for i = parent_zones.size() - 1 to 0
+            LightZone z = parent_zones.get(i)
+            if z.is_broken and z.break_time != time
+                continue
+            bool broken = z.is_broken ? (z.break_time == time) : (z.is_supply ? (close > z.top) : (close < z.bottom))
+            if broken and not did_break
+                z.is_broken := true
+                z.break_time := time
+                did_break := true
+                brk_is_supply := z.is_supply
+                brk_is_hh_or_ll := z.is_hh_or_ll
+                brk_label := z.label_txt
+                brk_price := z.is_supply ? z.top : z.bottom
+                brk_origin := z.origin_time
+                brk_top := z.top
+                brk_bot := z.bottom
+                break
+
+    [did_break, brk_is_supply, brk_is_hh_or_ll, brk_label, brk_price, brk_origin, brk_top, brk_bot]
+
 // Zone arrays
 var array<LightZone> zones_d   = array.new<LightZone>()
 var array<LightZone> zones_h4  = array.new<LightZone>()
@@ -366,6 +397,185 @@ if fm1
 [brkm15, brkm15_sup, brkm15_hh, brkm15_lbl, brkm15_px, brkm15_org, brkm15_t, brkm15_b] = zones_m15.manage_zones(fm15, ztm15, zbm15, sm15, tmm15, him15, lom15, "15")
 [brkm5,  brkm5_sup,  brkm5_hh,  brkm5_lbl,  brkm5_px,  brkm5_org,  brkm5_t,  brkm5_b]  = zones_m5.manage_zones(fm5,  ztm5,  zbm5,  sm5,  tmm5,  him5,  lom5,  "5")
 [brkm1,  brkm1_sup,  brkm1_hh,  brkm1_lbl,  brkm1_px,  brkm1_org,  brkm1_t,  brkm1_b]  = zones_m1.manage_zones(fm1,  ztm1,  zbm1,  sm1,  tmm1,  him1,  lom1,  "1")
+
+// =============================================================================
+// S5 — BIAS + STRUCTURE DETECTION
+// =============================================================================
+
+// --- Internal breaks: update bias from own-TF zone breaks ---
+if brkd
+    st_d.prev_bias := st_d.bias
+    int d_dir = brkd_sup ? 1 : -1
+    st_d.last_event := (st_d.prev_bias == 0 or d_dir == st_d.prev_bias) ? "iBOS" : "iCHoCH"
+    st_d.last_event_dir := d_dir
+    st_d.last_event_time := time
+    st_d.bias := d_dir
+
+if brkh4
+    st_h4.prev_bias := st_h4.bias
+    int h4_dir = brkh4_sup ? 1 : -1
+    st_h4.last_event := (st_h4.prev_bias == 0 or h4_dir == st_h4.prev_bias) ? "iBOS" : "iCHoCH"
+    st_h4.last_event_dir := h4_dir
+    st_h4.last_event_time := time
+    st_h4.bias := h4_dir
+
+if brkh1
+    st_h1.prev_bias := st_h1.bias
+    int h1_dir = brkh1_sup ? 1 : -1
+    st_h1.last_event := (st_h1.prev_bias == 0 or h1_dir == st_h1.prev_bias) ? "iBOS" : "iCHoCH"
+    st_h1.last_event_dir := h1_dir
+    st_h1.last_event_time := time
+    st_h1.bias := h1_dir
+
+if brkm15
+    st_m15.prev_bias := st_m15.bias
+    int m15_dir = brkm15_sup ? 1 : -1
+    st_m15.last_event := (st_m15.prev_bias == 0 or m15_dir == st_m15.prev_bias) ? "iBOS" : "iCHoCH"
+    st_m15.last_event_dir := m15_dir
+    st_m15.last_event_time := time
+    st_m15.bias := m15_dir
+
+if brkm5
+    st_m5.prev_bias := st_m5.bias
+    int m5_dir = brkm5_sup ? 1 : -1
+    st_m5.last_event := (st_m5.prev_bias == 0 or m5_dir == st_m5.prev_bias) ? "iBOS" : "iCHoCH"
+    st_m5.last_event_dir := m5_dir
+    st_m5.last_event_time := time
+    st_m5.bias := m5_dir
+
+if brkm1
+    st_m1.prev_bias := st_m1.bias
+    int m1_dir = brkm1_sup ? 1 : -1
+    st_m1.last_event := (st_m1.prev_bias == 0 or m1_dir == st_m1.prev_bias) ? "iBOS" : "iCHoCH"
+    st_m1.last_event_dir := m1_dir
+    st_m1.last_event_time := time
+    st_m1.bias := m1_dir
+
+// --- External breaks: child checks parent zones ---
+[ebrkm1,  ebrkm1_sup,  ebrkm1_hh,  ebrkm1_lbl, ebrkm1_px, ebrkm1_org, ebrkm1_t, ebrkm1_b] = check_external_break(zones_m5)
+[ebrkm5,  ebrkm5_sup,  ebrkm5_hh,  ebrkm5_lbl, ebrkm5_px, ebrkm5_org, ebrkm5_t, ebrkm5_b] = check_external_break(zones_m15)
+[ebrkm15, ebrkm15_sup, ebrkm15_hh, ebrkm15_lbl,ebrkm15_px,ebrkm15_org,ebrkm15_t,ebrkm15_b] = check_external_break(zones_h1)
+[ebrkh1,  ebrkh1_sup,  ebrkh1_hh,  ebrkh1_lbl, ebrkh1_px, ebrkh1_org, ebrkh1_t, ebrkh1_b] = check_external_break(zones_h4)
+[ebrkh4,  ebrkh4_sup,  ebrkh4_hh,  ebrkh4_lbl, ebrkh4_px, ebrkh4_org, ebrkh4_t, ebrkh4_b] = check_external_break(zones_d)
+
+if ebrkm1
+    int dir = ebrkm1_sup ? 1 : -1
+    st_m1.prev_bias := st_m1.bias
+    st_m1.last_event := (st_m1.prev_bias == 0 or dir == st_m1.prev_bias) ? "eBOS" : "eCHoCH"
+    st_m1.last_event_dir := dir
+    st_m1.last_event_time := time
+    st_m1.bias := dir
+    st_m1.zone_count := 0
+
+if ebrkm5
+    int dir = ebrkm5_sup ? 1 : -1
+    st_m5.prev_bias := st_m5.bias
+    st_m5.last_event := (st_m5.prev_bias == 0 or dir == st_m5.prev_bias) ? "eBOS" : "eCHoCH"
+    st_m5.last_event_dir := dir
+    st_m5.last_event_time := time
+    st_m5.bias := dir
+    st_m5.zone_count := 0
+
+if ebrkm15
+    int dir = ebrkm15_sup ? 1 : -1
+    st_m15.prev_bias := st_m15.bias
+    st_m15.last_event := (st_m15.prev_bias == 0 or dir == st_m15.prev_bias) ? "eBOS" : "eCHoCH"
+    st_m15.last_event_dir := dir
+    st_m15.last_event_time := time
+    st_m15.bias := dir
+    st_m15.zone_count := 0
+
+if ebrkh1
+    int dir = ebrkh1_sup ? 1 : -1
+    st_h1.prev_bias := st_h1.bias
+    st_h1.last_event := (st_h1.prev_bias == 0 or dir == st_h1.prev_bias) ? "eBOS" : "eCHoCH"
+    st_h1.last_event_dir := dir
+    st_h1.last_event_time := time
+    st_h1.bias := dir
+    st_h1.zone_count := 0
+
+if ebrkh4
+    int dir = ebrkh4_sup ? 1 : -1
+    st_h4.prev_bias := st_h4.bias
+    st_h4.last_event := (st_h4.prev_bias == 0 or dir == st_h4.prev_bias) ? "eBOS" : "eCHoCH"
+    st_h4.last_event_dir := dir
+    st_h4.last_event_time := time
+    st_h4.bias := dir
+    st_h4.zone_count := 0
+
+// --- Cross-TF propagation: H1 zone fires → check against H4 boundaries ---
+// HH/LL = BOS (trend continues), LH/HL = CHoCH (reversal signal)
+if fh1 and not na(st_h4.prev_sup_top) and not na(st_h4.prev_dem_bot)
+    if sh1
+        // H1 supply fired — compare top to prev H4 supply top
+        st_h4.prev_bias := st_h4.bias
+        if zth1 > st_h4.prev_sup_top
+            // H4 HH detected early
+            int h4_dir = 1
+            st_h4.last_event := (st_h4.prev_bias == 0 or h4_dir == st_h4.prev_bias) ? "iBOS" : "iCHoCH"
+            st_h4.last_event_dir := h4_dir
+            st_h4.last_event_time := time
+            st_h4.bias := h4_dir
+            st_h1.zone_count := 0
+        else
+            // H4 LH detected early (corrective — does not update bias)
+            int h4_dir = 1
+            st_h4.last_event := (st_h4.prev_bias == 0 or h4_dir == st_h4.prev_bias) ? "iBOS" : "iCHoCH"
+            st_h4.last_event_dir := h4_dir
+            st_h4.last_event_time := time
+    else
+        // H1 demand fired — compare bot to prev H4 demand bot
+        st_h4.prev_bias := st_h4.bias
+        if zbh1 < st_h4.prev_dem_bot
+            // H4 LL detected early
+            int h4_dir = -1
+            st_h4.last_event := (st_h4.prev_bias == 0 or h4_dir == st_h4.prev_bias) ? "iBOS" : "iCHoCH"
+            st_h4.last_event_dir := h4_dir
+            st_h4.last_event_time := time
+            st_h4.bias := h4_dir
+            st_h1.zone_count := 0
+        else
+            // H4 HL detected early (corrective — does not update bias)
+            int h4_dir = -1
+            st_h4.last_event := (st_h4.prev_bias == 0 or h4_dir == st_h4.prev_bias) ? "iBOS" : "iCHoCH"
+            st_h4.last_event_dir := h4_dir
+            st_h4.last_event_time := time
+
+// Same pattern for H4→D propagation
+if fh4 and not na(st_d.prev_sup_top) and not na(st_d.prev_dem_bot)
+    if sh4
+        st_d.prev_bias := st_d.bias
+        if zth4 > st_d.prev_sup_top
+            int d_dir = 1
+            st_d.last_event := (st_d.prev_bias == 0 or d_dir == st_d.prev_bias) ? "iBOS" : "iCHoCH"
+            st_d.last_event_dir := d_dir
+            st_d.last_event_time := time
+            st_d.bias := d_dir
+            st_h4.zone_count := 0
+        else
+            int d_dir = 1
+            st_d.last_event := (st_d.prev_bias == 0 or d_dir == st_d.prev_bias) ? "iBOS" : "iCHoCH"
+            st_d.last_event_dir := d_dir
+            st_d.last_event_time := time
+    else
+        st_d.prev_bias := st_d.bias
+        if zbh4 < st_d.prev_dem_bot
+            int d_dir = -1
+            st_d.last_event := (st_d.prev_bias == 0 or d_dir == st_d.prev_bias) ? "iBOS" : "iCHoCH"
+            st_d.last_event_dir := d_dir
+            st_d.last_event_time := time
+            st_d.bias := d_dir
+            st_h4.zone_count := 0
+        else
+            int d_dir = -1
+            st_d.last_event := (st_d.prev_bias == 0 or d_dir == st_d.prev_bias) ? "iBOS" : "iCHoCH"
+            st_d.last_event_dir := d_dir
+            st_d.last_event_time := time
+
+// TEMP debug — bias status line
+plot(st_d.bias,  "D bias",  display = display.status_line)
+plot(st_h4.bias, "H4 bias", display = display.status_line)
+plot(st_h1.bias, "H1 bias", display = display.status_line)
 
 // TEMP debug — shows zone fire events per TF
 plotchar(fd,   "D fire",   "D", location.abovebar, size = size.tiny, display = display.none)
