@@ -66,5 +66,130 @@ tf_label(string tf) =>
     string out = sec <= 60 ? "M1" : sec <= 300 ? "M5" : sec <= 900 ? "M15" : sec <= 3600 ? "H1" : sec <= 14400 ? "H4" : "D"
     out
 
-// TEMP — remove after S3 is added
-plot(close, "debug", display = display.none)
+// =============================================================================
+// S3 — HA ZONE DETECTION
+// =============================================================================
+
+ha_detect(float doji_pct) =>
+    float haC = (open + high + low + close) / 4.0
+    float haO = float(na)
+    haO := na(haO[1]) ? (open + close) / 2.0 : (nz(haO[1]) + nz(haC[1])) / 2.0
+    float haH = math.max(high, math.max(haO, haC))
+    float haL = math.min(low, math.min(haO, haC))
+
+    bool is_blue = haC >= haO
+    bool is_red  = haC < haO
+
+    int max_run = math.min(50, bar_index)
+
+    var float prev_run_hi   = na
+    var float prev_run_lo   = na
+    var float  hi1_lvl      = na
+    var int    hi1_time     = na
+    var string hi1_txt      = ""
+    var float  lo1_lvl      = na
+    var int    lo1_time     = na
+    var string lo1_txt      = ""
+    var float out_prev_sup = na
+    var float out_prev_dem = na
+    // max_bars_back on all var series (required inside request.security)
+    max_bars_back(prev_run_hi, 5000)
+    max_bars_back(prev_run_lo, 5000)
+    max_bars_back(hi1_lvl, 5000)
+    max_bars_back(hi1_time, 5000)
+    max_bars_back(lo1_lvl, 5000)
+    max_bars_back(lo1_time, 5000)
+    max_bars_back(out_prev_sup, 5000)
+    max_bars_back(out_prev_dem, 5000)
+
+    bool  fire      = false
+    float ztop      = 0.0
+    float zbot      = 0.0
+    bool  is_sup    = false
+    int   zt_origin = time
+
+    // DEMAND: red -> blue
+    if is_blue and is_red[1]
+        float run_lo_ohlc = low[1]
+        int   ext_time    = time[1]
+        int   k           = 2
+        while k < max_run and is_red[k]
+            if low[k] < run_lo_ohlc
+                run_lo_ohlc := low[k]
+                ext_time    := time[k]
+            k += 1
+
+        bool is_new_ll = na(prev_run_lo) or run_lo_ohlc < prev_run_lo
+        out_prev_dem := prev_run_lo
+        prev_run_lo := run_lo_ohlc
+        lo1_lvl  := run_lo_ohlc
+        lo1_time := ext_time
+        lo1_txt  := is_new_ll ? "LL" : "HL"
+
+        float body = math.abs(haC - haO)
+        float rng  = haH - haL
+        bool  doji = rng > 0.0 and (body / rng * 100.0) < doji_pct
+
+        ztop      := doji ? nz(haH, high) : nz(haH[1], high[1])
+        zbot      := nz(run_lo_ohlc, low[1])
+        zt_origin := nz(ext_time, time[1])
+        fire      := true
+
+    // SUPPLY: blue -> red
+    else if is_red and is_blue[1]
+        float run_hi_ohlc = high[1]
+        int   ext_time    = time[1]
+        int   k           = 2
+        while k < max_run and is_blue[k]
+            if high[k] > run_hi_ohlc
+                run_hi_ohlc := high[k]
+                ext_time    := time[k]
+            k += 1
+
+        bool is_new_hh = na(prev_run_hi) or run_hi_ohlc > prev_run_hi
+        out_prev_sup := prev_run_hi
+        prev_run_hi := run_hi_ohlc
+        hi1_lvl  := run_hi_ohlc
+        hi1_time := ext_time
+        hi1_txt  := is_new_hh ? "HH" : "LH"
+
+        float body = math.abs(haC - haO)
+        float rng  = haH - haL
+        bool  doji = rng > 0.0 and (body / rng * 100.0) < doji_pct
+
+        ztop      := nz(run_hi_ohlc, high[1])
+        zbot      := doji ? nz(haL, low) : nz(haL[1], low[1])
+        zt_origin := nz(ext_time, time[1])
+        fire      := true
+        is_sup    := true
+
+    [fire, ztop, zbot, is_sup, zt_origin, hi1_txt, lo1_txt, out_prev_sup, out_prev_dem]
+
+// =============================================================================
+// S3 — DATA REQUESTS (6 calls)
+// =============================================================================
+
+string _base_sym = ticker.standard(syminfo.tickerid)
+
+[fd_raw,  ztd,  zbd,  sd,  tmd,  hid,  lod,  psd,  pdd]  = request.security(_base_sym, "1D",  ha_detect(i_doji))
+[fh4_raw, zth4, zbh4, sh4, tmh4, hih4, loh4, psh4, pdh4] = request.security(_base_sym, "240", ha_detect(i_doji))
+[fh1_raw, zth1, zbh1, sh1, tmh1, hih1, loh1, psh1, pdh1] = request.security(_base_sym, "60",  ha_detect(i_doji))
+[fm15_raw,ztm15,zbm15,sm15,tmm15,him15,lom15,psm15,pdm15] = request.security(_base_sym, "15",  ha_detect(i_doji))
+[fm5_raw, ztm5, zbm5, sm5, tmm5, him5, lom5, psm5, pdm5]  = request.security(_base_sym, "5",   ha_detect(i_doji))
+[fm1_raw, ztm1, zbm1, sm1, tmm1, him1, lom1, psm1, pdm1]  = request.security(_base_sym, "1",   ha_detect(i_doji))
+
+// Edge detection — fire only once per HTF event
+bool fd   = fd_raw   and not fd_raw[1]
+bool fh4  = fh4_raw  and not fh4_raw[1]
+bool fh1  = fh1_raw  and not fh1_raw[1]
+bool fm15 = fm15_raw and not fm15_raw[1]
+bool fm5  = fm5_raw  and not fm5_raw[1]
+bool fm1  = fm1_raw  and not fm1_raw[1]
+
+// TEMP debug — shows zone fire events per TF
+plotchar(fd,   "D fire",   "D", location.abovebar, size = size.tiny, display = display.none)
+plotchar(fh4,  "H4 fire",  "4", location.abovebar, size = size.tiny, display = display.none)
+plotchar(fh1,  "H1 fire",  "1", location.abovebar, size = size.tiny, display = display.none)
+plotchar(fm15, "M15 fire", "F", location.abovebar, size = size.tiny, display = display.none)
+plotchar(fm5,  "M5 fire",  "5", location.abovebar, size = size.tiny, display = display.none)
+plotchar(fm1,  "M1 fire",  "m", location.abovebar, size = size.tiny, display = display.none)
