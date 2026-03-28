@@ -1,0 +1,949 @@
+//@version=6
+// ─────────────────────────────────────────────────────────────────────────────
+// © 2025 Marius Tunestveit Magnusson. All Rights Reserved.
+// Orenda Triple-Layer Method and World Tree are proprietary.
+// ─────────────────────────────────────────────────────────────────────────────
+// (12M/6M/3M/M/W/D/H4/H1/M30/M15/M5) with full history wicks + non-overlapping badges.
+
+indicator("[BASE] HTF Candles (M5 -> 12MN)", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=100)
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 1. CONFIGURATION
+// ═════════════════════════════════════════════════════════════════════════════
+groupG = "General"
+show12M = input.bool(true,  "Show 12 Months (Yearly)", group=groupG)
+show6M  = input.bool(true,  "Show 6 Months", group=groupG)
+show3M  = input.bool(true,  "Show 3 Months (Quarterly)", group=groupG)
+showM   = input.bool(true,  "Show Monthly", group=groupG)
+showW   = input.bool(true,  "Show Weekly",  group=groupG)
+showD   = input.bool(true,  "Show Daily",   group=groupG)
+showH4  = input.bool(true,  "Show 4H",      group=groupG)
+showH1  = input.bool(false, "Show 1H",      group=groupG)
+showM30 = input.bool(false, "Show 30m",     group=groupG)
+showM15 = input.bool(false, "Show 15m",     group=groupG)
+showM5  = input.bool(false, "Show 5m",      group=groupG)
+
+// History Settings
+yearsBack   = input.int(10, "Super Macro History (Years)", minval=1, maxval=50, tooltip="History for 12M, 6M, 3M", group=groupG)
+monthsBack  = input.int(12, "Standard History (Months)", minval=1, maxval=60, tooltip="History for M, W, D, etc.", group=groupG)
+autoKeep    = input.bool(true, "Auto-calculate History Limits", group=groupG)
+offsetBars  = input.int(0, "Shift all candles (bars)", minval=-500, maxval=500, group=groupG)
+
+// Badge behavior
+pushBadgesRight       = input.bool(true, "Push badges right of candle", group=groupG)
+badgeRightExtraBars   = input.int(20, "Badge extra bars to right", minval=0, maxval=300, group=groupG)
+labelMinGapBars       = input.int(3, "Min label gap (bars)", minval=0, maxval=50, group=groupG)
+badgeBgAlpha          = input.int(92, "Badge BG Opacity (0–100)", minval=0, maxval=100, group=groupG)
+badgeTxtAlpha         = input.int(55, "Badge Text Opacity (0–100)", minval=0, maxval=100, group=groupG)
+badgeXPadBars         = input.int(1, "Badge X offset (bars)", minval=0, maxval=5, group=groupG)
+badgePadTicks         = input.int(1, "Badge Y offset (ticks)", minval=0, maxval=10, group=groupG)
+
+// Manual limits (used if Auto is off)
+yKeepManual   = input.int(10,    "12M history", minval=0, maxval=50, group=groupG)
+s6KeepManual  = input.int(20,    "6M history",  minval=0, maxval=50, group=groupG)
+q3KeepManual  = input.int(40,    "3M history",  minval=0, maxval=80, group=groupG)
+mKeepManual   = input.int(12,    "Monthly history", minval=0, maxval=60, group=groupG)
+wKeepManual   = input.int(24,    "Weekly history", minval=0, maxval=120,  group=groupG)
+dKeepManual   = input.int(120,   "Daily history",  minval=0, maxval=400,  group=groupG)
+h4KeepManual  = input.int(744,   "H4 history",     minval=0, maxval=5000, group=groupG)
+h1KeepManual  = input.int(1488,  "H1 history",     minval=0, maxval=5000, group=groupG)
+m30KeepManual = input.int(2000,  "M30 history",    minval=0, maxval=5000, group=groupG)
+m15KeepManual = input.int(3000,  "M15 history",    minval=0, maxval=5000, group=groupG)
+m5KeepManual  = input.int(5000,  "M5 history",     minval=0, maxval=5000, group=groupG)
+
+h4Cap  = input.int(180,   "H4 history cap",  minval=10, maxval=1000, group=groupG)
+h1Cap  = input.int(360,   "H1 history cap",  minval=10, maxval=1000, group=groupG)
+m30Cap = input.int(720,   "M30 history cap", minval=10, maxval=1000, group=groupG)
+m15Cap = input.int(1000,  "M15 history cap", minval=10, maxval=2000, group=groupG)
+m5Cap  = input.int(1500,  "M5 history cap",  minval=10, maxval=3000, group=groupG)
+
+// Derived sizes (Logic Split: Years for Macro, Months for Standard)
+yKeep = autoKeep ? yearsBack : yKeepManual
+s6Keep = autoKeep ? yearsBack * 2 : s6KeepManual
+q3Keep = autoKeep ? yearsBack * 4 : q3KeepManual
+
+mKeep = autoKeep ? monthsBack : mKeepManual
+wKeep = autoKeep ? monthsBack * 5 : wKeepManual // approx 4.3 weeks/month
+dKeep = autoKeep ? monthsBack * 23 : dKeepManual // trading days
+h4KeepRaw = autoKeep ? monthsBack * 23 * 6 : h4KeepManual
+h1KeepRaw = autoKeep ? monthsBack * 23 * 24 : h1KeepManual
+m30KeepRaw = autoKeep ? monthsBack * 23 * 48 : m30KeepManual
+m15KeepRaw = autoKeep ? monthsBack * 23 * 96 : m15KeepManual
+m5KeepRaw = autoKeep ? monthsBack * 23 * 288 : m5KeepManual
+
+h4Keep = math.min(h4KeepRaw, h4Cap)
+h1Keep = math.min(h1KeepRaw, h1Cap)
+m30Keep = math.min(m30KeepRaw, m30Cap)
+m15Keep = math.min(m15KeepRaw, m15Cap)
+m5Keep = math.min(m5KeepRaw, m5Cap)
+
+// === Styling
+grp12M = "12M (Yearly) Style"
+yFillRise  = input.color(color.new(#4A148C, 90), "Fill ↑", group=grp12M)
+yFillFall  = input.color(color.new(#311B92, 90), "Fill ↓", group=grp12M)
+yBorder    = input.color(color.new(color.gray, 80), "Border", group=grp12M)
+yShowWicks = input.bool(true, "Show Wicks", group=grp12M)
+yWickCol   = input.color(color.new(color.gray, 70), "Wick Color", group=grp12M)
+yWickW     = input.int(3, "Wick Width", minval=1, maxval=10, group=grp12M)
+yShowBadge = input.bool(true, "Show Badge", group=grp12M)
+
+grp6M = "6M Style"
+s6FillRise  = input.color(color.new(#6A1B9A, 88), "Fill ↑", group=grp6M)
+s6FillFall  = input.color(color.new(#4527A0, 88), "Fill ↓", group=grp6M)
+s6Border    = input.color(color.new(color.gray, 80), "Border", group=grp6M)
+s6ShowWicks = input.bool(true, "Show Wicks", group=grp6M)
+s6WickCol   = input.color(color.new(color.gray, 70), "Wick Color", group=grp6M)
+s6WickW     = input.int(3, "Wick Width", minval=1, maxval=10, group=grp6M)
+s6ShowBadge = input.bool(true, "Show Badge", group=grp6M)
+
+grp3M = "3M Style"
+q3FillRise  = input.color(color.new(#8E24AA, 88), "Fill ↑", group=grp3M)
+q3FillFall  = input.color(color.new(#5E35B1, 88), "Fill ↓", group=grp3M)
+q3Border    = input.color(color.new(color.gray, 75), "Border", group=grp3M)
+q3ShowWicks = input.bool(true, "Show Wicks", group=grp3M)
+q3WickCol   = input.color(color.new(color.gray, 70), "Wick Color", group=grp3M)
+q3WickW     = input.int(2, "Wick Width", minval=1, maxval=10, group=grp3M)
+q3ShowBadge = input.bool(true, "Show Badge", group=grp3M)
+
+grpM = "Monthly Style"
+mFillRise  = input.color(color.new(#26A69A, 88), "Fill ↑",   group=grpM)
+mFillFall  = input.color(color.new(#EF5350, 88), "Fill ↓",   group=grpM)
+mBorder    = input.color(color.new(color.gray, 70), "Border", group=grpM)
+mShowWicks = input.bool(true, "Show Wicks", group=grpM)
+mWickCol   = input.color(color.new(color.gray, 65), "Wick Color", group=grpM)
+mWickW     = input.int(2, "Wick Width", minval=1, maxval=10, group=grpM)
+mShowBadge = input.bool(true, "Show Badge", group=grpM)
+
+grpW = "Weekly Style"
+wFillRise  = input.color(color.new(#00BCD4, 88), "Fill ↑",   group=grpW)
+wFillFall  = input.color(color.new(#FF7043, 88), "Fill ↓",   group=grpW)
+wBorder    = input.color(color.new(color.gray, 70), "Border", group=grpW)
+wShowWicks = input.bool(true, "Show Wicks", group=grpW)
+wWickCol   = input.color(color.new(color.gray, 65), "Wick Color", group=grpW)
+wWickW     = input.int(2, "Wick Width", minval=1, maxval=10, group=grpW)
+wShowBadge = input.bool(true, "Show Badge", group=grpW)
+
+grpD = "Daily Style"
+dFillRise  = input.color(color.new(#8BC34A, 88), "Fill ↑",   group=grpD)
+dFillFall  = input.color(color.new(#E57373, 88), "Fill ↓",   group=grpD)
+dBorder    = input.color(color.new(color.gray, 70), "Border", group=grpD)
+dShowWicks = input.bool(true, "Show Wicks", group=grpD)
+dWickCol   = input.color(color.new(color.gray, 65), "Wick Color", group=grpD)
+dWickW     = input.int(2, "Wick Width", minval=1, maxval=10, group=grpD)
+dShowBadge = input.bool(true, "Show Badge", group=grpD)
+
+grpH4 = "H4 Style"
+h4FillRise  = input.color(color.new(#42A5F5, 88), "Fill ↑",   group=grpH4)
+h4FillFall  = input.color(color.new(#EC407A, 88), "Fill ↓",   group=grpH4)
+h4Border    = input.color(color.new(color.gray, 70), "Border", group=grpH4)
+h4ShowWicks = input.bool(true, "Show Wicks", group=grpH4)
+h4WickCol   = input.color(color.new(color.gray, 65), "Wick Color", group=grpH4)
+h4WickW     = input.int(2, "Wick Width", minval=1, maxval=10, group=grpH4)
+h4ShowBadge = input.bool(true, "Show Badge", group=grpH4)
+
+grpH1 = "H1 Style"
+h1FillRise  = input.color(color.new(#9C27B0, 88), "Fill ↑",   group=grpH1)
+h1FillFall  = input.color(color.new(#673AB7, 88), "Fill ↓",   group=grpH1)
+h1Border    = input.color(color.new(color.gray, 70), "Border", group=grpH1)
+h1ShowWicks = input.bool(true, "Show Wicks", group=grpH1)
+h1WickCol   = input.color(color.new(color.gray, 65), "Wick Color", group=grpH1)
+h1WickW     = input.int(2, "Wick Width", minval=1, maxval=10, group=grpH1)
+h1ShowBadge = input.bool(true, "Show Badge", group=grpH1)
+
+grpM30 = "M30 Style"
+m30FillRise  = input.color(color.new(#009688, 88), "Fill ↑",   group=grpM30)
+m30FillFall  = input.color(color.new(#CDDC39, 88), "Fill ↓",   group=grpM30)
+m30Border    = input.color(color.new(color.gray, 70), "Border", group=grpM30)
+m30ShowWicks = input.bool(true, "Show Wicks", group=grpM30)
+m30WickCol   = input.color(color.new(color.gray, 65), "Wick Color", group=grpM30)
+m30WickW     = input.int(1, "Wick Width", minval=1, maxval=10, group=grpM30)
+m30ShowBadge = input.bool(true, "Show Badge", group=grpM30)
+
+grpM15 = "M15 Style"
+m15FillRise  = input.color(color.new(#FFC107, 88), "Fill ↑",   group=grpM15)
+m15FillFall  = input.color(color.new(#FF9800, 88), "Fill ↓",   group=grpM15)
+m15Border    = input.color(color.new(color.gray, 70), "Border", group=grpM15)
+m15ShowWicks = input.bool(true, "Show Wicks", group=grpM15)
+m15WickCol   = input.color(color.new(color.gray, 65), "Wick Color", group=grpM15)
+m15WickW     = input.int(1, "Wick Width", minval=1, maxval=10, group=grpM15)
+m15ShowBadge = input.bool(true, "Show Badge", group=grpM15)
+
+grpM5 = "M5 Style"
+m5FillRise  = input.color(color.new(#795548, 88), "Fill ↑",   group=grpM5)
+m5FillFall  = input.color(color.new(#9E9E9E, 88), "Fill ↓",   group=grpM5)
+m5Border    = input.color(color.new(color.gray, 70), "Border", group=grpM5)
+m5ShowWicks = input.bool(true, "Show Wicks", group=grpM5)
+m5WickCol   = input.color(color.new(color.gray, 65), "Wick Color", group=grpM5)
+m5WickW     = input.int(1, "Wick Width", minval=1, maxval=10, group=grpM5)
+m5ShowBadge = input.bool(true, "Show Badge", group=grpM5)
+
+
+// === Helpers
+barMs    = time_close - time
+// Removed the projection cap for the ACTIVE candle to ensure it extends to true time_close
+// Use a safe cap only for Labels to avoid rendering errors if far future
+safeLabelCap  = 500 
+offsetMs = offsetBars * barMs
+padMs    = badgeXPadBars * barMs
+
+f_right_cap_label(rightTime) =>
+    cap = time + safeLabelCap * barMs
+    rightTime > cap ? cap : rightTime
+
+f_dir_fill(falling, cDown, cUp) =>
+    falling ? cDown : cUp
+
+f_badge_xy(o, h, l, c, rightT, dir) =>
+    d = dir != 0 ? dir : (c >= o ? 1 : -1)
+    yy = d == 1 ? (h + badgePadTicks * syminfo.mintick) : (l - badgePadTicks * syminfo.mintick)
+    rightBase = rightT + (pushBadgesRight ? badgeRightExtraBars * barMs : 0)
+    xx = f_right_cap_label(rightBase + padMs)
+    sty = d == 1 ? label.style_label_down : label.style_label_up
+    [xx, yy, sty]
+
+// Extended Separator for up to 11 layers
+f_sep(float x, float a, float b, float c, float d, float e, float f, float g, float h, float i, float j) =>
+    gapMs = labelMinGapBars * barMs
+    res = x
+    if not na(a) and res < a + gapMs
+        res := a + gapMs
+    if not na(b) and res < b + gapMs
+        res := b + gapMs
+    if not na(c) and res < c + gapMs
+        res := c + gapMs
+    if not na(d) and res < d + gapMs
+        res := d + gapMs
+    if not na(e) and res < e + gapMs
+        res := e + gapMs
+    if not na(f) and res < f + gapMs
+        res := f + gapMs
+    if not na(g) and res < g + gapMs
+        res := g + gapMs
+    if not na(h) and res < h + gapMs
+        res := h + gapMs
+    if not na(i) and res < i + gapMs
+        res := i + gapMs
+    if not na(j) and res < j + gapMs
+        res := j + gapMs
+    f_right_cap_label(res)
+
+f_hist_push_with_wicks(arrB, arrWT, arrWB, keep, leftT, rightT, o, h, l, c, fillUp, fillDn, borderCol, wickCol, wickW, drawWicks) =>
+    if keep > 0
+        bxx = box.new(left=leftT, right=rightT, top=math.max(o, c), bottom=math.min(o, c),
+                      xloc=xloc.bar_time, bgcolor=f_dir_fill(o > c, fillDn, fillUp),
+                      border_color=borderCol, border_width=1)
+        array.push(arrB, bxx)
+        if drawWicks
+            midT = leftT + math.round_to_mintick((rightT - leftT) / 2)
+            topBody = math.max(o, c)
+            botBody = math.min(o, c)
+            wTop = line.new(int(midT), h, int(midT), topBody, xloc=xloc.bar_time, width=wickW, color=wickCol)
+            wBot = line.new(int(midT), botBody, int(midT), l, xloc=xloc.bar_time, width=wickW, color=wickCol)
+            array.push(arrWT, wTop)
+            array.push(arrWB, wBot)
+    while array.size(arrB) > keep
+        box.delete(array.shift(arrB))
+    while array.size(arrWT) > keep
+        line.delete(array.shift(arrWT))
+    while array.size(arrWB) > keep
+        line.delete(array.shift(arrWB))
+
+f_hist_clear_all(arrB, arrWT, arrWB) =>
+    while array.size(arrB) > 0
+        box.delete(array.shift(arrB))
+    while array.size(arrWT) > 0
+        line.delete(array.shift(arrWT))
+    while array.size(arrWB) > 0
+        line.delete(array.shift(arrWB))
+
+f_hist_trim_all(arrB, arrWT, arrWB, keep) =>
+    while array.size(arrB) > keep
+        box.delete(array.shift(arrB))
+    while array.size(arrWT) > keep
+        line.delete(array.shift(arrWT))
+    while array.size(arrWB) > keep
+        line.delete(array.shift(arrWB))
+
+////////////////////////////////////////////////////////////////////////////////
+// === 12M (Yearly)
+var box yBody = na, var line yUp = na, var line yLo = na, var label yBad = na
+var int yDir = 0, var float yPrevH = na, var float yPrevL = na
+var yHistB = array.new<box>(), var yHistWT = array.new<line>(), var yHistWB = array.new<line>(), var float yLblX = na
+
+if show12M
+    [yo, yh, yl, yc, yt, ytc] = request.security(syminfo.tickerid, "12M", [open, high, low, close, time, time_close], lookahead=barmerge.lookahead_on)
+
+    if ta.change(yt) != 0
+        // History: Use ytc[1] (Closing time of previous bar)
+        f_hist_push_with_wicks(yHistB, yHistWT, yHistWB, yKeep, yt[1] + offsetMs, ytc[1] + offsetMs, yo[1], yh[1], yl[1], yc[1], yFillRise, yFillFall, yBorder, yWickCol, yWickW, yShowWicks)
+
+    yDir := na(yPrevH) or yh != yPrevH ? 1 : (na(yPrevL) or yl != yPrevL ? (yDir != 0 ? yDir : -1) : yDir)
+    yPrevH := yh
+    yPrevL := yl
+
+    // Current Bar: Extend to true closing time (ytc)
+    leftT = yt + offsetMs, rgtT = ytc + offsetMs, midT = int(leftT + (rgtT - leftT) / 2)
+
+    if na(yBody)
+        yBody := box.new(leftT, math.max(yo, yc), rgtT, math.min(yo, yc), xloc=xloc.bar_time, bgcolor=f_dir_fill(yo > yc, yFillFall, yFillRise), border_color=yBorder)
+    box.set_lefttop(yBody, leftT, math.max(yo, yc))
+    box.set_rightbottom(yBody, rgtT, math.min(yo, yc))
+    box.set_bgcolor(yBody, f_dir_fill(yo > yc, yFillFall, yFillRise))
+
+    if yShowWicks
+        if na(yUp)
+            yUp := line.new(midT, yh, midT, math.max(yo, yc), xloc=xloc.bar_time, width=yWickW, color=yWickCol)
+            yLo := line.new(midT, math.min(yo, yc), midT, yl, xloc=xloc.bar_time, width=yWickW, color=yWickCol)
+        else
+            line.set_xy1(yUp, midT, yh)
+            line.set_xy2(yUp, midT, math.max(yo, yc))
+            line.set_xy1(yLo, midT, math.min(yo, yc))
+            line.set_xy2(yLo, midT, yl)
+    else if not na(yUp)
+        line.delete(yUp)
+        line.delete(yLo)
+        yUp := na
+        yLo := na
+        
+    if yShowBadge
+        [bxY0, byY, stY] = f_badge_xy(yo, yh, yl, yc, rgtT, yDir)
+        yLblX := f_sep(bxY0, na, na, na, na, na, na, na, na, na, na)
+        if na(yBad)
+            yBad := label.new(int(yLblX), byY, "12M", xloc=xloc.bar_time, yloc=yloc.price, style=stY, textcolor=color.new(color.white, badgeTxtAlpha), color=color.new(color.black, badgeBgAlpha), size=size.tiny)
+        else
+            label.set_xy(yBad, int(yLblX), byY)
+            label.set_style(yBad, stY)
+    else if not na(yBad)
+        label.delete(yBad)
+        yBad := na
+        yLblX := na
+
+    f_hist_trim_all(yHistB, yHistWT, yHistWB, yKeep)
+else
+    if not na(yBody)
+        box.delete(yBody)
+        line.delete(yUp)
+        line.delete(yLo)
+        label.delete(yBad)
+        yBody := na, yUp := na, yLo := na, yBad := na, yLblX := na
+    f_hist_clear_all(yHistB, yHistWT, yHistWB)
+
+////////////////////////////////////////////////////////////////////////////////
+// === 6M (6-Month)
+var box s6Body = na, var line s6Up = na, var line s6Lo = na, var label s6Bad = na
+var int s6Dir = 0, var float s6PrevH = na, var float s6PrevL = na
+var s6HistB = array.new<box>(), var s6HistWT = array.new<line>(), var s6HistWB = array.new<line>(), var float s6LblX = na
+
+if show6M
+    [s6o, s6h, s6l, s6c, s6t, s6tc] = request.security(syminfo.tickerid, "6M", [open, high, low, close, time, time_close], lookahead=barmerge.lookahead_on)
+
+    if ta.change(s6t) != 0
+        f_hist_push_with_wicks(s6HistB, s6HistWT, s6HistWB, s6Keep, s6t[1] + offsetMs, s6tc[1] + offsetMs, s6o[1], s6h[1], s6l[1], s6c[1], s6FillRise, s6FillFall, s6Border, s6WickCol, s6WickW, s6ShowWicks)
+
+    s6Dir := na(s6PrevH) or s6h != s6PrevH ? 1 : (na(s6PrevL) or s6l != s6PrevL ? (s6Dir != 0 ? s6Dir : -1) : s6Dir)
+    s6PrevH := s6h
+    s6PrevL := s6l
+
+    leftT = s6t + offsetMs, rgtT = s6tc + offsetMs, midT = int(leftT + (rgtT - leftT) / 2)
+
+    if na(s6Body)
+        s6Body := box.new(leftT, math.max(s6o, s6c), rgtT, math.min(s6o, s6c), xloc=xloc.bar_time, bgcolor=f_dir_fill(s6o > s6c, s6FillFall, s6FillRise), border_color=s6Border)
+    box.set_lefttop(s6Body, leftT, math.max(s6o, s6c))
+    box.set_rightbottom(s6Body, rgtT, math.min(s6o, s6c))
+    box.set_bgcolor(s6Body, f_dir_fill(s6o > s6c, s6FillFall, s6FillRise))
+
+    if s6ShowWicks
+        if na(s6Up)
+            s6Up := line.new(midT, s6h, midT, math.max(s6o, s6c), xloc=xloc.bar_time, width=s6WickW, color=s6WickCol)
+            s6Lo := line.new(midT, math.min(s6o, s6c), midT, s6l, xloc=xloc.bar_time, width=s6WickW, color=s6WickCol)
+        else
+            line.set_xy1(s6Up, midT, s6h)
+            line.set_xy2(s6Up, midT, math.max(s6o, s6c))
+            line.set_xy1(s6Lo, midT, math.min(s6o, s6c))
+            line.set_xy2(s6Lo, midT, s6l)
+    else if not na(s6Up)
+        line.delete(s6Up)
+        line.delete(s6Lo)
+        s6Up := na
+        s6Lo := na
+        
+    if s6ShowBadge
+        [bxS60, byS6, stS6] = f_badge_xy(s6o, s6h, s6l, s6c, rgtT, s6Dir)
+        s6LblX := f_sep(bxS60, yLblX, na, na, na, na, na, na, na, na, na)
+        if na(s6Bad)
+            s6Bad := label.new(int(s6LblX), byS6, "6M", xloc=xloc.bar_time, yloc=yloc.price, style=stS6, textcolor=color.new(color.white, badgeTxtAlpha), color=color.new(color.black, badgeBgAlpha), size=size.tiny)
+        else
+            label.set_xy(s6Bad, int(s6LblX), byS6)
+            label.set_style(s6Bad, stS6)
+    else if not na(s6Bad)
+        label.delete(s6Bad)
+        s6Bad := na
+        s6LblX := na
+
+    f_hist_trim_all(s6HistB, s6HistWT, s6HistWB, s6Keep)
+else
+    if not na(s6Body)
+        box.delete(s6Body)
+        line.delete(s6Up)
+        line.delete(s6Lo)
+        label.delete(s6Bad)
+        s6Body := na, s6Up := na, s6Lo := na, s6Bad := na, s6LblX := na
+    f_hist_clear_all(s6HistB, s6HistWT, s6HistWB)
+
+////////////////////////////////////////////////////////////////////////////////
+// === 3M (3-Month)
+var box q3Body = na, var line q3Up = na, var line q3Lo = na, var label q3Bad = na
+var int q3Dir = 0, var float q3PrevH = na, var float q3PrevL = na
+var q3HistB = array.new<box>(), var q3HistWT = array.new<line>(), var q3HistWB = array.new<line>(), var float q3LblX = na
+
+if show3M
+    [q3o, q3h, q3l, q3c, q3t, q3tc] = request.security(syminfo.tickerid, "3M", [open, high, low, close, time, time_close], lookahead=barmerge.lookahead_on)
+
+    if ta.change(q3t) != 0
+        f_hist_push_with_wicks(q3HistB, q3HistWT, q3HistWB, q3Keep, q3t[1] + offsetMs, q3tc[1] + offsetMs, q3o[1], q3h[1], q3l[1], q3c[1], q3FillRise, q3FillFall, q3Border, q3WickCol, q3WickW, q3ShowWicks)
+
+    q3Dir := na(q3PrevH) or q3h != q3PrevH ? 1 : (na(q3PrevL) or q3l != q3PrevL ? (q3Dir != 0 ? q3Dir : -1) : q3Dir)
+    q3PrevH := q3h
+    q3PrevL := q3l
+
+    leftT = q3t + offsetMs, rgtT = q3tc + offsetMs, midT = int(leftT + (rgtT - leftT) / 2)
+
+    if na(q3Body)
+        q3Body := box.new(leftT, math.max(q3o, q3c), rgtT, math.min(q3o, q3c), xloc=xloc.bar_time, bgcolor=f_dir_fill(q3o > q3c, q3FillFall, q3FillRise), border_color=q3Border)
+    box.set_lefttop(q3Body, leftT, math.max(q3o, q3c))
+    box.set_rightbottom(q3Body, rgtT, math.min(q3o, q3c))
+    box.set_bgcolor(q3Body, f_dir_fill(q3o > q3c, q3FillFall, q3FillRise))
+
+    if q3ShowWicks
+        if na(q3Up)
+            q3Up := line.new(midT, q3h, midT, math.max(q3o, q3c), xloc=xloc.bar_time, width=q3WickW, color=q3WickCol)
+            q3Lo := line.new(midT, math.min(q3o, q3c), midT, q3l, xloc=xloc.bar_time, width=q3WickW, color=q3WickCol)
+        else
+            line.set_xy1(q3Up, midT, q3h)
+            line.set_xy2(q3Up, midT, math.max(q3o, q3c))
+            line.set_xy1(q3Lo, midT, math.min(q3o, q3c))
+            line.set_xy2(q3Lo, midT, q3l)
+    else if not na(q3Up)
+        line.delete(q3Up)
+        line.delete(q3Lo)
+        q3Up := na
+        q3Lo := na
+        
+    if q3ShowBadge
+        [bxQ30, byQ3, stQ3] = f_badge_xy(q3o, q3h, q3l, q3c, rgtT, q3Dir)
+        q3LblX := f_sep(bxQ30, yLblX, s6LblX, na, na, na, na, na, na, na, na)
+        if na(q3Bad)
+            q3Bad := label.new(int(q3LblX), byQ3, "3M", xloc=xloc.bar_time, yloc=yloc.price, style=stQ3, textcolor=color.new(color.white, badgeTxtAlpha), color=color.new(color.black, badgeBgAlpha), size=size.tiny)
+        else
+            label.set_xy(q3Bad, int(q3LblX), byQ3)
+            label.set_style(q3Bad, stQ3)
+    else if not na(q3Bad)
+        label.delete(q3Bad)
+        q3Bad := na
+        q3LblX := na
+
+    f_hist_trim_all(q3HistB, q3HistWT, q3HistWB, q3Keep)
+else
+    if not na(q3Body)
+        box.delete(q3Body)
+        line.delete(q3Up)
+        line.delete(q3Lo)
+        label.delete(q3Bad)
+        q3Body := na, q3Up := na, q3Lo := na, q3Bad := na, q3LblX := na
+    f_hist_clear_all(q3HistB, q3HistWT, q3HistWB)
+
+////////////////////////////////////////////////////////////////////////////////
+// === MONTHLY
+var box mBody = na, var line mUp = na, var line mLo = na, var label mBad = na
+var int mDir = 0, var float mPrevH = na, var float mPrevL = na
+var mHistB = array.new<box>(), var mHistWT = array.new<line>(), var mHistWB = array.new<line>(), var float mLblX = na
+
+if showM
+    [mo, mh, ml, mc, mt, mtc] = request.security(syminfo.tickerid, "M", [open, high, low, close, time, time_close], lookahead=barmerge.lookahead_on)
+
+    if ta.change(mt) != 0
+        f_hist_push_with_wicks(mHistB, mHistWT, mHistWB, mKeep, mt[1] + offsetMs, mtc[1] + offsetMs, mo[1], mh[1], ml[1], mc[1], mFillRise, mFillFall, mBorder, mWickCol, mWickW, mShowWicks)
+
+    mDir := na(mPrevH) or mh != mPrevH ? 1 : (na(mPrevL) or ml != mPrevL ? (mDir != 0 ? mDir : -1) : mDir)
+    mPrevH := mh
+    mPrevL := ml
+
+    leftT = mt + offsetMs, rgtT = mtc + offsetMs, midT = int(leftT + (rgtT - leftT) / 2)
+
+    if na(mBody)
+        mBody := box.new(leftT, math.max(mo, mc), rgtT, math.min(mo, mc), xloc=xloc.bar_time, bgcolor=f_dir_fill(mo > mc, mFillFall, mFillRise), border_color=mBorder)
+    box.set_lefttop(mBody, leftT, math.max(mo, mc))
+    box.set_rightbottom(mBody, rgtT, math.min(mo, mc))
+    box.set_bgcolor(mBody, f_dir_fill(mo > mc, mFillFall, mFillRise))
+
+    if mShowWicks
+        if na(mUp)
+            mUp := line.new(midT, mh, midT, math.max(mo, mc), xloc=xloc.bar_time, width=mWickW, color=mWickCol)
+            mLo := line.new(midT, math.min(mo, mc), midT, ml, xloc=xloc.bar_time, width=mWickW, color=mWickCol)
+        else
+            line.set_xy1(mUp, midT, mh)
+            line.set_xy2(mUp, midT, math.max(mo, mc))
+            line.set_xy1(mLo, midT, math.min(mo, mc))
+            line.set_xy2(mLo, midT, ml)
+    else if not na(mUp)
+        line.delete(mUp)
+        line.delete(mLo)
+        mUp := na
+        mLo := na
+        
+    if mShowBadge
+        [bxM0, byM, stM] = f_badge_xy(mo, mh, ml, mc, rgtT, mDir)
+        mLblX := f_sep(bxM0, yLblX, s6LblX, q3LblX, na, na, na, na, na, na, na)
+        if na(mBad)
+            mBad := label.new(int(mLblX), byM, "1M", xloc=xloc.bar_time, yloc=yloc.price, style=stM, textcolor=color.new(color.white, badgeTxtAlpha), color=color.new(color.black, badgeBgAlpha), size=size.tiny)
+        else
+            label.set_xy(mBad, int(mLblX), byM)
+            label.set_style(mBad, stM)
+    else if not na(mBad)
+        label.delete(mBad)
+        mBad := na
+        mLblX := na
+
+    f_hist_trim_all(mHistB, mHistWT, mHistWB, mKeep)
+else
+    if not na(mBody)
+        box.delete(mBody)
+        line.delete(mUp)
+        line.delete(mLo)
+        label.delete(mBad)
+        mBody := na, mUp := na, mLo := na, mBad := na, mLblX := na
+    f_hist_clear_all(mHistB, mHistWT, mHistWB)
+
+////////////////////////////////////////////////////////////////////////////////
+// === WEEKLY
+var box wBody = na, var line wUp = na, var line wLo = na, var label wBad = na
+var int wDir = 0, var float wPrevH = na, var float wPrevL = na
+var wHistB = array.new<box>(), var wHistWT = array.new<line>(), var wHistWB = array.new<line>(), var float wLblX = na
+
+if showW
+    [wo, wh, wl, wc, wt, wtc] = request.security(syminfo.tickerid, "W", [open, high, low, close, time, time_close], lookahead=barmerge.lookahead_on)
+
+    if ta.change(wt) != 0
+        f_hist_push_with_wicks(wHistB, wHistWT, wHistWB, wKeep, wt[1] + offsetMs, wtc[1] + offsetMs, wo[1], wh[1], wl[1], wc[1], wFillRise, wFillFall, wBorder, wWickCol, wWickW, wShowWicks)
+
+    wDir := na(wPrevH) or wh != wPrevH ? 1 : (na(wPrevL) or wl != wPrevL ? (wDir != 0 ? wDir : -1) : wDir)
+    wPrevH := wh
+    wPrevL := wl
+
+    leftT = wt + offsetMs, rgtT = wtc + offsetMs, midT = int(leftT + (rgtT - leftT) / 2)
+
+    if na(wBody)
+        wBody := box.new(leftT, math.max(wo, wc), rgtT, math.min(wo, wc), xloc=xloc.bar_time, bgcolor=f_dir_fill(wo > wc, wFillFall, wFillRise), border_color=wBorder)
+    box.set_lefttop(wBody, leftT, math.max(wo, wc))
+    box.set_rightbottom(wBody, rgtT, math.min(wo, wc))
+    box.set_bgcolor(wBody, f_dir_fill(wo > wc, wFillFall, wFillRise))
+
+    if wShowWicks
+        if na(wUp)
+            wUp := line.new(midT, wh, midT, math.max(wo, wc), xloc=xloc.bar_time, width=wWickW, color=wWickCol)
+            wLo := line.new(midT, math.min(wo, wc), midT, wl, xloc=xloc.bar_time, width=wWickW, color=wWickCol)
+        else
+            line.set_xy1(wUp, midT, wh)
+            line.set_xy2(wUp, midT, math.max(wo, wc))
+            line.set_xy1(wLo, midT, math.min(wo, wc))
+            line.set_xy2(wLo, midT, wl)
+    else if not na(wUp)
+        line.delete(wUp)
+        line.delete(wLo)
+        wUp := na
+        wLo := na
+        
+    if wShowBadge
+        [bxW0, byW, stW] = f_badge_xy(wo, wh, wl, wc, rgtT, wDir)
+        wLblX := f_sep(bxW0, mLblX, yLblX, s6LblX, q3LblX, na, na, na, na, na, na)
+        if na(wBad)
+            wBad := label.new(int(wLblX), byW, "1W", xloc=xloc.bar_time, yloc=yloc.price, style=stW, textcolor=color.new(color.white, badgeTxtAlpha), color=color.new(color.black, badgeBgAlpha), size=size.tiny)
+        else
+            label.set_xy(wBad, int(wLblX), byW)
+            label.set_style(wBad, stW)
+    else if not na(wBad)
+        label.delete(wBad)
+        wBad := na
+        wLblX := na
+
+    f_hist_trim_all(wHistB, wHistWT, wHistWB, wKeep)
+else
+    if not na(wBody)
+        box.delete(wBody)
+        line.delete(wUp)
+        line.delete(wLo)
+        label.delete(wBad)
+        wBody := na, wUp := na, wLo := na, wBad := na, wLblX := na
+    f_hist_clear_all(wHistB, wHistWT, wHistWB)
+
+////////////////////////////////////////////////////////////////////////////////
+// === DAILY
+var box dBody = na, var line dUp = na, var line dLo = na, var label dBad = na
+var int dDir = 0, var float dPrevH = na, var float dPrevL = na
+var dHistB = array.new<box>(), var dHistWT = array.new<line>(), var dHistWB = array.new<line>(), var float dLblX = na
+
+if showD
+    [do_, dh, dl, dc, dt, dtc] = request.security(syminfo.tickerid, "D", [open, high, low, close, time, time_close], lookahead=barmerge.lookahead_on)
+
+    if ta.change(dt) != 0
+        f_hist_push_with_wicks(dHistB, dHistWT, dHistWB, dKeep, dt[1] + offsetMs, dtc[1] + offsetMs, do_[1], dh[1], dl[1], dc[1], dFillRise, dFillFall, dBorder, dWickCol, dWickW, dShowWicks)
+
+    dDir := na(dPrevH) or dh != dPrevH ? 1 : (na(dPrevL) or dl != dPrevL ? (dDir != 0 ? dDir : -1) : dDir)
+    dPrevH := dh
+    dPrevL := dl
+
+    leftT = dt + offsetMs, rgtT = dtc + offsetMs, midT = int(leftT + (rgtT - leftT) / 2)
+
+    if na(dBody)
+        dBody := box.new(leftT, math.max(do_, dc), rgtT, math.min(do_, dc), xloc=xloc.bar_time, bgcolor=f_dir_fill(do_ > dc, dFillFall, dFillRise), border_color=dBorder)
+    box.set_lefttop(dBody, leftT, math.max(do_, dc))
+    box.set_rightbottom(dBody, rgtT, math.min(do_, dc))
+    box.set_bgcolor(dBody, f_dir_fill(do_ > dc, dFillFall, dFillRise))
+
+    if dShowWicks
+        if na(dUp)
+            dUp := line.new(midT, dh, midT, math.max(do_, dc), xloc=xloc.bar_time, width=dWickW, color=dWickCol)
+            dLo := line.new(midT, math.min(do_, dc), midT, dl, xloc=xloc.bar_time, width=dWickW, color=dWickCol)
+        else
+            line.set_xy1(dUp, midT, dh)
+            line.set_xy2(dUp, midT, math.max(do_, dc))
+            line.set_xy1(dLo, midT, math.min(do_, dc))
+            line.set_xy2(dLo, midT, dl)
+    else if not na(dUp)
+        line.delete(dUp)
+        line.delete(dLo)
+        dUp := na
+        dLo := na
+            
+    if dShowBadge
+        [bxD0, byD, stD] = f_badge_xy(do_, dh, dl, dc, rgtT, dDir)
+        dLblX := f_sep(bxD0, mLblX, wLblX, na, na, na, na, na, na, na, na)
+        if na(dBad)
+            dBad := label.new(int(dLblX), byD, "1D", xloc=xloc.bar_time, yloc=yloc.price, style=stD, textcolor=color.new(color.white, badgeTxtAlpha), color=color.new(color.black, badgeBgAlpha), size=size.tiny)
+        else
+            label.set_xy(dBad, int(dLblX), byD)
+            label.set_style(dBad, stD)
+    else if not na(dBad)
+        label.delete(dBad)
+        dBad := na
+        dLblX := na
+
+    f_hist_trim_all(dHistB, dHistWT, dHistWB, dKeep)
+else
+    if not na(dBody)
+        box.delete(dBody)
+        line.delete(dUp)
+        line.delete(dLo)
+        label.delete(dBad)
+        dBody := na, dUp := na, dLo := na, dBad := na, dLblX := na
+    f_hist_clear_all(dHistB, dHistWT, dHistWB)
+
+////////////////////////////////////////////////////////////////////////////////
+// === H4 (4-Hour)
+var box h4Body = na, var line h4Up = na, var line h4Lo = na, var label h4Bad = na
+var int h4Dir = 0, var float h4PrevH = na, var float h4PrevL = na
+var h4HistB  = array.new<box>(), var h4HistWT = array.new<line>(), var h4HistWB = array.new<line>(), var float h4LblX = na
+
+if showH4
+    [h4o, h4h, h4l, h4c, h4t, h4tc] = request.security(syminfo.tickerid, "240", [open, high, low, close, time, time_close], lookahead=barmerge.lookahead_on)
+
+    if ta.change(h4t) != 0
+        f_hist_push_with_wicks(h4HistB, h4HistWT, h4HistWB, h4Keep, h4t[1] + offsetMs, h4tc[1] + offsetMs, h4o[1], h4h[1], h4l[1], h4c[1], h4FillRise, h4FillFall, h4Border, h4WickCol, h4WickW, h4ShowWicks)
+
+    h4Dir := na(h4PrevH) or h4h != h4PrevH ? 1 : (na(h4PrevL) or h4l != h4PrevL ? (h4Dir != 0 ? h4Dir : -1) : h4Dir)
+    h4PrevH := h4h
+    h4PrevL := h4l
+
+    leftT = h4t + offsetMs, rgtT = h4tc + offsetMs, midT = int(leftT + (rgtT - leftT) / 2)
+
+    if na(h4Body)
+        h4Body := box.new(leftT, math.max(h4o, h4c), rgtT, math.min(h4o, h4c), xloc=xloc.bar_time, bgcolor=f_dir_fill(h4o > h4c, h4FillFall, h4FillRise), border_color=h4Border)
+    box.set_lefttop(h4Body, leftT, math.max(h4o, h4c))
+    box.set_rightbottom(h4Body, rgtT, math.min(h4o, h4c))
+    box.set_bgcolor(h4Body, f_dir_fill(h4o > h4c, h4FillFall, h4FillRise))
+
+    if h4ShowWicks
+        if na(h4Up)
+            h4Up := line.new(midT, h4h, midT, math.max(h4o, h4c), xloc=xloc.bar_time, width=h4WickW, color=h4WickCol)
+            h4Lo := line.new(midT, math.min(h4o, h4c), midT, h4l, xloc=xloc.bar_time, width=h4WickW, color=h4WickCol)
+        else
+            line.set_xy1(h4Up, midT, h4h)
+            line.set_xy2(h4Up, midT, math.max(h4o, h4c))
+            line.set_xy1(h4Lo, midT, math.min(h4o, h4c))
+            line.set_xy2(h4Lo, midT, h4l)
+    else if not na(h4Up)
+        line.delete(h4Up)
+        line.delete(h4Lo)
+        h4Up := na
+        h4Lo := na
+        
+    if h4ShowBadge
+        [bxH40, byH4, stH4] = f_badge_xy(h4o, h4h, h4l, h4c, rgtT, h4Dir)
+        h4LblX := f_sep(bxH40, mLblX, wLblX, dLblX, na, na, na, na, na, na, na)
+        if na(h4Bad)
+            h4Bad := label.new(int(h4LblX), byH4, "4H", xloc=xloc.bar_time, yloc=yloc.price, style=stH4, textcolor=color.new(color.white, badgeTxtAlpha), color=color.new(color.black, badgeBgAlpha), size=size.tiny)
+        else
+            label.set_xy(h4Bad, int(h4LblX), byH4)
+            label.set_style(h4Bad, stH4)
+    else if not na(h4Bad)
+        label.delete(h4Bad)
+        h4Bad := na
+        h4LblX := na
+
+    f_hist_trim_all(h4HistB, h4HistWT, h4HistWB, h4Keep)
+else
+    if not na(h4Body)
+        box.delete(h4Body)
+        line.delete(h4Up)
+        line.delete(h4Lo)
+        label.delete(h4Bad)
+        h4Body := na, h4Up := na, h4Lo := na, h4Bad := na, h4LblX := na
+    f_hist_clear_all(h4HistB, h4HistWT, h4HistWB)
+    
+////////////////////////////////////////////////////////////////////////////////
+// === H1 (1-Hour)
+var box h1Body = na, var line h1Up = na, var line h1Lo = na, var label h1Bad = na
+var int h1Dir = 0, var float h1PrevH = na, var float h1PrevL = na
+var h1HistB  = array.new<box>(), var h1HistWT = array.new<line>(), var h1HistWB = array.new<line>(), var float h1LblX = na
+
+if showH1
+    [h1o, h1h, h1l, h1c, h1t, h1tc] = request.security(syminfo.tickerid, "60", [open, high, low, close, time, time_close], lookahead=barmerge.lookahead_on)
+
+    if ta.change(h1t) != 0
+        f_hist_push_with_wicks(h1HistB, h1HistWT, h1HistWB, h1Keep, h1t[1] + offsetMs, h1tc[1] + offsetMs, h1o[1], h1h[1], h1l[1], h1c[1], h1FillRise, h1FillFall, h1Border, h1WickCol, h1WickW, h1ShowWicks)
+
+    h1Dir := na(h1PrevH) or h1h != h1PrevH ? 1 : (na(h1PrevL) or h1l != h1PrevL ? (h1Dir != 0 ? h1Dir : -1) : h1Dir)
+    h1PrevH := h1h
+    h1PrevL := h1l
+
+    leftT = h1t + offsetMs, rgtT = h1tc + offsetMs, midT = int(leftT + (rgtT - leftT) / 2)
+
+    if na(h1Body)
+        h1Body := box.new(leftT, math.max(h1o, h1c), rgtT, math.min(h1o, h1c), xloc=xloc.bar_time, bgcolor=f_dir_fill(h1o > h1c, h1FillFall, h1FillRise), border_color=h1Border)
+    box.set_lefttop(h1Body, leftT, math.max(h1o, h1c))
+    box.set_rightbottom(h1Body, rgtT, math.min(h1o, h1c))
+    box.set_bgcolor(h1Body, f_dir_fill(h1o > h1c, h1FillFall, h1FillRise))
+
+    if h1ShowWicks
+        if na(h1Up)
+            h1Up := line.new(midT, h1h, midT, math.max(h1o, h1c), xloc=xloc.bar_time, width=h1WickW, color=h1WickCol)
+            h1Lo := line.new(midT, math.min(h1o, h1c), midT, h1l, xloc=xloc.bar_time, width=h1WickW, color=h1WickCol)
+        else
+            line.set_xy1(h1Up, midT, h1h)
+            line.set_xy2(h1Up, midT, math.max(h1o, h1c))
+            line.set_xy1(h1Lo, midT, math.min(h1o, h1c))
+            line.set_xy2(h1Lo, midT, h1l)
+    else if not na(h1Up)
+        line.delete(h1Up)
+        line.delete(h1Lo)
+        h1Up := na
+        h1Lo := na
+        
+    if h1ShowBadge
+        [bxH10, byH1, stH1] = f_badge_xy(h1o, h1h, h1l, h1c, rgtT, h1Dir)
+        h1LblX := f_sep(bxH10, mLblX, wLblX, dLblX, h4LblX, na, na, na, na, na, na)
+        if na(h1Bad)
+            h1Bad := label.new(int(h1LblX), byH1, "1H", xloc=xloc.bar_time, yloc=yloc.price, style=stH1, textcolor=color.new(color.white, badgeTxtAlpha), color=color.new(color.black, badgeBgAlpha), size=size.tiny)
+        else
+            label.set_xy(h1Bad, int(h1LblX), byH1)
+            label.set_style(h1Bad, stH1)
+    else if not na(h1Bad)
+        label.delete(h1Bad)
+        h1Bad := na
+        h1LblX := na
+
+    f_hist_trim_all(h1HistB, h1HistWT, h1HistWB, h1Keep)
+else
+    if not na(h1Body)
+        box.delete(h1Body)
+        line.delete(h1Up)
+        line.delete(h1Lo)
+        label.delete(h1Bad)
+        h1Body := na, h1Up := na, h1Lo := na, h1Bad := na, h1LblX := na
+    f_hist_clear_all(h1HistB, h1HistWT, h1HistWB)
+    
+////////////////////////////////////////////////////////////////////////////////
+// === M30 (30-Minute)
+var box m30Body = na, var line m30Up = na, var line m30Lo = na, var label m30Bad = na
+var int m30Dir = 0, var float m30PrevH = na, var float m30PrevL = na
+var m30HistB  = array.new<box>(), var m30HistWT = array.new<line>(), var m30HistWB = array.new<line>(), var float m30LblX = na
+
+if showM30
+    [m30o, m30h, m30l, m30c, m30t, m30tc] = request.security(syminfo.tickerid, "30", [open, high, low, close, time, time_close], lookahead=barmerge.lookahead_on)
+
+    if ta.change(m30t) != 0
+        f_hist_push_with_wicks(m30HistB, m30HistWT, m30HistWB, m30Keep, m30t[1] + offsetMs, m30tc[1] + offsetMs, m30o[1], m30h[1], m30l[1], m30c[1], m30FillRise, m30FillFall, m30Border, m30WickCol, m30WickW, m30ShowWicks)
+
+    m30Dir := na(m30PrevH) or m30h != m30PrevH ? 1 : (na(m30PrevL) or m30l != m30PrevL ? (m30Dir != 0 ? m30Dir : -1) : m30Dir)
+    m30PrevH := m30h
+    m30PrevL := m30l
+
+    leftT = m30t + offsetMs, rgtT = m30tc + offsetMs, midT = int(leftT + (rgtT - leftT) / 2)
+
+    if na(m30Body)
+        m30Body := box.new(leftT, math.max(m30o, m30c), rgtT, math.min(m30o, m30c), xloc=xloc.bar_time, bgcolor=f_dir_fill(m30o > m30c, m30FillFall, m30FillRise), border_color=m30Border)
+    box.set_lefttop(m30Body, leftT, math.max(m30o, m30c))
+    box.set_rightbottom(m30Body, rgtT, math.min(m30o, m30c))
+    box.set_bgcolor(m30Body, f_dir_fill(m30o > m30c, m30FillFall, m30FillRise))
+
+    if m30ShowWicks
+        if na(m30Up)
+            m30Up := line.new(midT, m30h, midT, math.max(m30o, m30c), xloc=xloc.bar_time, width=m30WickW, color=m30WickCol)
+            m30Lo := line.new(midT, math.min(m30o, m30c), midT, m30l, xloc=xloc.bar_time, width=m30WickW, color=m30WickCol)
+        else
+            line.set_xy1(m30Up, midT, m30h)
+            line.set_xy2(m30Up, midT, math.max(m30o, m30c))
+            line.set_xy1(m30Lo, midT, math.min(m30o, m30c))
+            line.set_xy2(m30Lo, midT, m30l)
+    else if not na(m30Up)
+        line.delete(m30Up)
+        line.delete(m30Lo)
+        m30Up := na
+        m30Lo := na
+            
+    if m30ShowBadge
+        [bxM300, byM30, stM30] = f_badge_xy(m30o, m30h, m30l, m30c, rgtT, m30Dir)
+        m30LblX := f_sep(bxM300, mLblX, wLblX, dLblX, h4LblX, h1LblX, na, na, na, na, na)
+        if na(m30Bad)
+            m30Bad := label.new(int(m30LblX), byM30, "30m", xloc=xloc.bar_time, yloc=yloc.price, style=stM30, textcolor=color.new(color.white, badgeTxtAlpha), color=color.new(color.black, badgeBgAlpha), size=size.tiny)
+        else
+            label.set_xy(m30Bad, int(m30LblX), byM30)
+            label.set_style(m30Bad, stM30)
+    else if not na(m30Bad)
+        label.delete(m30Bad)
+        m30Bad := na
+        m30LblX := na
+
+    f_hist_trim_all(m30HistB, m30HistWT, m30HistWB, m30Keep)
+else
+    if not na(m30Body)
+        box.delete(m30Body)
+        line.delete(m30Up)
+        line.delete(m30Lo)
+        label.delete(m30Bad)
+        m30Body := na, m30Up := na, m30Lo := na, m30Bad := na, m30LblX := na
+    f_hist_clear_all(m30HistB, m30HistWT, m30HistWB)
+    
+////////////////////////////////////////////////////////////////////////////////
+// === M15 (15-Minute)
+var box m15Body = na, var line m15Up = na, var line m15Lo = na, var label m15Bad = na
+var int m15Dir = 0, var float m15PrevH = na, var float m15PrevL = na
+var m15HistB  = array.new<box>(), var m15HistWT = array.new<line>(), var m15HistWB = array.new<line>(), var float m15LblX = na
+
+if showM15
+    [m15o, m15h, m15l, m15c, m15t, m15tc] = request.security(syminfo.tickerid, "15", [open, high, low, close, time, time_close], lookahead=barmerge.lookahead_on)
+
+    if ta.change(m15t) != 0
+        f_hist_push_with_wicks(m15HistB, m15HistWT, m15HistWB, m15Keep, m15t[1] + offsetMs, m15tc[1] + offsetMs, m15o[1], m15h[1], m15l[1], m15c[1], m15FillRise, m15FillFall, m15Border, m15WickCol, m15WickW, m15ShowWicks)
+
+    m15Dir := na(m15PrevH) or m15h != m15PrevH ? 1 : (na(m15PrevL) or m15l != m15PrevL ? (m15Dir != 0 ? m15Dir : -1) : m15Dir)
+    m15PrevH := m15h
+    m15PrevL := m15l
+
+    leftT = m15t + offsetMs, rgtT = m15tc + offsetMs, midT = int(leftT + (rgtT - leftT) / 2)
+
+    if na(m15Body)
+        m15Body := box.new(leftT, math.max(m15o, m15c), rgtT, math.min(m15o, m15c), xloc=xloc.bar_time, bgcolor=f_dir_fill(m15o > m15c, m15FillFall, m15FillRise), border_color=m15Border)
+    box.set_lefttop(m15Body, leftT, math.max(m15o, m15c))
+    box.set_rightbottom(m15Body, rgtT, math.min(m15o, m15c))
+    box.set_bgcolor(m15Body, f_dir_fill(m15o > m15c, m15FillFall, m15FillRise))
+
+    if m15ShowWicks
+        if na(m15Up)
+            m15Up := line.new(midT, m15h, midT, math.max(m15o, m15c), xloc=xloc.bar_time, width=m15WickW, color=m15WickCol)
+            m15Lo := line.new(midT, math.min(m15o, m15c), midT, m15l, xloc=xloc.bar_time, width=m15WickW, color=m15WickCol)
+        else
+            line.set_xy1(m15Up, midT, m15h)
+            line.set_xy2(m15Up, midT, math.max(m15o, m15c))
+            line.set_xy1(m15Lo, midT, math.min(m15o, m15c))
+            line.set_xy2(m15Lo, midT, m15l)
+    else if not na(m15Up)
+        line.delete(m15Up)
+        line.delete(m15Lo)
+        m15Up := na
+        m15Lo := na
+        
+    if m15ShowBadge
+        [bxM150, byM15, stM15] = f_badge_xy(m15o, m15h, m15l, m15c, rgtT, m15Dir)
+        m15LblX := f_sep(bxM150, mLblX, wLblX, dLblX, h4LblX, h1LblX, m30LblX, na, na, na, na)
+        if na(m15Bad)
+            m15Bad := label.new(int(m15LblX), byM15, "15m", xloc=xloc.bar_time, yloc=yloc.price, style=stM15, textcolor=color.new(color.white, badgeTxtAlpha), color=color.new(color.black, badgeBgAlpha), size=size.tiny)
+        else
+            label.set_xy(m15Bad, int(m15LblX), byM15)
+            label.set_style(m15Bad, stM15)
+    else if not na(m15Bad)
+        label.delete(m15Bad)
+        m15Bad := na
+        m15LblX := na
+
+    f_hist_trim_all(m15HistB, m15HistWT, m15HistWB, m15Keep)
+else
+    if not na(m15Body)
+        box.delete(m15Body)
+        line.delete(m15Up)
+        line.delete(m15Lo)
+        label.delete(m15Bad)
+        m15Body := na, m15Up := na, m15Lo := na, m15Bad := na, m15LblX := na
+    f_hist_clear_all(m15HistB, m15HistWT, m15HistWB)
+    
+////////////////////////////////////////////////////////////////////////////////
+// === M5 (5-Minute)
+var box m5Body = na, var line m5Up = na, var line m5Lo = na, var label m5Bad = na
+var int m5Dir = 0, var float m5PrevH = na, var float m5PrevL = na
+var m5HistB  = array.new<box>(), var m5HistWT = array.new<line>(), var m5HistWB = array.new<line>(), var float m5LblX = na
+
+if showM5
+    [m5o, m5h, m5l, m5c, m5t, m5tc] = request.security(syminfo.tickerid, "5", [open, high, low, close, time, time_close], lookahead=barmerge.lookahead_on)
+
+    if ta.change(m5t) != 0
+        f_hist_push_with_wicks(m5HistB, m5HistWT, m5HistWB, m5Keep, m5t[1] + offsetMs, m5tc[1] + offsetMs, m5o[1], m5h[1], m5l[1], m5c[1], m5FillRise, m5FillFall, m5Border, m5WickCol, m5WickW, m5ShowWicks)
+
+    m5Dir := na(m5PrevH) or m5h != m5PrevH ? 1 : (na(m5PrevL) or m5l != m5PrevL ? (m5Dir != 0 ? m5Dir : -1) : m5Dir)
+    m5PrevH := m5h
+    m5PrevL := m5l
+
+    leftT = m5t + offsetMs, rgtT = m5tc + offsetMs, midT = int(leftT + (rgtT - leftT) / 2)
+
+    if na(m5Body)
+        m5Body := box.new(leftT, math.max(m5o, m5c), rgtT, math.min(m5o, m5c), xloc=xloc.bar_time, bgcolor=f_dir_fill(m5o > m5c, m5FillFall, m5FillRise), border_color=m5Border)
+    box.set_lefttop(m5Body, leftT, math.max(m5o, m5c))
+    box.set_rightbottom(m5Body, rgtT, math.min(m5o, m5c))
+    box.set_bgcolor(m5Body, f_dir_fill(m5o > m5c, m5FillFall, m5FillRise))
+
+    if m5ShowWicks
+        if na(m5Up)
+            m5Up := line.new(midT, m5h, midT, math.max(m5o, m5c), xloc=xloc.bar_time, width=m5WickW, color=m5WickCol)
+            m5Lo := line.new(midT, math.min(m5o, m5c), midT, m5l, xloc=xloc.bar_time, width=m5WickW, color=m5WickCol)
+        else
+            line.set_xy1(m5Up, midT, m5h)
+            line.set_xy2(m5Up, midT, math.max(m5o, m5c))
+            line.set_xy1(m5Lo, midT, math.min(m5o, m5c))
+            line.set_xy2(m5Lo, midT, m5l)
+    else if not na(m5Up)
+        line.delete(m5Up)
+        line.delete(m5Lo)
+        m5Up := na
+        m5Lo := na
+        
+    if m5ShowBadge
+        [bxM50, byM5, stM5] = f_badge_xy(m5o, m5h, m5l, m5c, rgtT, m5Dir)
+        m5LblX := f_sep(bxM50, mLblX, wLblX, dLblX, h4LblX, h1LblX, m30LblX, m15LblX, na, na, na)
+        if na(m5Bad)
+            m5Bad := label.new(int(m5LblX), byM5, "5m", xloc=xloc.bar_time, yloc=yloc.price, style=stM5, textcolor=color.new(color.white, badgeTxtAlpha), color=color.new(color.black, badgeBgAlpha), size=size.tiny)
+        else
+            label.set_xy(m5Bad, int(m5LblX), byM5)
+            label.set_style(m5Bad, stM5)
+    else if not na(m5Bad)
+        label.delete(m5Bad)
+        m5Bad := na
+        m5LblX := na
+
+    f_hist_trim_all(m5HistB, m5HistWT, m5HistWB, m5Keep)
+else
+    if not na(m5Body)
+        box.delete(m5Body)
+        line.delete(m5Up)
+        line.delete(m5Lo)
+        label.delete(m5Bad)
+        m5Body := na, mUp := na, mLo := na, mBad := na, m5LblX := na
+    f_hist_clear_all(m5HistB, m5HistWT, m5HistWB)

@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iora Chart Viewer</title>
+    <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"
+            integrity="sha384-OK7vELvjHdhUFi31JYioPIcRHTROLdcDa6ZsNWgvgLaKj+9JqhU0Ad8g4wz3CXjA"
+            crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="/static/css/viewer.css?v={{ cache_bust('viewer.css') }}">
+</head>
+<body>
+    <!-- Sidebar -->
+    <div id="sidebar">
+        <!-- Symbol / TF / Bars -->
+        <div class="sidebar-section">
+            <h3>Chart</h3>
+            <label for="symbol-select">Symbol</label>
+            <select id="symbol-select"></select>
+            <label for="tf-select">Timeframe</label>
+            <select id="tf-select"></select>
+            <label>Bars</label>
+            <input type="number" id="bar-count" min="50" max="20000" step="50">
+            <label>End Date</label>
+            <div style="display:flex; gap:2px; align-items:center;">
+                <button id="date-back" title="Back in time (PageUp)" style="padding:4px 6px; font-size:11px;">◀</button>
+                <input type="date" id="end-date" style="flex:1;">
+                <button id="date-fwd" title="Forward in time (PageDown)" style="padding:4px 6px; font-size:11px;">▶</button>
+            </div>
+            <label>Candle Type</label>
+            <select id="candle-type-select">
+                <option value="ohlc">OHLC</option>
+                <option value="hollow">Hollow</option>
+                <option value="ha" selected>Heikin Ashi</option>
+                <option value="line">Line</option>
+                <option value="bars">Bars</option>
+            </select>
+            <div style="margin-top:6px;">
+                <button id="refresh-btn" style="width:100%;">Refresh</button>
+            </div>
+        </div>
+
+        <!-- Structure Overlay (unified 3-level zones) -->
+        <div class="sidebar-section">
+            <h3>Structure</h3>
+            <div style="display:flex; flex-wrap:wrap; gap:4px 12px;">
+                <label style="color:#aaa;"><input type="checkbox" id="structure-zones" checked> Zones</label>
+                <label style="color:#aaa;"><input type="checkbox" id="structure-breaks"> Breaks</label>
+                <label style="color:#aaa;"><input type="checkbox" id="structure-boundaries" checked> Boundaries</label>
+                <label style="color:#aaa;"><input type="checkbox" id="structure-zigzag"> Zigzag</label>
+                <label style="color:#aaa;"><input type="checkbox" id="structure-breakers" checked> Breaker/Mitigation</label>
+                <label style="color:#aaa;"><input type="checkbox" id="structure-opposing" checked> Opposing nesting</label>
+            </div>
+            <div style="margin-top:6px; display:flex; gap:2px;">
+                <button id="structure-mode-lines" style="flex:1; padding:3px 8px; font-size:11px; background:#448aff; color:#fff; border:1px solid #448aff; border-radius:3px 0 0 3px; cursor:pointer;">Lines</button>
+                <button id="structure-mode-rects" style="flex:1; padding:3px 8px; font-size:11px; background:#1a1a2e; color:#888; border:1px solid #333; border-radius:0 3px 3px 0; cursor:pointer;">Rects</button>
+            </div>
+            <div style="margin-top:6px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <label style="color:#888; font-size:11px;">Parent (<span id="parent-tf-label">D1</span>)
+                    <input type="number" id="structure-parent-count" min="0" max="20" value="2" style="width:40px;">
+                </label>
+                <label style="color:#888; font-size:11px;">Child (<span id="child-tf-label">H4</span>)
+                    <input type="number" id="structure-child-count" min="0" max="20" value="3" style="width:40px;">
+                </label>
+                <label style="color:#888; font-size:11px;">Sub (<span id="sub-tf-label">H1</span>)
+                    <input type="number" id="structure-sub-count" min="0" max="20" value="0" style="width:40px;">
+                </label>
+            </div>
+        </div>
+
+        <!-- Trendline TFs -->
+        <div class="sidebar-section">
+            <h3>Trendlines <span class="toggle-all" data-target="tl-tf-checks">All</span> <span class="toggle-none" data-target="tl-tf-checks">None</span></h3>
+            <div id="tl-tf-checks" class="tf-checks"></div>
+        </div>
+
+
+        <!-- Signal Rules -->
+        <div class="sidebar-section">
+            <h3>Signal Rules</h3>
+            <label style="display:flex; align-items:center; gap:4px; color:#aaa; margin-bottom:6px;">
+                <input type="checkbox" id="signals-toggle"> Show signals
+            </label>
+        </div>
+
+        <!-- Context Bands -->
+        <div class="sidebar-section">
+            <h3>Context</h3>
+            <label style="display:flex; align-items:center; gap:4px; color:#aaa; margin-bottom:6px;">
+                <input type="checkbox" id="context-bands-toggle"> Context bands
+            </label>
+        </div>
+
+        <!-- HTF Candles -->
+        <div class="sidebar-section">
+            <h3>HTF Candles</h3>
+            <div id="htf-candle-checks" class="tf-checks"></div>
+            <label style="margin-top:6px;">HTF Type</label>
+            <select id="htf-candle-type">
+                <option value="ohlc" selected>OHLC</option>
+                <option value="ha">Heikin Ashi</option>
+            </select>
+        </div>
+
+    </div>
+
+    <!-- Main Area -->
+    <div id="main">
+        <!-- Top toolbar -->
+        <div id="toolbar">
+            <!-- Drawing tools -->
+            <div id="draw-toolbar-inline" style="display:flex; gap:3px;">
+                <button data-tool="line" title="Line (L)" aria-label="Draw line">╱</button>
+                <button data-tool="ray" title="Ray (R)" aria-label="Draw ray">⟶⋯</button>
+                <button data-tool="arrow" title="Arrow (A)" aria-label="Draw arrow">➤</button>
+                <button data-tool="rect" title="Rectangle (E)" aria-label="Draw rectangle">▭</button>
+                <button data-tool="circle" title="Circle (C)" aria-label="Draw circle">○</button>
+                <button data-tool="text" title="Text (T)" aria-label="Draw text">T</button>
+            </div>
+            <div class="sep"></div>
+            <button id="draw-undo-btn" title="Undo (Ctrl+Z)">↩</button>
+            <button id="draw-clear-btn" title="Clear drawings">✕</button>
+            <div class="sep"></div>
+            <input type="color" id="draw-color" value="#FFD700"
+                   style="width:28px; height:24px; padding:1px; border:1px solid #333; background:#1a1a24; cursor:pointer;">
+            <div class="sep"></div>
+            <button id="multichart-btn" title="Multi-chart 2x2 (M)">⊞</button>
+            <span id="draw-focus-indicator" style="display:none; font-size:10px; color:#4CAF50; margin-left:2px;"></span>
+            <div class="sep"></div>
+            <button id="screenshot-btn" title="Screenshot (S)">📷</button>
+            <span id="screenshot-flash" style="display:none; color:#4CAF50; font-size:11px; margin-left:4px;"></span>
+            <div class="info" id="status-info"></div>
+        </div>
+
+        <!-- Chart -->
+        <div id="chart-container">
+            <div id="loading" class="visible">Loading...</div>
+            <div id="crosshair-ohlcv"></div>
+        </div>
+
+        <!-- Replay bar -->
+        <div id="replay-bar">
+            <button id="replay-back10" title="Back 10" aria-label="Back 10 bars">⏪10</button>
+            <button id="replay-back1" title="Back 1" aria-label="Back 1 bar">◀</button>
+            <button id="replay-play" title="Play/Pause" aria-label="Play or pause replay">▶</button>
+            <button id="replay-fwd1" title="Forward 1" aria-label="Forward 1 bar">▶</button>
+            <button id="replay-fwd10" title="Forward 10" aria-label="Forward 10 bars">10⏩</button>
+            <input type="range" id="replay-slider" min="1" value="1">
+            <span id="replay-info">Live</span>
+        </div>
+    </div>
+
+    <!-- App scripts (auto cache bust via MD5 hash) -->
+    <script src="/static/js/constants.js?v={{ cache_bust('constants.js') }}"></script>
+    <script src="/static/js/overlayState.js?v={{ cache_bust('overlayState.js') }}"></script>
+    <script src="/static/js/main.js?v={{ cache_bust('main.js') }}"></script>
+    <script src="/static/js/chart.js?v={{ cache_bust('chart.js') }}"></script>
+    <script src="/static/js/overlays.js?v={{ cache_bust('overlays.js') }}"></script>
+    <script src="/static/js/replay.js?v={{ cache_bust('replay.js') }}"></script>
+    <script src="/static/js/drawing.js?v={{ cache_bust('drawing.js') }}"></script>
+    <script src="/static/js/multichart.js?v={{ cache_bust('multichart.js') }}"></script>
+    <script src="/static/js/pulse.js?v={{ cache_bust('pulse.js') }}"></script>
+    <script src="/static/js/structure.js?v={{ cache_bust('structure.js') }}"></script>
+</body>
+</html>

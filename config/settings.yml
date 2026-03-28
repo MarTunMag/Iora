@@ -1,0 +1,91 @@
+# ==============================================================================
+# Flint Trading System — Configuration
+# ==============================================================================
+# Master config for instruments, timeframes, MT5 connection, and logging.
+
+# --- MetaTrader 5 Connection Settings ---
+# Credentials loaded from .env (MT5_ACCOUNT, MT5_PASSWORD, MT5_SERVER, MT5_PATH)
+mt5:
+  account: 0          # Set via MT5_ACCOUNT in .env
+  password: ""        # Set via MT5_PASSWORD in .env
+  server: ""          # Set via MT5_SERVER in .env
+  path: ""            # Set via MT5_PATH in .env
+  description: "ICMarkets Demo - L0.80/S0.80 Validation (2026-02-14)"
+
+# --- Data Archiving Settings ---
+archive:
+  instruments:
+    # --- FX Majors (6) ---
+    - "EURUSD"
+    - "GBPUSD"
+    - "USDJPY"
+    - "AUDUSD"
+    - "USDCAD"
+    - "USDCHF"
+
+    # --- FX Crosses (12) ---
+    - "EURGBP"
+    - "EURJPY"
+    - "EURCHF"
+    - "GBPJPY"
+    - "NZDUSD"
+    - "AUDNZD"
+    - "CADCHF"
+    - "EURAUD"
+    - "GBPAUD"
+    - "GBPNZD"
+    - "AUDJPY"
+    - "NZDJPY"
+    - "CADJPY"
+
+    # --- FX Exotics (3) ---
+    - "USDMXN"
+    - "USDTRY"
+    - "USDZAR"
+
+    # --- Metals (2) ---
+    - "XAUUSD"  # Gold
+    - "XAGUSD"  # Silver
+
+    # --- Energy (2) ---
+    - "XTIUSD"  # WTI Oil
+    - "XBRUSD"  # Brent Oil
+
+    # --- Commodities (2) ---
+    - "XNGUSD"  # Natural Gas
+    - "XPTUSD"  # Platinum
+
+    # --- Indices (8) ---
+    - "US500"   # S&P 500
+    - "US30"    # Dow Jones
+    - "USTEC"   # Nasdaq 100
+    - "DE40"    # DAX 40
+    - "UK100"   # FTSE 100
+    - "F40"     # CAC 40
+    - "JP225"   # Nikkei 225
+    - "HK50"    # Hang Seng
+
+    # --- Crypto (2) ---
+    - "BTCUSD"
+    - "ETHUSD"
+
+  timeframes:
+    - "M1"
+    - "M5"
+    - "M15"
+    - "M30"
+    - "H1"
+    - "H4"
+    - "D1"
+    - "W1"
+    - "MN1"
+
+# --- Chart Viewer Defaults ---
+viewer:
+  default_symbol: "GBPUSD"
+  default_tf: "H4"
+  default_bar_count: 2000
+
+# --- Logging Configuration ---
+logging:
+  level: "INFO" # Can be set to DEBUG for more verbose output

@@ -1,0 +1,689 @@
+//@version=6
+indicator("Iora Structure", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500, calc_bars_count = 5000)
+
+// =============================================================================
+// S1 — TYPES
+// =============================================================================
+
+type LightZone
+    float   top       = 0.0
+    float   bottom    = 0.0
+    bool    is_supply = false
+    bool    is_hh_or_ll = false
+    string  label_txt = ""
+    int     origin_time = 0
+    bool    is_broken = false
+    int     break_time = 0
+    int     tf_index  = 0
+
+type BreakerZone
+    box     bx
+    float   top       = 0.0
+    float   bottom    = 0.0
+    bool    was_supply = false
+    int     origin_time = 0
+    int     tf_index  = 0
+
+// =============================================================================
+// S1 — INPUTS
+// =============================================================================
+
+string GRP_TF    = "Timeframes"
+bool   i_tf0_on  = input.bool(false, "M1",     group = GRP_TF, inline = "t0")
+string i_tf0     = input.timeframe("1",   "",  group = GRP_TF, inline = "t0")
+bool   i_tf1_on  = input.bool(true,  "M5",     group = GRP_TF, inline = "t1")
+string i_tf1     = input.timeframe("5",   "",  group = GRP_TF, inline = "t1")
+bool   i_tf2_on  = input.bool(true,  "M15",    group = GRP_TF, inline = "t2")
+string i_tf2     = input.timeframe("15",  "",  group = GRP_TF, inline = "t2")
+bool   i_tf3_on  = input.bool(true,  "H1",     group = GRP_TF, inline = "t3")
+string i_tf3     = input.timeframe("60",  "",  group = GRP_TF, inline = "t3")
+bool   i_tf4_on  = input.bool(true,  "H4",     group = GRP_TF, inline = "t4")
+string i_tf4     = input.timeframe("240", "",  group = GRP_TF, inline = "t4")
+bool   i_tf5_on  = input.bool(false, "D",      group = GRP_TF, inline = "t5")
+string i_tf5     = input.timeframe("1D",  "",  group = GRP_TF, inline = "t5")
+bool   i_tf6_on  = input.bool(false, "W",      group = GRP_TF, inline = "t6")
+string i_tf6     = input.timeframe("1W",  "",  group = GRP_TF, inline = "t6")
+bool   i_tf7_on  = input.bool(false, "MN",     group = GRP_TF, inline = "t7")
+string i_tf7     = input.timeframe("1M",  "",  group = GRP_TF, inline = "t7")
+
+string GRP_AGE   = "Zone Age (max bars per TF)"
+int    i_age_m1  = input.int(50, "M1",  group = GRP_AGE, minval = 1)
+int    i_age_m5  = input.int(50, "M5",  group = GRP_AGE, minval = 1)
+int    i_age_m15 = input.int(50, "M15", group = GRP_AGE, minval = 1)
+int    i_age_h1  = input.int(50, "H1",  group = GRP_AGE, minval = 1)
+int    i_age_h4  = input.int(50, "H4",  group = GRP_AGE, minval = 1)
+int    i_age_d   = input.int(50, "D",   group = GRP_AGE, minval = 1)
+int    i_age_w   = input.int(30, "W",   group = GRP_AGE, minval = 1)
+int    i_age_mn  = input.int(20, "MN",  group = GRP_AGE, minval = 1)
+
+string GRP_ZONE  = "Zone Detection"
+float  i_doji    = input.float(5.0, "Doji Body %", group = GRP_ZONE, minval = 0.1, maxval = 50.0)
+
+string GRP_STR   = "Structure Lines"
+int    i_max_str = input.int(3, "Max Lines Per TF", group = GRP_STR, minval = 1, maxval = 20)
+bool   i_str_since_ext = input.bool(true, "Show Since Last External", group = GRP_STR, tooltip = "Only show internal lines from the last confirmed external event")
+
+string GRP_CLR   = "Colors"
+color  i_bos_clr = input.color(color.new(#4CAF50, 0),  "BOS Color",    group = GRP_CLR)
+color  i_choch_clr = input.color(color.new(#F44336, 0), "CHoCH Color", group = GRP_CLR)
+
+string GRP_BRK   = "Breaker Zones"
+bool   i_brk_on  = input.bool(true, "Show Breakers", group = GRP_BRK)
+int    i_brk_max = input.int(3, "Max Breakers Per TF", group = GRP_BRK, minval = 1, maxval = 10)
+color  i_brk_sup_clr = input.color(color.new(#26C6DA, 30), "Breaker (was Supply)", group = GRP_BRK)
+color  i_brk_dem_clr = input.color(color.new(#F44336, 30), "Breaker (was Demand)", group = GRP_BRK)
+
+string GRP_PERSIST = "Persisted Zones"
+bool   i_persist_on = input.bool(true, "Persist H4 Zones Before eBOS", group = GRP_PERSIST, tooltip = "Show last H4 supply before bearish eBOS and last H4 demand before bullish eBOS")
+color  i_persist_sup_clr = input.color(color.new(#FF6D00, 30), "Persisted Supply", group = GRP_PERSIST)
+color  i_persist_dem_clr = input.color(color.new(#2979FF, 30), "Persisted Demand", group = GRP_PERSIST)
+
+// =============================================================================
+// S1 — HELPERS
+// =============================================================================
+
+tf_max_age(string tf) =>
+    int sec = timeframe.in_seconds(tf)
+    int out = sec <= 60 ? i_age_m1 : sec <= 300 ? i_age_m5 : sec <= 900 ? i_age_m15 : sec <= 3600 ? i_age_h1 : sec <= 14400 ? i_age_h4 : sec <= 86400 ? i_age_d : sec <= 604800 ? i_age_w : i_age_mn
+    out
+
+tf_label(string tf) =>
+    int sec = timeframe.in_seconds(tf)
+    string out = sec <= 60 ? "M1" : sec <= 300 ? "M5" : sec <= 900 ? "M15" : sec <= 3600 ? "H1" : sec <= 14400 ? "H4" : sec <= 86400 ? "D" : sec <= 604800 ? "W" : "MN"
+    out
+
+// =============================================================================
+// S2 — HA ZONE DETECTION (lightweight — classification only, no sequence tracking)
+// =============================================================================
+
+ha_detect(float doji_pct) =>
+    float haC = (open + high + low + close) / 4.0
+    float haO = float(na)
+    haO := na(haO[1]) ? (open + close) / 2.0 : (nz(haO[1]) + nz(haC[1])) / 2.0
+    float haH = math.max(high, math.max(haO, haC))
+    float haL = math.min(low, math.min(haO, haC))
+
+    bool is_blue = haC >= haO
+    bool is_red  = haC < haO
+
+    int max_run = math.min(50, bar_index)
+
+    var float prev_run_hi   = na
+    var float prev_run_lo   = na
+    var float  hi1_lvl      = na
+    var int    hi1_time     = na
+    var string hi1_txt      = ""
+    var float  lo1_lvl      = na
+    var int    lo1_time     = na
+    var string lo1_txt      = ""
+
+    bool  fire      = false
+    float ztop      = 0.0
+    float zbot      = 0.0
+    bool  is_sup    = false
+    int   zt_origin = time
+
+    // DEMAND: red -> blue
+    if is_blue and is_red[1]
+        float run_lo_ohlc = low[1]
+        int   ext_time    = time[1]
+        int   k           = 2
+        while k < max_run and is_red[k]
+            if low[k] < run_lo_ohlc
+                run_lo_ohlc := low[k]
+                ext_time    := time[k]
+            k += 1
+
+        bool is_new_ll = na(prev_run_lo) or run_lo_ohlc < prev_run_lo
+        prev_run_lo := run_lo_ohlc
+        lo1_lvl  := run_lo_ohlc
+        lo1_time := ext_time
+        lo1_txt  := is_new_ll ? "LL" : "HL"
+
+        float body = math.abs(haC - haO)
+        float rng  = haH - haL
+        bool  doji = rng > 0.0 and (body / rng * 100.0) < doji_pct
+
+        ztop      := doji ? nz(haH, high) : nz(haH[1], high[1])
+        zbot      := nz(run_lo_ohlc, low[1])
+        zt_origin := nz(ext_time, time[1])
+        fire      := true
+
+    // SUPPLY: blue -> red
+    else if is_red and is_blue[1]
+        float run_hi_ohlc = high[1]
+        int   ext_time    = time[1]
+        int   k           = 2
+        while k < max_run and is_blue[k]
+            if high[k] > run_hi_ohlc
+                run_hi_ohlc := high[k]
+                ext_time    := time[k]
+            k += 1
+
+        bool is_new_hh = na(prev_run_hi) or run_hi_ohlc > prev_run_hi
+        prev_run_hi := run_hi_ohlc
+        hi1_lvl  := run_hi_ohlc
+        hi1_time := ext_time
+        hi1_txt  := is_new_hh ? "HH" : "LH"
+
+        float body = math.abs(haC - haO)
+        float rng  = haH - haL
+        bool  doji = rng > 0.0 and (body / rng * 100.0) < doji_pct
+
+        ztop      := nz(run_hi_ohlc, high[1])
+        zbot      := doji ? nz(haL, low) : nz(haL[1], low[1])
+        zt_origin := nz(ext_time, time[1])
+        fire      := true
+        is_sup    := true
+
+    [fire, ztop, zbot, is_sup, zt_origin, hi1_txt, lo1_txt]
+
+// =============================================================================
+// S3 — DATA REQUESTS (8 calls)
+// =============================================================================
+
+string _base_sym = ticker.standard(syminfo.tickerid)
+
+[f0_raw, zt0, zb0, s0, tm0, h1s0, l1s0] = request.security(_base_sym, i_tf0, ha_detect(i_doji))
+[f1_raw, zt1, zb1, s1, tm1, h1s1, l1s1] = request.security(_base_sym, i_tf1, ha_detect(i_doji))
+[f2_raw, zt2, zb2, s2, tm2, h1s2, l1s2] = request.security(_base_sym, i_tf2, ha_detect(i_doji))
+[f3_raw, zt3, zb3, s3, tm3, h1s3, l1s3] = request.security(_base_sym, i_tf3, ha_detect(i_doji))
+[f4_raw, zt4, zb4, s4, tm4, h1s4, l1s4] = request.security(_base_sym, i_tf4, ha_detect(i_doji))
+[f5_raw, zt5, zb5, s5, tm5, h1s5, l1s5] = request.security(_base_sym, i_tf5, ha_detect(i_doji))
+[f6_raw, zt6, zb6, s6, tm6, h1s6, l1s6] = request.security(_base_sym, i_tf6, ha_detect(i_doji))
+[f7_raw, zt7, zb7, s7, tm7, h1s7, l1s7] = request.security(_base_sym, i_tf7, ha_detect(i_doji))
+
+bool f0 = f0_raw and not f0_raw[1]
+bool f1 = f1_raw and not f1_raw[1]
+bool f2 = f2_raw and not f2_raw[1]
+bool f3 = f3_raw and not f3_raw[1]
+bool f4 = f4_raw and not f4_raw[1]
+bool f5 = f5_raw and not f5_raw[1]
+bool f6 = f6_raw and not f6_raw[1]
+bool f7 = f7_raw and not f7_raw[1]
+
+// =============================================================================
+// S4 — LIGHTWEIGHT ZONE MANAGEMENT (no box drawing — break detection only)
+// Body-close breaks only — wicks = liquidity sweep
+// =============================================================================
+
+method manage_zones(array<LightZone> zones, bool fire, float ztop, float zbot, bool is_sup, int z_time, string hi_txt, string lo_txt, string tf_str, int tf_idx) =>
+    int tf_ms  = timeframe.in_seconds(tf_str) * 1000
+    int max_ms = tf_max_age(tf_str) * tf_ms
+    int lookback = 20
+
+    bool did_break = false
+    bool brk_is_supply = false
+    bool brk_is_hh_or_ll = false
+    string brk_label = ""
+    float brk_price = 0.0
+    int brk_origin = 0
+    float brk_top = 0.0
+    float brk_bot = 0.0
+
+    if zones.size() > 0
+        for i = zones.size() - 1 to 0
+            LightZone z = zones.get(i)
+            bool expired = (time - z.origin_time) > max_ms
+            if expired
+                zones.remove(i)
+                continue
+            // Body-close break only
+            bool broken = z.is_supply ? (close > z.top) : (close < z.bottom)
+            if broken
+                z.is_broken := true
+                z.break_time := time
+                if not did_break
+                    did_break := true
+                    brk_is_supply := z.is_supply
+                    brk_is_hh_or_ll := z.is_hh_or_ll
+                    brk_label := z.label_txt
+                    brk_price := z.is_supply ? z.top : z.bottom
+                    brk_origin := z.origin_time
+                    brk_top := z.top
+                    brk_bot := z.bottom
+
+    bool valid = not na(ztop) and not na(zbot) and not na(z_time) and ztop > zbot
+    if fire and (time - z_time) < max_ms and valid
+        string cls_txt = is_sup ? hi_txt : lo_txt
+        bool is_hh_ll = (cls_txt == "HH" or cls_txt == "LL")
+        zones.push(LightZone.new(ztop, zbot, is_sup, is_hh_ll, cls_txt, z_time, false, 0, tf_idx))
+
+        int sup_count = 0
+        int dem_count = 0
+        for j = 0 to zones.size() - 1
+            LightZone zj = zones.get(j)
+            if zj.is_supply
+                sup_count += 1
+            else
+                dem_count += 1
+        while sup_count > lookback
+            for j = 0 to zones.size() - 1
+                LightZone zj = zones.get(j)
+                if zj.is_supply
+                    zones.remove(j)
+                    sup_count -= 1
+                    break
+        while dem_count > lookback
+            for j = 0 to zones.size() - 1
+                LightZone zj = zones.get(j)
+                if not zj.is_supply
+                    zones.remove(j)
+                    dem_count -= 1
+                    break
+
+    [did_break, brk_is_supply, brk_is_hh_or_ll, brk_label, brk_price, brk_origin, brk_top, brk_bot]
+
+// =============================================================================
+// S4 — ZONE ARRAYS + BIAS STATE
+// =============================================================================
+
+var array<LightZone> zones0 = array.new<LightZone>()
+var array<LightZone> zones1 = array.new<LightZone>()
+var array<LightZone> zones2 = array.new<LightZone>()
+var array<LightZone> zones3 = array.new<LightZone>()
+var array<LightZone> zones4 = array.new<LightZone>()
+var array<LightZone> zones5 = array.new<LightZone>()
+var array<LightZone> zones6 = array.new<LightZone>()
+var array<LightZone> zones7 = array.new<LightZone>()
+
+var int bias0 = 0
+var int bias1 = 0
+var int bias2 = 0
+var int bias3 = 0
+var int bias4 = 0
+var int bias5 = 0
+var int bias6 = 0
+var int bias7 = 0
+
+// =============================================================================
+// S4 — EXECUTION (zone management per TF)
+// =============================================================================
+
+[brk0, brk0_sup, brk0_hh, brk0_lbl, brk0_px, brk0_org, brk0_t, brk0_b] = zones0.manage_zones(f0 and i_tf0_on, zt0, zb0, s0, tm0, h1s0, l1s0, i_tf0, 0)
+[brk1, brk1_sup, brk1_hh, brk1_lbl, brk1_px, brk1_org, brk1_t, brk1_b] = zones1.manage_zones(f1 and i_tf1_on, zt1, zb1, s1, tm1, h1s1, l1s1, i_tf1, 1)
+[brk2, brk2_sup, brk2_hh, brk2_lbl, brk2_px, brk2_org, brk2_t, brk2_b] = zones2.manage_zones(f2 and i_tf2_on, zt2, zb2, s2, tm2, h1s2, l1s2, i_tf2, 2)
+[brk3, brk3_sup, brk3_hh, brk3_lbl, brk3_px, brk3_org, brk3_t, brk3_b] = zones3.manage_zones(f3 and i_tf3_on, zt3, zb3, s3, tm3, h1s3, l1s3, i_tf3, 3)
+[brk4, brk4_sup, brk4_hh, brk4_lbl, brk4_px, brk4_org, brk4_t, brk4_b] = zones4.manage_zones(f4 and i_tf4_on, zt4, zb4, s4, tm4, h1s4, l1s4, i_tf4, 4)
+[brk5, brk5_sup, brk5_hh, brk5_lbl, brk5_px, brk5_org, brk5_t, brk5_b] = zones5.manage_zones(f5 and i_tf5_on, zt5, zb5, s5, tm5, h1s5, l1s5, i_tf5, 5)
+[brk6, brk6_sup, brk6_hh, brk6_lbl, brk6_px, brk6_org, brk6_t, brk6_b] = zones6.manage_zones(f6 and i_tf6_on, zt6, zb6, s6, tm6, h1s6, l1s6, i_tf6, 6)
+[brk7, brk7_sup, brk7_hh, brk7_lbl, brk7_px, brk7_org, brk7_t, brk7_b] = zones7.manage_zones(f7 and i_tf7_on, zt7, zb7, s7, tm7, h1s7, l1s7, i_tf7, 7)
+
+// Capture pre-break bias for BOS/CHoCH classification
+// BOS = break in same direction as current bias; CHoCH = opposite
+int pre_bias0 = bias0
+int pre_bias1 = bias1
+int pre_bias2 = bias2
+int pre_bias3 = bias3
+int pre_bias4 = bias4
+int pre_bias5 = bias5
+int pre_bias6 = bias6
+int pre_bias7 = bias7
+
+// Update bias from internal breaks
+if brk0
+    bias0 := brk0_sup ? 1 : -1
+if brk1
+    bias1 := brk1_sup ? 1 : -1
+if brk2
+    bias2 := brk2_sup ? 1 : -1
+if brk3
+    bias3 := brk3_sup ? 1 : -1
+if brk4
+    bias4 := brk4_sup ? 1 : -1
+if brk5
+    bias5 := brk5_sup ? 1 : -1
+if brk6
+    bias6 := brk6_sup ? 1 : -1
+if brk7
+    bias7 := brk7_sup ? 1 : -1
+
+// =============================================================================
+// S5 — STRUCTURE LINE DRAWING
+// BOS = HH or LL zone breaks (same direction as bias — trend confirmed)
+// CHoCH = LH or HL zone breaks (opposite direction — reversal signal)
+// =============================================================================
+
+draw_structure_line(array<line> str_lines, array<label> str_labels, bool did_break, bool is_supply, float brk_price, int brk_origin, string tf_str, bool is_external, int max_lines, int bias, int tf_idx) =>
+    if did_break
+        bool is_bull = is_supply
+        int brk_dir = is_bull ? 1 : -1
+        bool is_bos = (bias == 0) or (brk_dir == bias)
+        string prefix = is_external ? "e" : "i"
+        string brk_type = is_bos ? "BOS" : "CHoCH"
+        string txt = tf_label(tf_str) + " " + prefix + brk_type
+        color line_clr = is_bos ? i_bos_clr : i_choch_clr
+        string line_sty = is_bos ? line.style_solid : line.style_dashed
+        int line_w = is_external ? 2 : 1
+
+        line new_ln = line.new(brk_origin, brk_price, time, brk_price, xloc = xloc.bar_time, color = line_clr, style = line_sty, width = line_w)
+        float frac = is_external ? (tf_idx + 1.5) / 9.0 : (tf_idx + 1.0) / 9.0
+        int lbl_time = int(brk_origin + (time - brk_origin) * frac)
+        string lbl_sty = is_external ? label.style_label_up : label.style_label_down
+        label new_lbl = label.new(lbl_time, brk_price, txt, xloc = xloc.bar_time, style = lbl_sty, color = color.new(color.white, 100), textcolor = line_clr, size = size.tiny)
+
+        str_lines.push(new_ln)
+        str_labels.push(new_lbl)
+
+        while str_lines.size() > max_lines
+            line.delete(str_lines.shift())
+            label.delete(str_labels.shift())
+
+// =============================================================================
+// S5b — BREAKER ZONE MANAGEMENT
+// Created on external HH/LL breaks. Persist until retested (body close inside).
+// =============================================================================
+
+manage_breakers(array<BreakerZone> brk_arr, bool e_brk, bool e_brk_hh, bool e_brk_sup, float e_brk_top, float e_brk_bot, int e_brk_org, string tf_str, int tf_idx, int max_brk) =>
+    if brk_arr.size() > 0
+        for i = brk_arr.size() - 1 to 0
+            BreakerZone z = brk_arr.get(i)
+            bool retested = close >= z.bottom and close <= z.top
+            if retested
+                if not na(z.bx)
+                    box.set_right(z.bx, time)
+                    box.set_extend(z.bx, extend.none)
+                    box.delete(z.bx)
+                brk_arr.remove(i)
+
+    if e_brk and e_brk_hh and not na(e_brk_top) and not na(e_brk_bot) and e_brk_top > e_brk_bot
+        bool was_supply = e_brk_sup
+        color brk_bg = was_supply ? color.new(i_brk_sup_clr, 90) : color.new(i_brk_dem_clr, 90)
+        color brk_br = was_supply ? i_brk_sup_clr : i_brk_dem_clr
+        string brk_txt = tf_label(tf_str) + " BRK " + (was_supply ? "S" : "D")
+        box brk_bx = box.new(e_brk_org, e_brk_top, time, e_brk_bot, xloc = xloc.bar_time, extend = extend.right, bgcolor = brk_bg, border_color = brk_br, border_width = 1, border_style = line.style_dashed, text = brk_txt, text_size = size.tiny, text_color = brk_br, text_halign = text.align_right, text_valign = text.align_top)
+        brk_arr.push(BreakerZone.new(brk_bx, e_brk_top, e_brk_bot, was_supply, e_brk_org, tf_idx))
+
+        while brk_arr.size() > max_brk
+            BreakerZone old_brk = brk_arr.shift()
+            if not na(old_brk.bx)
+                box.delete(old_brk.bx)
+
+// =============================================================================
+// S5c — PERSISTED ZONE HELPER
+// =============================================================================
+
+find_last_unbroken(array<LightZone> zones, bool want_supply) =>
+    float zt = na
+    float zb = na
+    int   zo = na
+    if zones.size() > 0
+        for i = zones.size() - 1 to 0
+            LightZone z = zones.get(i)
+            if not z.is_broken and z.is_supply == want_supply
+                zt := z.top
+                zb := z.bottom
+                zo := z.origin_time
+                break
+    [zt, zb, zo]
+
+// Internal structure line arrays
+var array<line>  istr_ln0 = array.new<line>()
+var array<label> istr_lb0 = array.new<label>()
+var array<line>  istr_ln1 = array.new<line>()
+var array<label> istr_lb1 = array.new<label>()
+var array<line>  istr_ln2 = array.new<line>()
+var array<label> istr_lb2 = array.new<label>()
+var array<line>  istr_ln3 = array.new<line>()
+var array<label> istr_lb3 = array.new<label>()
+var array<line>  istr_ln4 = array.new<line>()
+var array<label> istr_lb4 = array.new<label>()
+var array<line>  istr_ln5 = array.new<line>()
+var array<label> istr_lb5 = array.new<label>()
+var array<line>  istr_ln6 = array.new<line>()
+var array<label> istr_lb6 = array.new<label>()
+var array<line>  istr_ln7 = array.new<line>()
+var array<label> istr_lb7 = array.new<label>()
+
+// Draw internal structure lines (use pre-break bias for correct BOS/CHoCH classification)
+if i_tf0_on
+    draw_structure_line(istr_ln0, istr_lb0, brk0, brk0_sup, brk0_px, brk0_org, i_tf0, false, i_max_str, pre_bias0, 0)
+if i_tf1_on
+    draw_structure_line(istr_ln1, istr_lb1, brk1, brk1_sup, brk1_px, brk1_org, i_tf1, false, i_max_str, pre_bias1, 1)
+if i_tf2_on
+    draw_structure_line(istr_ln2, istr_lb2, brk2, brk2_sup, brk2_px, brk2_org, i_tf2, false, i_max_str, pre_bias2, 2)
+if i_tf3_on
+    draw_structure_line(istr_ln3, istr_lb3, brk3, brk3_sup, brk3_px, brk3_org, i_tf3, false, i_max_str, pre_bias3, 3)
+if i_tf4_on
+    draw_structure_line(istr_ln4, istr_lb4, brk4, brk4_sup, brk4_px, brk4_org, i_tf4, false, i_max_str, pre_bias4, 4)
+if i_tf5_on
+    draw_structure_line(istr_ln5, istr_lb5, brk5, brk5_sup, brk5_px, brk5_org, i_tf5, false, i_max_str, pre_bias5, 5)
+if i_tf6_on
+    draw_structure_line(istr_ln6, istr_lb6, brk6, brk6_sup, brk6_px, brk6_org, i_tf6, false, i_max_str, pre_bias6, 6)
+if i_tf7_on
+    draw_structure_line(istr_ln7, istr_lb7, brk7, brk7_sup, brk7_px, brk7_org, i_tf7, false, i_max_str, pre_bias7, 7)
+
+// =============================================================================
+// S6 — EXTERNAL STRUCTURE DETECTION
+// External = current TF zone broken by price, but zone belongs to parent TF
+// M1 external = M5 internal, M5 external = M15 internal, etc.
+// =============================================================================
+
+check_external_break(array<LightZone> parent_zones) =>
+    bool did_break = false
+    bool brk_is_supply = false
+    bool brk_is_hh_or_ll = false
+    string brk_label = ""
+    float brk_price = 0.0
+    int brk_origin = 0
+    float brk_top = 0.0
+    float brk_bot = 0.0
+
+    if parent_zones.size() > 0
+        for i = parent_zones.size() - 1 to 0
+            LightZone z = parent_zones.get(i)
+            if z.is_broken and z.break_time != time
+                continue
+            bool broken = z.is_broken ? (z.break_time == time) : (z.is_supply ? (close > z.top) : (close < z.bottom))
+            if broken and not did_break
+                z.is_broken := true
+                z.break_time := time
+                did_break := true
+                brk_is_supply := z.is_supply
+                brk_is_hh_or_ll := z.is_hh_or_ll
+                brk_label := z.label_txt
+                brk_price := z.is_supply ? z.top : z.bottom
+                brk_origin := z.origin_time
+                brk_top := z.top
+                brk_bot := z.bottom
+                break
+
+    [did_break, brk_is_supply, brk_is_hh_or_ll, brk_label, brk_price, brk_origin, brk_top, brk_bot]
+
+// External structure line arrays
+var array<line>  estr_ln0 = array.new<line>()
+var array<label> estr_lb0 = array.new<label>()
+var array<line>  estr_ln1 = array.new<line>()
+var array<label> estr_lb1 = array.new<label>()
+var array<line>  estr_ln2 = array.new<line>()
+var array<label> estr_lb2 = array.new<label>()
+var array<line>  estr_ln3 = array.new<line>()
+var array<label> estr_lb3 = array.new<label>()
+var array<line>  estr_ln4 = array.new<line>()
+var array<label> estr_lb4 = array.new<label>()
+var array<line>  estr_ln5 = array.new<line>()
+var array<label> estr_lb5 = array.new<label>()
+var array<line>  estr_ln6 = array.new<line>()
+var array<label> estr_lb6 = array.new<label>()
+
+// Check external breaks (child TF checks parent TF zones)
+[ebrk0, ebrk0_sup, ebrk0_hh, ebrk0_lbl, ebrk0_px, ebrk0_org, ebrk0_t, ebrk0_b] = check_external_break(zones1)
+[ebrk1, ebrk1_sup, ebrk1_hh, ebrk1_lbl, ebrk1_px, ebrk1_org, ebrk1_t, ebrk1_b] = check_external_break(zones2)
+[ebrk2, ebrk2_sup, ebrk2_hh, ebrk2_lbl, ebrk2_px, ebrk2_org, ebrk2_t, ebrk2_b] = check_external_break(zones3)
+[ebrk3, ebrk3_sup, ebrk3_hh, ebrk3_lbl, ebrk3_px, ebrk3_org, ebrk3_t, ebrk3_b] = check_external_break(zones4)
+[ebrk4, ebrk4_sup, ebrk4_hh, ebrk4_lbl, ebrk4_px, ebrk4_org, ebrk4_t, ebrk4_b] = check_external_break(zones5)
+[ebrk5, ebrk5_sup, ebrk5_hh, ebrk5_lbl, ebrk5_px, ebrk5_org, ebrk5_t, ebrk5_b] = check_external_break(zones6)
+[ebrk6, ebrk6_sup, ebrk6_hh, ebrk6_lbl, ebrk6_px, ebrk6_org, ebrk6_t, ebrk6_b] = check_external_break(zones7)
+
+// Clear internal structure lines on external event (optional)
+if i_str_since_ext
+    if ebrk0
+        while istr_ln0.size() > 0
+            line.delete(istr_ln0.shift())
+            label.delete(istr_lb0.shift())
+    if ebrk1
+        while istr_ln1.size() > 0
+            line.delete(istr_ln1.shift())
+            label.delete(istr_lb1.shift())
+    if ebrk2
+        while istr_ln2.size() > 0
+            line.delete(istr_ln2.shift())
+            label.delete(istr_lb2.shift())
+    if ebrk3
+        while istr_ln3.size() > 0
+            line.delete(istr_ln3.shift())
+            label.delete(istr_lb3.shift())
+    if ebrk4
+        while istr_ln4.size() > 0
+            line.delete(istr_ln4.shift())
+            label.delete(istr_lb4.shift())
+    if ebrk5
+        while istr_ln5.size() > 0
+            line.delete(istr_ln5.shift())
+            label.delete(istr_lb5.shift())
+    if ebrk6
+        while istr_ln6.size() > 0
+            line.delete(istr_ln6.shift())
+            label.delete(istr_lb6.shift())
+
+// Draw external structure lines (use current bias — after internal updates)
+if i_tf0_on and i_tf1_on
+    draw_structure_line(estr_ln0, estr_lb0, ebrk0, ebrk0_sup, ebrk0_px, ebrk0_org, i_tf0, true, i_max_str, bias0, 0)
+if i_tf1_on and i_tf2_on
+    draw_structure_line(estr_ln1, estr_lb1, ebrk1, ebrk1_sup, ebrk1_px, ebrk1_org, i_tf1, true, i_max_str, bias1, 1)
+if i_tf2_on and i_tf3_on
+    draw_structure_line(estr_ln2, estr_lb2, ebrk2, ebrk2_sup, ebrk2_px, ebrk2_org, i_tf2, true, i_max_str, bias2, 2)
+if i_tf3_on and i_tf4_on
+    draw_structure_line(estr_ln3, estr_lb3, ebrk3, ebrk3_sup, ebrk3_px, ebrk3_org, i_tf3, true, i_max_str, bias3, 3)
+if i_tf4_on and i_tf5_on
+    draw_structure_line(estr_ln4, estr_lb4, ebrk4, ebrk4_sup, ebrk4_px, ebrk4_org, i_tf4, true, i_max_str, bias4, 4)
+if i_tf5_on and i_tf6_on
+    draw_structure_line(estr_ln5, estr_lb5, ebrk5, ebrk5_sup, ebrk5_px, ebrk5_org, i_tf5, true, i_max_str, bias5, 5)
+if i_tf6_on and i_tf7_on
+    draw_structure_line(estr_ln6, estr_lb6, ebrk6, ebrk6_sup, ebrk6_px, ebrk6_org, i_tf6, true, i_max_str, bias6, 6)
+
+// Update bias from external breaks (takes precedence over internal)
+if ebrk0
+    bias0 := ebrk0_sup ? 1 : -1
+if ebrk1
+    bias1 := ebrk1_sup ? 1 : -1
+if ebrk2
+    bias2 := ebrk2_sup ? 1 : -1
+if ebrk3
+    bias3 := ebrk3_sup ? 1 : -1
+if ebrk4
+    bias4 := ebrk4_sup ? 1 : -1
+if ebrk5
+    bias5 := ebrk5_sup ? 1 : -1
+if ebrk6
+    bias6 := ebrk6_sup ? 1 : -1
+
+// =============================================================================
+// S7 — BREAKER ZONES
+// Created on external HH/LL breaks. Persist until retested (body close inside).
+// =============================================================================
+
+var array<BreakerZone> breakers0 = array.new<BreakerZone>()
+var array<BreakerZone> breakers1 = array.new<BreakerZone>()
+var array<BreakerZone> breakers2 = array.new<BreakerZone>()
+var array<BreakerZone> breakers3 = array.new<BreakerZone>()
+var array<BreakerZone> breakers4 = array.new<BreakerZone>()
+var array<BreakerZone> breakers5 = array.new<BreakerZone>()
+var array<BreakerZone> breakers6 = array.new<BreakerZone>()
+
+if i_brk_on
+    if i_tf0_on and i_tf1_on
+        manage_breakers(breakers0, ebrk0, ebrk0_hh, ebrk0_sup, ebrk0_t, ebrk0_b, ebrk0_org, i_tf0, 0, i_brk_max)
+    if i_tf1_on and i_tf2_on
+        manage_breakers(breakers1, ebrk1, ebrk1_hh, ebrk1_sup, ebrk1_t, ebrk1_b, ebrk1_org, i_tf1, 1, i_brk_max)
+    if i_tf2_on and i_tf3_on
+        manage_breakers(breakers2, ebrk2, ebrk2_hh, ebrk2_sup, ebrk2_t, ebrk2_b, ebrk2_org, i_tf2, 2, i_brk_max)
+    if i_tf3_on and i_tf4_on
+        manage_breakers(breakers3, ebrk3, ebrk3_hh, ebrk3_sup, ebrk3_t, ebrk3_b, ebrk3_org, i_tf3, 3, i_brk_max)
+    if i_tf4_on and i_tf5_on
+        manage_breakers(breakers4, ebrk4, ebrk4_hh, ebrk4_sup, ebrk4_t, ebrk4_b, ebrk4_org, i_tf4, 4, i_brk_max)
+    if i_tf5_on and i_tf6_on
+        manage_breakers(breakers5, ebrk5, ebrk5_hh, ebrk5_sup, ebrk5_t, ebrk5_b, ebrk5_org, i_tf5, 5, i_brk_max)
+    if i_tf6_on and i_tf7_on
+        manage_breakers(breakers6, ebrk6, ebrk6_hh, ebrk6_sup, ebrk6_t, ebrk6_b, ebrk6_org, i_tf6, 6, i_brk_max)
+
+// =============================================================================
+// S8 — PERSISTED H4 ZONES BEFORE eBOS
+// Captures: last H4 supply before bearish eBOS + last H4 demand before bullish eBOS
+// =============================================================================
+
+var box  persist_sup_bx = na
+var float persist_sup_top = na
+var float persist_sup_bot = na
+var int   persist_sup_org = na
+
+var box  persist_dem_bx = na
+var float persist_dem_top = na
+var float persist_dem_bot = na
+var int   persist_dem_org = na
+
+if i_persist_on and i_tf4_on
+    bool bearish_ebos = ebrk4 and not ebrk4_sup
+    bool bullish_ebos = ebrk4 and ebrk4_sup
+    bool bearish_ibos_hh = brk4 and not brk4_sup and brk4_hh
+    bool bullish_ibos_hh = brk4 and brk4_sup and brk4_hh
+
+    if bearish_ebos or bearish_ibos_hh
+        [st, sb, so] = find_last_unbroken(zones4, true)
+        if not na(st) and not na(sb) and st > sb
+            if not na(persist_sup_bx)
+                box.delete(persist_sup_bx)
+            persist_sup_top := st
+            persist_sup_bot := sb
+            persist_sup_org := so
+            persist_sup_bx := box.new(so, st, time, sb, xloc = xloc.bar_time, extend = extend.right, bgcolor = color.new(i_persist_sup_clr, 85), border_color = i_persist_sup_clr, border_width = 2, border_style = line.style_dashed, text = "H4 S (pre-eBOS)", text_size = size.tiny, text_color = i_persist_sup_clr, text_halign = text.align_right, text_valign = text.align_top)
+
+    if bullish_ebos or bullish_ibos_hh
+        [dt, db, do_time] = find_last_unbroken(zones4, false)
+        if not na(dt) and not na(db) and dt > db
+            if not na(persist_dem_bx)
+                box.delete(persist_dem_bx)
+            persist_dem_top := dt
+            persist_dem_bot := db
+            persist_dem_org := do_time
+            persist_dem_bx := box.new(do_time, dt, time, db, xloc = xloc.bar_time, extend = extend.right, bgcolor = color.new(i_persist_dem_clr, 85), border_color = i_persist_dem_clr, border_width = 2, border_style = line.style_dashed, text = "H4 D (pre-eBOS)", text_size = size.tiny, text_color = i_persist_dem_clr, text_halign = text.align_right, text_valign = text.align_top)
+
+    if not na(persist_sup_top) and close > persist_sup_top
+        if not na(persist_sup_bx)
+            box.set_right(persist_sup_bx, time)
+            box.set_extend(persist_sup_bx, extend.none)
+            box.delete(persist_sup_bx)
+            persist_sup_bx := na
+        persist_sup_top := na
+        persist_sup_bot := na
+        persist_sup_org := na
+
+    if not na(persist_dem_bot) and close < persist_dem_bot
+        if not na(persist_dem_bx)
+            box.set_right(persist_dem_bx, time)
+            box.set_extend(persist_dem_bx, extend.none)
+            box.delete(persist_dem_bx)
+            persist_dem_bx := na
+        persist_dem_top := na
+        persist_dem_bot := na
+        persist_dem_org := na
+
+// =============================================================================
+// S9 — BROKEN ZONE CLEANUP
+// =============================================================================
+
+method remove_broken(array<LightZone> zones) =>
+    if zones.size() > 0
+        for i = zones.size() - 1 to 0
+            LightZone z = zones.get(i)
+            if z.is_broken
+                zones.remove(i)
+
+zones0.remove_broken()
+zones1.remove_broken()
+zones2.remove_broken()
+zones3.remove_broken()
+zones4.remove_broken()
+zones5.remove_broken()
+zones6.remove_broken()
+zones7.remove_broken()

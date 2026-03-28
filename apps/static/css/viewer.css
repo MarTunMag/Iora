@@ -1,0 +1,205 @@
+/* viewer.css — Chart viewer layout and UI styles */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    background: #0a0a0f;
+    color: #ccc;
+    font-family: 'Segoe UI', -apple-system, sans-serif;
+    font-size: 13px;
+    overflow: hidden;
+    height: 100vh;
+    display: flex;
+}
+
+/* ── Sidebar ────────────────────────────────────── */
+#sidebar {
+    width: 260px;
+    min-width: 260px;
+    max-width: 260px;
+    background: #111118;
+    border-right: 1px solid #222;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+    position: relative;
+    z-index: 10;
+}
+
+.sidebar-section {
+    padding: 10px 12px;
+    border-bottom: 1px solid #1e1e28;
+}
+.sidebar-section h3 {
+    color: #90caf9;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+}
+
+/* Controls */
+select, input[type="date"], input[type="number"], input[type="range"] {
+    background: #1a1a24;
+    color: #ccc;
+    border: 1px solid #333;
+    padding: 5px 8px;
+    font-size: 12px;
+    width: 100%;
+    border-radius: 3px;
+    margin-bottom: 6px;
+}
+select:focus, input:focus { border-color: #448aff; outline: none; }
+
+label {
+    display: block;
+    color: #888;
+    font-size: 11px;
+    margin-bottom: 2px;
+}
+
+button {
+    background: #1a1a24;
+    color: #90caf9;
+    border: 1px solid #333;
+    padding: 5px 12px;
+    cursor: pointer;
+    font-size: 12px;
+    border-radius: 3px;
+}
+button:hover { background: #252535; border-color: #448aff; }
+button.active { background: #1a3a6a; border-color: #448aff; }
+
+/* All/None toggle links */
+.toggle-all, .toggle-none {
+    font-size: 10px;
+    font-weight: normal;
+    color: #557;
+    cursor: pointer;
+    margin-left: 4px;
+}
+.toggle-all:hover, .toggle-none:hover {
+    color: #88a;
+    text-decoration: underline;
+}
+
+/* Checkbox grid */
+.tf-checks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 8px;
+}
+.tf-checks label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: #aaa;
+    cursor: pointer;
+}
+.tf-checks input[type="number"] {
+    width: 32px;
+    padding: 1px 2px;
+    font-size: 10px;
+    margin: 0;
+    text-align: center;
+    background: #1a1a24;
+    border: 1px solid #333;
+    color: #aaa;
+    border-radius: 2px;
+}
+.tf-checks input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+}
+
+/* ── Main area ──────────────────────────────────── */
+#main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+/* Toolbar */
+#toolbar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    background: #111118;
+    border-bottom: 1px solid #222;
+    flex-shrink: 0;
+}
+#toolbar .sep {
+    width: 1px;
+    height: 20px;
+    background: #333;
+    margin: 0 4px;
+}
+#toolbar .info {
+    margin-left: auto;
+    color: #666;
+    font-size: 11px;
+}
+
+/* Chart container */
+#chart-container {
+    flex: 1;
+    position: relative;
+}
+
+/* ── Replay bar ─────────────────────────────────── */
+#replay-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    background: #111118;
+    border-top: 1px solid #222;
+    flex-shrink: 0;
+}
+#replay-bar button {
+    padding: 3px 8px;
+    font-size: 11px;
+}
+#replay-slider {
+    flex: 1;
+    margin: 0;
+    padding: 0;
+}
+#replay-info {
+    color: #888;
+    font-size: 11px;
+    min-width: 200px;
+    text-align: right;
+}
+
+/* OHLCV crosshair tooltip */
+#crosshair-ohlcv {
+    position: absolute;
+    top: 8px;
+    left: 50px;
+    z-index: 100;
+    display: none;
+    gap: 8px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 11px;
+    color: #ccc;
+    pointer-events: none;
+}
+
+/* Loading spinner */
+#loading {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #90caf9;
+    font-size: 14px;
+    z-index: 200;
+    display: none;
+}
+#loading.visible { display: block; }

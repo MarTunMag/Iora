@@ -1,0 +1,32 @@
+[project]
+name = "iora"
+version = "0.1.0"
+description = "Iora Trading System — automated rule-based trading"
+requires-python = ">=3.12"
+dependencies = [
+    "pandas>=2.0,<3",
+    "numpy>=1.24,<3",
+    "pyarrow>=14.0,<23",
+    "flask>=3.0,<4",
+    "flask-caching>=2.0,<3",
+    "flask-compress>=1.13,<2",
+    "flask-limiter>=3.0,<4",
+    "PyYAML>=6.0,<7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.4",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100

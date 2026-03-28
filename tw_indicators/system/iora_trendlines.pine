@@ -1,0 +1,231 @@
+//@version=6
+indicator("Iora Trendlines", overlay = true, max_lines_count = 500, max_labels_count = 500, calc_bars_count = 5000)
+
+// =============================================================================
+// S1 — TYPE
+// =============================================================================
+
+type TrendState
+    float   prev_h     = na
+    float   prev_l     = na
+    int     prev_t     = na
+    float   prev2_h    = na
+    float   prev2_l    = na
+    int     prev2_t    = na
+    line    desc_ln    = na
+    line    asc_ln     = na
+    line    broken_desc = na
+    line    broken_asc  = na
+    label   desc_lbl   = na
+    label   asc_lbl    = na
+
+// =============================================================================
+// S1 — INPUTS
+// =============================================================================
+
+string GRP_TF  = "Timeframes"
+bool   i_mn_on  = input.bool(true,  "Monthly", group = GRP_TF, tooltip = "Chart TF must be lower than selected TF")
+bool   i_wk_on  = input.bool(true,  "Weekly",  group = GRP_TF)
+bool   i_dy_on  = input.bool(true,  "Daily",   group = GRP_TF)
+bool   i_h4_on  = input.bool(true,  "H4",      group = GRP_TF)
+bool   i_h1_on  = input.bool(false, "H1",      group = GRP_TF)
+bool   i_m15_on = input.bool(false, "M15",     group = GRP_TF)
+
+string GRP_CLR  = "Colors"
+color  i_mn_clr  = input.color(#FFD600, "Monthly", group = GRP_CLR)
+color  i_wk_clr  = input.color(#FF6D00, "Weekly",  group = GRP_CLR)
+color  i_dy_clr  = input.color(#FFFFFF, "Daily",   group = GRP_CLR)
+color  i_h4_clr  = input.color(#26C6DA, "H4",      group = GRP_CLR)
+color  i_h1_clr  = input.color(#66BB6A, "H1",      group = GRP_CLR)
+color  i_m15_clr = input.color(#AB47BC, "M15",     group = GRP_CLR)
+
+string GRP_STY  = "Style"
+color  i_brk_clr = input.color(color.new(#9E9E9E, 40), "Broken Line Color", group = GRP_STY)
+int    i_line_w  = input.int(2, "Active Line Width", group = GRP_STY, minval = 1, maxval = 5)
+
+// =============================================================================
+// S1 — HELPERS
+// =============================================================================
+
+tf_label(string tf) =>
+    switch tf
+        "1M"  => "MN"
+        "1W"  => "W"
+        "1D"  => "D"
+        "240" => "H4"
+        "60"  => "H1"
+        "15"  => "M15"
+        => tf
+
+// =============================================================================
+// S2 — HA CALCULATION
+// =============================================================================
+
+ha_tl() =>
+    float haC = na
+    float haO = na
+    haC := (open + high + low + close) / 4.0
+    haO := na(haO[1]) ? (open + close) / 2.0 : (nz(haO[1]) + nz(haC[1])) / 2.0
+    float haH = math.max(high, math.max(haC, haO))
+    float haL = math.min(low, math.min(haC, haO))
+    [haH, haL]
+
+// =============================================================================
+// S3 — DATA REQUESTS (6 calls)
+// =============================================================================
+
+[mn_h, mn_l]   = request.security(syminfo.tickerid, "1M",  ha_tl(), gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_on)
+[wk_h, wk_l]   = request.security(syminfo.tickerid, "1W",  ha_tl(), gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_on)
+[dy_h, dy_l]   = request.security(syminfo.tickerid, "1D",  ha_tl(), gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_on)
+[h4_h, h4_l]   = request.security(syminfo.tickerid, "240", ha_tl(), gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_on)
+[h1_h, h1_l]   = request.security(syminfo.tickerid, "60",  ha_tl(), gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_on)
+[m15_h, m15_l] = request.security(syminfo.tickerid, "15",  ha_tl(), gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_on)
+
+// =============================================================================
+// S4 — NEW CANDLE DETECTION + CHART TF VALIDATION
+// =============================================================================
+
+int mn_tv  = time("1M")
+int wk_tv  = time("1W")
+int dy_tv  = time("1D")
+int h4_tv  = time("240")
+int h1_tv  = time("60")
+int m15_tv = time("15")
+
+bool mn_nc  = ta.change(mn_tv)  != 0
+bool wk_nc  = ta.change(wk_tv)  != 0
+bool dy_nc  = ta.change(dy_tv)  != 0
+bool h4_nc  = ta.change(h4_tv)  != 0
+bool h1_nc  = ta.change(h1_tv)  != 0
+bool m15_nc = ta.change(m15_tv) != 0
+
+// Skip TFs at or below chart TF
+int chart_s   = timeframe.in_seconds()
+bool mn_ok  = timeframe.in_seconds("1M")  > chart_s
+bool wk_ok  = timeframe.in_seconds("1W")  > chart_s
+bool dy_ok  = timeframe.in_seconds("1D")  > chart_s
+bool h4_ok  = timeframe.in_seconds("240") > chart_s
+bool h1_ok  = timeframe.in_seconds("60")  > chart_s
+bool m15_ok = timeframe.in_seconds("15")  > chart_s
+
+// =============================================================================
+// S5 — TRENDLINE UPDATE METHOD
+// On each closed candle:
+//   LH → draw/update descending trendline through last 2 highs
+//   HH → break descending trendline (turn dashed gray)
+//   HL → draw/update ascending trendline through last 2 lows
+//   LL → break ascending trendline (turn dashed gray)
+// Both ascending + descending active simultaneously = triangle/wedge/flag
+// =============================================================================
+
+method update_tl(TrendState st, float hPrev, float lPrev, int tPrev, color aClr, color bClr, int lnW, string tfStr) =>
+    if not na(hPrev) and not na(lPrev) and not na(tPrev)
+        st.prev2_h := st.prev_h
+        st.prev2_l := st.prev_l
+        st.prev2_t := st.prev_t
+        st.prev_h  := hPrev
+        st.prev_l  := lPrev
+        st.prev_t  := tPrev
+
+    bool ready = not na(st.prev_h) and not na(st.prev2_h) and not na(st.prev_t) and not na(st.prev2_t) and st.prev_t != st.prev2_t
+    string lbl = tf_label(tfStr)
+    int brkW = math.max(lnW - 1, 1)
+
+    // LH → draw/update descending trendline
+    if ready and st.prev_h < st.prev2_h
+        if not na(st.desc_ln)
+            line.delete(st.desc_ln)
+        if not na(st.desc_lbl)
+            label.delete(st.desc_lbl)
+        st.desc_ln  := line.new(st.prev2_t, st.prev2_h, st.prev_t, st.prev_h, xloc = xloc.bar_time, extend = extend.right, color = aClr, width = lnW, style = line.style_solid)
+        st.desc_lbl := label.new(st.prev_t, st.prev_h, lbl + " ↘", xloc = xloc.bar_time, style = label.style_none, textcolor = aClr, size = size.small)
+
+    // HH → break descending trendline
+    if ready and st.prev_h > st.prev2_h and not na(st.desc_ln)
+        line.set_color(st.desc_ln, bClr)
+        line.set_style(st.desc_ln, line.style_dashed)
+        line.set_width(st.desc_ln, brkW)
+        if not na(st.desc_lbl)
+            label.delete(st.desc_lbl)
+        st.desc_lbl := na
+        if not na(st.broken_desc)
+            line.delete(st.broken_desc)
+        st.broken_desc := st.desc_ln
+        st.desc_ln := na
+
+    // HL → draw/update ascending trendline
+    if ready and st.prev_l > st.prev2_l
+        if not na(st.asc_ln)
+            line.delete(st.asc_ln)
+        if not na(st.asc_lbl)
+            label.delete(st.asc_lbl)
+        st.asc_ln  := line.new(st.prev2_t, st.prev2_l, st.prev_t, st.prev_l, xloc = xloc.bar_time, extend = extend.right, color = aClr, width = lnW, style = line.style_solid)
+        st.asc_lbl := label.new(st.prev_t, st.prev_l, lbl + " ↗", xloc = xloc.bar_time, style = label.style_none, textcolor = aClr, size = size.small)
+
+    // LL → break ascending trendline
+    if ready and st.prev_l < st.prev2_l and not na(st.asc_ln)
+        line.set_color(st.asc_ln, bClr)
+        line.set_style(st.asc_ln, line.style_dashed)
+        line.set_width(st.asc_ln, brkW)
+        if not na(st.asc_lbl)
+            label.delete(st.asc_lbl)
+        st.asc_lbl := na
+        if not na(st.broken_asc)
+            line.delete(st.broken_asc)
+        st.broken_asc := st.asc_ln
+        st.asc_ln := na
+
+// =============================================================================
+// S6 — STATE + EXECUTION
+// =============================================================================
+
+var TrendState ts_mn  = TrendState.new()
+var TrendState ts_wk  = TrendState.new()
+var TrendState ts_dy  = TrendState.new()
+var TrendState ts_h4  = TrendState.new()
+var TrendState ts_h1  = TrendState.new()
+var TrendState ts_m15 = TrendState.new()
+
+// Track candle start times (used as trendline X coordinates)
+var int mn_start  = na
+var int wk_start  = na
+var int dy_start  = na
+var int h4_start  = na
+var int h1_start  = na
+var int m15_start = na
+
+// Monthly
+if i_mn_on and mn_ok and mn_nc
+    if not na(mn_start)
+        ts_mn.update_tl(mn_h[1], mn_l[1], mn_start, i_mn_clr, i_brk_clr, i_line_w, "1M")
+    mn_start := nz(mn_tv, time)
+
+// Weekly
+if i_wk_on and wk_ok and wk_nc
+    if not na(wk_start)
+        ts_wk.update_tl(wk_h[1], wk_l[1], wk_start, i_wk_clr, i_brk_clr, i_line_w, "1W")
+    wk_start := nz(wk_tv, time)
+
+// Daily
+if i_dy_on and dy_ok and dy_nc
+    if not na(dy_start)
+        ts_dy.update_tl(dy_h[1], dy_l[1], dy_start, i_dy_clr, i_brk_clr, i_line_w, "1D")
+    dy_start := nz(dy_tv, time)
+
+// H4
+if i_h4_on and h4_ok and h4_nc
+    if not na(h4_start)
+        ts_h4.update_tl(h4_h[1], h4_l[1], h4_start, i_h4_clr, i_brk_clr, i_line_w, "240")
+    h4_start := nz(h4_tv, time)
+
+// H1
+if i_h1_on and h1_ok and h1_nc
+    if not na(h1_start)
+        ts_h1.update_tl(h1_h[1], h1_l[1], h1_start, i_h1_clr, i_brk_clr, i_line_w, "60")
+    h1_start := nz(h1_tv, time)
+
+// M15
+if i_m15_on and m15_ok and m15_nc
+    if not na(m15_start)
+        ts_m15.update_tl(m15_h[1], m15_l[1], m15_start, i_m15_clr, i_brk_clr, i_line_w, "15")
+    m15_start := nz(m15_tv, time)
