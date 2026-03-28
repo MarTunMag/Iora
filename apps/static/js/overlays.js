@@ -531,7 +531,7 @@ class TrendlineRenderer {
                     } else {
                         endX = x2; endY = y2;
                     }
-                } else if (RAY_TFS.has(s._tfLabel.split('⊂')[0])) {
+                } else if (RAY_TFS.has(s._tfLabel.replace(/[▸◂].*/,''))) {
                     // Top-level TFs (including XTF W1⊂D1) extend to right edge
                     const chartWidth = scope.bitmapSize.width / hr;
                     const dx = x2 - x1;

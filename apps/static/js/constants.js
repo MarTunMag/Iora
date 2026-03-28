@@ -115,9 +115,3 @@ const CONTEXT_MODE_COLORS = {
     SKIP:  'rgba(0, 0, 0, 0)',          // No tint
 };
 
-const PULSE_MODE_COLORS = {
-    RIDE:  '#4CAF50',
-    SCALP: '#FFEB3B',
-    FLIP:  '#F44336',
-    SKIP:  '#666666',
-};

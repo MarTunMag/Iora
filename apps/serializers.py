@@ -206,3 +206,114 @@ def serialize_htf_candles(
             )
         result[tf] = candles
     return result
+
+
+# ── Structure serialization ──────────────────────────────────────────────
+
+
+def _structure_zone_dict(z) -> dict:
+    """Convert a single ZoneResult zone to a JSON-safe dict with lifecycle."""
+    if not z.is_broken:
+        lifecycle = "active"
+    elif not z.label:
+        lifecycle = "expired"
+    elif z.label in ("HH", "LL"):
+        lifecycle = "breaker"
+    else:
+        lifecycle = "mitigation"
+
+    return {
+        "top": z.top, "bot": z.bot, "is_supply": z.is_supply,
+        "origin_time": z.origin_time.isoformat(),
+        "confirm_time": z.confirm_time.isoformat(),
+        "label": z.label, "is_broken": z.is_broken,
+        "break_time": z.break_time.isoformat() if z.break_time else None,
+        "lifecycle": lifecycle,
+    }
+
+
+def _serialize_events(state) -> list[dict]:
+    """Convert StructureState events to JSON-safe dicts."""
+    if not state:
+        return []
+    return [
+        {
+            "time": e.time.isoformat(),
+            "price": e.price,
+            "break_type": e.break_type,
+            "is_external": e.is_external,
+            "label": e.label,
+            "direction": e.direction,
+            "zone_label": e.zone_label,
+            "zone_origin_time": e.zone_origin_time.isoformat(),
+        }
+        for e in state.events
+    ]
+
+
+def _serialize_zigzag(zones, is_external: bool = False) -> list[dict]:
+    """Build zigzag vertices from zone list."""
+    suffix = "+" if is_external else ""
+    return [
+        {
+            "time": z.confirm_time.isoformat(),
+            "price": z.top if z.is_supply else z.bot,
+            "label": (z.label + suffix) if z.label else ("" if is_external else z.label),
+            "is_external": is_external,
+        }
+        for z in zones
+    ]
+
+
+def serialize_structure(data: dict, tf: str, max_zones: int = 50) -> dict:
+    """Serialize full structure response (child + parent + sub zones, events, zigzag).
+
+    ``data`` is the dict returned by ``_get_structure()`` in chart_viewer_lw.py.
+    """
+    child_result = data["child"]
+    parent_result = data["parent"]
+    sub_result = data["sub"]
+    state = data["state"]
+    sub_state = data.get("sub_state")
+    parent_tf = data["parent_tf"]
+    sub_tf = data.get("sub_tf")
+
+    child_zones = [_structure_zone_dict(z) for z in child_result.zones[-max_zones:]]
+    parent_zones = [_structure_zone_dict(z) for z in parent_result.zones[-max_zones:]]
+    sub_zones = [_structure_zone_dict(z) for z in sub_result.zones[-max_zones:]]
+
+    events = _serialize_events(state)
+    sub_events = _serialize_events(sub_state)
+
+    # External boundary levels
+    ext_high = None
+    ext_low = None
+    if state and state.external_high:
+        ext_high = {"price": state.external_high.price, "time": state.external_high.time.isoformat()}
+    if state and state.external_low:
+        ext_low = {"price": state.external_low.price, "time": state.external_low.time.isoformat()}
+
+    # Zigzag — child + parent merged and sorted
+    zigzag = _serialize_zigzag(child_result.zones) + _serialize_zigzag(parent_result.zones, is_external=True)
+    zigzag.sort(key=lambda v: v["time"])
+
+    sub_zigzag = _serialize_zigzag(sub_result.zones)
+
+    return {
+        "child_zones": child_zones,
+        "parent_zones": parent_zones,
+        "sub_zones": sub_zones,
+        "events": events,
+        "sub_events": sub_events,
+        "external_high": ext_high,
+        "external_low": ext_low,
+        "zigzag": zigzag,
+        "sub_zigzag": sub_zigzag,
+        "child_bias": child_result.bias,
+        "parent_bias": parent_result.bias,
+        "sub_bias": sub_result.bias,
+        "chain_count": state.chain_count if state else 0,
+        "child_tf": tf,
+        "parent_tf": parent_tf or "",
+        "sub_tf": sub_tf or "",
+    }

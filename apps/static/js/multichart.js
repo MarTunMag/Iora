@@ -356,8 +356,8 @@ const MultiChart = {
                 const tfIdx = _getMcAllTFs().indexOf(entry.tf);
                 const oc = entry.overlayConfig;
                 if (htfStructActive) {
-                    // Enable own TF + 2 levels above for zones, TLs, BOS
-                    ['zones', 'trendlines', 'bos'].forEach(key => {
+                    // Enable own TF + 2 levels above for zones and TLs
+                    ['zones', 'trendlines'].forEach(key => {
                         _getMcAllTFs().forEach((t, tIdx) => {
                             if (!oc[key][t]) oc[key][t] = { on: false, count: 2 };
                             if (tIdx >= tfIdx - 2 && tIdx <= tfIdx) {
@@ -365,12 +365,16 @@ const MultiChart = {
                             }
                         });
                     });
+                    // BOS/CHoCH breaks are controlled globally via Structure module
+                    Structure.setBreaksEnabled(true);
                 } else {
                     // Reset to defaults
                     entry.overlayConfig = this._buildDefaultOverlayConfig(entry.tf);
                 }
                 this._renderOverlays(i);
             });
+            // Reset breaks when toggling off
+            if (!htfStructActive) Structure.setBreaksEnabled(false);
         });
         toolbar.appendChild(htfBtn);
 
@@ -1086,7 +1090,12 @@ const MultiChart = {
 
         // Use full Overlays renderer (pass chart instance for coordinate conversion)
         entry._primitives = Overlays.renderToSeries(entry.chart, entry.series, entry.data, opts);
-        if (typeof Structure !== 'undefined') Structure.render(entry.chart, entry.series, undefined, entry.tf);
+        // Structure zones: only render when Z toggle is on for this panel
+        if (typeof Structure !== 'undefined') {
+            if (entry.overlays.zones) {
+                Structure.render(entry.chart, entry.series, maxTime < Infinity ? maxTime : undefined, entry.tf);
+            }
+        }
 
         // Update signal count badge on S button
         if (entry.sBtn) {

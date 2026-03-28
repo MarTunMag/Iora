@@ -181,7 +181,7 @@ const Structure = (() => {
     function setBreakersEnabled(v)   { _breakersEnabled = v; }
     function setOpposingEnabled(v)   { _opposingEnabled = v; }
     function setSubEnabled(v)        { _subEnabled = v; }
-    function setZoneCounts(counts)   { _zoneCounts = counts; }
+    function setZoneCounts(counts)   { _zoneCounts = counts; _subEnabled = (counts.sub > 0); }
     function getZoneCounts()         { return _zoneCounts; }
     function getData(tf)             { return tf ? _dataByTf[tf] : Object.values(_dataByTf)[0]; }
     function setDisplayMode(mode) { _displayMode = mode; }

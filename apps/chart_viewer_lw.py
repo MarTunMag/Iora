@@ -168,7 +168,8 @@ def _load(symbol: str, tf: str, start: str | None, end: str | None) -> pd.DataFr
     if _warehouse_loader is not None:
         try:
             df = _warehouse_loader.load(symbol, tf, start_date=start, end_date=end)
-        except Exception:
+        except Exception as e:
+            log.debug("Warehouse load failed for %s %s: %s", symbol, tf, e)
             df = pd.DataFrame()
 
     # Fall back to raw parquet storage
@@ -315,6 +316,7 @@ from apps.serializers import (
     serialize_htf_candles,
     serialize_ohlcv,
     serialize_signals,
+    serialize_structure,
     serialize_trendlines,
     serialize_zones,
 )
@@ -679,122 +681,7 @@ def api_structure():
         logging.exception("Structure failed for %s %s", symbol, tf)
         return jsonify({"error": str(e)}), 500
 
-    child_result = data["child"]
-    parent_result = data["parent"]
-    state = data["state"]
-    parent_tf = data["parent_tf"]
-    sub_result = data["sub"]
-    sub_state = data.get("sub_state")
-    sub_tf = data.get("sub_tf")
-
-    def _zone_dict(z):
-        # Lifecycle classification (spec §2.2)
-        if not z.is_broken:
-            lifecycle = "active"
-        elif not z.label:
-            lifecycle = "expired"
-        elif z.label in ("HH", "LL"):
-            lifecycle = "breaker"
-        else:
-            lifecycle = "mitigation"
-
-        return {
-            "top": z.top, "bot": z.bot, "is_supply": z.is_supply,
-            "origin_time": z.origin_time.isoformat(),
-            "confirm_time": z.confirm_time.isoformat(),
-            "label": z.label, "is_broken": z.is_broken,
-            "break_time": z.break_time.isoformat() if z.break_time else None,
-            "lifecycle": lifecycle,
-        }
-
-    child_zones = [_zone_dict(z) for z in child_result.zones[-max_zones:]]
-    parent_zones = [_zone_dict(z) for z in parent_result.zones[-max_zones:]]
-    sub_zones = [_zone_dict(z) for z in sub_result.zones[-max_zones:]]
-
-    # Events from structure state
-    events = []
-    if state:
-        for e in state.events:
-            events.append({
-                "time": e.time.isoformat(),
-                "price": e.price,
-                "break_type": e.break_type,
-                "is_external": e.is_external,
-                "label": e.label,
-                "direction": e.direction,
-                "zone_label": e.zone_label,
-                "zone_origin_time": e.zone_origin_time.isoformat(),
-            })
-
-    # External boundary levels
-    ext_high = None
-    ext_low = None
-    if state and state.external_high:
-        ext_high = {"price": state.external_high.price, "time": state.external_high.time.isoformat()}
-    if state and state.external_low:
-        ext_low = {"price": state.external_low.price, "time": state.external_low.time.isoformat()}
-
-    # Zigzag vertices from zone origins (confirm_time for no-lookahead)
-    zigzag = []
-    for z in child_result.zones:
-        zigzag.append({
-            "time": z.confirm_time.isoformat(),
-            "price": z.top if z.is_supply else z.bot,
-            "label": z.label,
-            "is_external": False,
-        })
-    for z in parent_result.zones:
-        zigzag.append({
-            "time": z.confirm_time.isoformat(),
-            "price": z.top if z.is_supply else z.bot,
-            "label": (z.label + "+") if z.label else "",
-            "is_external": True,
-        })
-    zigzag.sort(key=lambda v: v["time"])
-
-    # Sub events
-    sub_events = []
-    if sub_state:
-        for e in sub_state.events:
-            sub_events.append({
-                "time": e.time.isoformat(),
-                "price": e.price,
-                "break_type": e.break_type,
-                "is_external": e.is_external,
-                "label": e.label,
-                "direction": e.direction,
-                "zone_label": e.zone_label,
-                "zone_origin_time": e.zone_origin_time.isoformat(),
-            })
-
-    # Sub zigzag
-    sub_zigzag = []
-    for z in sub_result.zones:
-        sub_zigzag.append({
-            "time": z.confirm_time.isoformat(),
-            "price": z.top if z.is_supply else z.bot,
-            "label": z.label,
-            "is_external": False,
-        })
-
-    return jsonify({
-        "child_zones": child_zones,
-        "parent_zones": parent_zones,
-        "sub_zones": sub_zones,
-        "events": events,
-        "sub_events": sub_events,
-        "external_high": ext_high,
-        "external_low": ext_low,
-        "zigzag": zigzag,
-        "sub_zigzag": sub_zigzag,
-        "child_bias": child_result.bias,
-        "parent_bias": parent_result.bias,
-        "sub_bias": sub_result.bias,
-        "chain_count": state.chain_count if state else 0,
-        "child_tf": tf,
-        "parent_tf": parent_tf or "",
-        "sub_tf": sub_tf or "",
-    })
+    return jsonify(serialize_structure(data, tf, max_zones))
 
 
 @app.route("/api/latest_date")
