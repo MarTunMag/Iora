@@ -1,0 +1,931 @@
+//@version=6
+indicator("Iora Signal Engine", overlay=true, max_boxes_count=500, max_labels_count=500, max_lines_count=500)
+
+// =============================================================================
+// === SECTION 1: INPUTS
+// =============================================================================
+
+// --- Group: Zones ---
+bool   i_show_zones  = input.bool(true,           "Show zone boxes",           group="Zones")
+bool   i_zone_m1     = input.bool(false,           "Show M1 zones",             group="Zones")
+bool   i_zone_m5     = input.bool(true,            "Show M5 zones",             group="Zones")
+bool   i_zone_m15    = input.bool(true,            "Show M15 zones",            group="Zones")
+bool   i_zone_h1     = input.bool(true,            "Show H1 zones",             group="Zones")
+bool   i_zone_h4     = input.bool(true,            "Show H4 zones",             group="Zones")
+bool   i_zone_d      = input.bool(true,            "Show D zones",              group="Zones")
+int    i_max_zones   = input.int(8,                "Max zones per TF per side", group="Zones", options=[4, 6, 8, 12])
+
+// --- Group: Signals ---
+bool   i_show_model_a = input.bool(true,           "Show Model A signals",      group="Signals")
+bool   i_show_model_b = input.bool(true,           "Show Model B signals",      group="Signals")
+bool   i_show_model_c = input.bool(true,           "Show Model C signals",      group="Signals")
+bool   i_show_model_d = input.bool(true,           "Show Model D signals",      group="Signals")
+bool   i_show_sl_tp   = input.bool(true,           "Show SL/TP lines",          group="Signals")
+
+// --- Group: Dashboard ---
+bool   i_dash_on     = input.bool(true,            "Show Dashboard",            group="Dashboard")
+string i_dash_pos    = input.string("Bottom Left", "Position",                  group="Dashboard", options=["Top Left", "Top Right", "Bottom Left", "Bottom Right"])
+
+// =============================================================================
+// === SECTION 2: REQUEST.SECURITY — 7 TIMEFRAMES (M5 through MN)
+// =============================================================================
+
+[m5o,  m5h,  m5l,  m5c,  m5t,  m5tc]  = request.security(syminfo.tickerid, "5",   [open, high, low, close, time, time_close], lookahead=barmerge.lookahead_on)
+[m15o, m15h, m15l, m15c, m15t, m15tc] = request.security(syminfo.tickerid, "15",  [open, high, low, close, time, time_close], lookahead=barmerge.lookahead_on)
+[h1o,  h1h,  h1l,  h1c,  h1t,  h1tc]  = request.security(syminfo.tickerid, "60",  [open, high, low, close, time, time_close], lookahead=barmerge.lookahead_on)
+[h4o,  h4h,  h4l,  h4c,  h4t,  h4tc]  = request.security(syminfo.tickerid, "240", [open, high, low, close, time, time_close], lookahead=barmerge.lookahead_on)
+[d_o,  d_h,  d_l,  d_c,  d_t,  d_tc]  = request.security(syminfo.tickerid, "1D",  [open, high, low, close, time, time_close], lookahead=barmerge.lookahead_on)
+[w_o,  w_h,  w_l,  w_c,  w_t,  w_tc]  = request.security(syminfo.tickerid, "1W",  [open, high, low, close, time, time_close], lookahead=barmerge.lookahead_on)
+[mn_o, mn_h, mn_l, mn_c, mn_t, mn_tc] = request.security(syminfo.tickerid, "1M",  [open, high, low, close, time, time_close], lookahead=barmerge.lookahead_on)
+
+// =============================================================================
+// === SECTION 3: NEW-PERIOD DETECTION BOOLEANS
+// =============================================================================
+
+bool m5_new  = ta.change(m5t)  != 0
+bool m15_new = ta.change(m15t) != 0
+bool h1_new  = ta.change(h1t)  != 0
+bool h4_new  = ta.change(h4t)  != 0
+bool d_new   = ta.change(d_t)  != 0
+bool w_new   = ta.change(w_t)  != 0
+bool mn_new  = ta.change(mn_t) != 0
+
+// =============================================================================
+// === SECTION 4: ENVELOPE COMPUTATION — ALL 8 TIMEFRAMES
+// =============================================================================
+
+// --- M1 envelope: trivial — raw bar data ---
+float m1_env_ceil  = high
+float m1_env_mid   = close
+float m1_env_floor = low
+
+// --- M5 envelope: child = M1, N=5 (SMA of raw bars) ---
+float m5_env_ceil  = ta.sma(high, 5)
+float m5_env_floor = ta.sma(low, 5)
+float m5_env_mid   = ta.sma(close, 5)
+
+// --- M15 envelope: child = M5, N=3 (2 closed + 1 building) ---
+var array<float> m5_ch_hi  = array.new_float(0)
+var array<float> m5_ch_lo  = array.new_float(0)
+var array<float> m5_ch_cl  = array.new_float(0)
+var int m5_ch_cnt = 0
+if m5_new and not na(m5h[1])
+    m5_ch_hi.unshift(m5h[1])
+    m5_ch_lo.unshift(m5l[1])
+    m5_ch_cl.unshift(m5c[1])
+    m5_ch_cnt += 1
+    if m5_ch_hi.size() > 2
+        m5_ch_hi.pop()
+        m5_ch_lo.pop()
+        m5_ch_cl.pop()
+float m15_env_ceil  = m5_ch_cnt >= 2 ? (m5_ch_hi.sum() + m5h) / 3 : na
+float m15_env_floor = m5_ch_cnt >= 2 ? (m5_ch_lo.sum() + m5l) / 3 : na
+float m15_env_mid   = m5_ch_cnt >= 2 ? (m5_ch_cl.sum() + m5c) / 3 : na
+
+// --- H1 envelope: child = M15, N=4 ---
+var array<float> m15_ch_hi  = array.new_float(0)
+var array<float> m15_ch_lo  = array.new_float(0)
+var array<float> m15_ch_cl  = array.new_float(0)
+var int m15_ch_cnt = 0
+if m15_new and not na(m15h[1])
+    m15_ch_hi.unshift(m15h[1])
+    m15_ch_lo.unshift(m15l[1])
+    m15_ch_cl.unshift(m15c[1])
+    m15_ch_cnt += 1
+    if m15_ch_hi.size() > 3
+        m15_ch_hi.pop()
+        m15_ch_lo.pop()
+        m15_ch_cl.pop()
+float h1_env_ceil  = m15_ch_cnt >= 3 ? (m15_ch_hi.sum() + m15h) / 4 : na
+float h1_env_floor = m15_ch_cnt >= 3 ? (m15_ch_lo.sum() + m15l) / 4 : na
+float h1_env_mid   = m15_ch_cnt >= 3 ? (m15_ch_cl.sum() + m15c) / 4 : na
+
+// --- H4 envelope: child = H1, N=4 ---
+var array<float> h1_ch_hi  = array.new_float(0)
+var array<float> h1_ch_lo  = array.new_float(0)
+var array<float> h1_ch_cl  = array.new_float(0)
+var int h1_ch_cnt = 0
+if h1_new and not na(h1h[1])
+    h1_ch_hi.unshift(h1h[1])
+    h1_ch_lo.unshift(h1l[1])
+    h1_ch_cl.unshift(h1c[1])
+    h1_ch_cnt += 1
+    if h1_ch_hi.size() > 3
+        h1_ch_hi.pop()
+        h1_ch_lo.pop()
+        h1_ch_cl.pop()
+float h4_env_ceil  = h1_ch_cnt >= 3 ? (h1_ch_hi.sum() + h1h) / 4 : na
+float h4_env_floor = h1_ch_cnt >= 3 ? (h1_ch_lo.sum() + h1l) / 4 : na
+float h4_env_mid   = h1_ch_cnt >= 3 ? (h1_ch_cl.sum() + h1c) / 4 : na
+
+// --- D envelope: child = H4, N=6 ---
+var array<float> h4_ch_hi  = array.new_float(0)
+var array<float> h4_ch_lo  = array.new_float(0)
+var array<float> h4_ch_cl  = array.new_float(0)
+var int h4_ch_cnt = 0
+if h4_new and not na(h4h[1])
+    h4_ch_hi.unshift(h4h[1])
+    h4_ch_lo.unshift(h4l[1])
+    h4_ch_cl.unshift(h4c[1])
+    h4_ch_cnt += 1
+    if h4_ch_hi.size() > 5
+        h4_ch_hi.pop()
+        h4_ch_lo.pop()
+        h4_ch_cl.pop()
+float d_env_ceil  = h4_ch_cnt >= 5 ? (h4_ch_hi.sum() + h4h) / 6 : na
+float d_env_floor = h4_ch_cnt >= 5 ? (h4_ch_lo.sum() + h4l) / 6 : na
+float d_env_mid   = h4_ch_cnt >= 5 ? (h4_ch_cl.sum() + h4c) / 6 : na
+
+// --- W envelope: child = D, N=5 ---
+var array<float> d_ch_hi  = array.new_float(0)
+var array<float> d_ch_lo  = array.new_float(0)
+var array<float> d_ch_cl  = array.new_float(0)
+var int d_ch_cnt = 0
+if d_new and not na(d_h[1])
+    d_ch_hi.unshift(d_h[1])
+    d_ch_lo.unshift(d_l[1])
+    d_ch_cl.unshift(d_c[1])
+    d_ch_cnt += 1
+    if d_ch_hi.size() > 4
+        d_ch_hi.pop()
+        d_ch_lo.pop()
+        d_ch_cl.pop()
+float w_env_ceil  = d_ch_cnt >= 4 ? (d_ch_hi.sum() + d_h) / 5 : na
+float w_env_floor = d_ch_cnt >= 4 ? (d_ch_lo.sum() + d_l) / 5 : na
+float w_env_mid   = d_ch_cnt >= 4 ? (d_ch_cl.sum() + d_c) / 5 : na
+
+// --- MN envelope: child = W, N=4 ---
+var array<float> w_ch_hi  = array.new_float(0)
+var array<float> w_ch_lo  = array.new_float(0)
+var array<float> w_ch_cl  = array.new_float(0)
+var int w_ch_cnt = 0
+if w_new and not na(w_h[1])
+    w_ch_hi.unshift(w_h[1])
+    w_ch_lo.unshift(w_l[1])
+    w_ch_cl.unshift(w_c[1])
+    w_ch_cnt += 1
+    if w_ch_hi.size() > 3
+        w_ch_hi.pop()
+        w_ch_lo.pop()
+        w_ch_cl.pop()
+float mn_env_ceil  = w_ch_cnt >= 3 ? (w_ch_hi.sum() + w_h) / 4 : na
+float mn_env_floor = w_ch_cnt >= 3 ? (w_ch_lo.sum() + w_l) / 4 : na
+float mn_env_mid   = w_ch_cnt >= 3 ? (w_ch_cl.sum() + w_c) / 4 : na
+
+// =============================================================================
+// === SECTION 5: GRADIENT COMPUTATION — ALL 8 TIMEFRAMES
+// =============================================================================
+
+// --- M1 gradients (from raw bar data) ---
+float m1_ceil_d  = ta.change(high)
+float m1_floor_d = ta.change(low)
+float m1_mid_d   = ta.change(close)
+
+// --- M5 gradients ---
+float m5_ceil_d  = ta.change(m5_env_ceil)
+float m5_floor_d = ta.change(m5_env_floor)
+float m5_mid_d   = ta.change(m5_env_mid)
+
+// --- M15 gradients ---
+float m15_ceil_d  = ta.change(m15_env_ceil)
+float m15_floor_d = ta.change(m15_env_floor)
+float m15_mid_d   = ta.change(m15_env_mid)
+
+// --- H1 gradients ---
+float h1_ceil_d  = ta.change(h1_env_ceil)
+float h1_floor_d = ta.change(h1_env_floor)
+float h1_mid_d   = ta.change(h1_env_mid)
+
+// --- H4 gradients ---
+float h4_ceil_d  = ta.change(h4_env_ceil)
+float h4_floor_d = ta.change(h4_env_floor)
+float h4_mid_d   = ta.change(h4_env_mid)
+
+// --- D gradients ---
+float d_ceil_d  = ta.change(d_env_ceil)
+float d_floor_d = ta.change(d_env_floor)
+float d_mid_d   = ta.change(d_env_mid)
+
+// --- W gradients ---
+float w_ceil_d  = ta.change(w_env_ceil)
+float w_floor_d = ta.change(w_env_floor)
+float w_mid_d   = ta.change(w_env_mid)
+
+// --- MN gradients ---
+float mn_ceil_d  = ta.change(mn_env_ceil)
+float mn_floor_d = ta.change(mn_env_floor)
+float mn_mid_d   = ta.change(mn_env_mid)
+
+// =============================================================================
+// === SECTION 6: CONVICTION + LEG TRACKING — HELPERS + ALL 8 TIMEFRAMES
+// =============================================================================
+
+// Gradient score: +2 accelerating, +1 steady, -1 falling, -2 reversing
+src_grad(float delta, float prev_delta) =>
+    float d = nz(delta)
+    float pd = nz(prev_delta)
+    if d == 0.0
+        0
+    else if d > 0.0
+        pd > 0.0 and d > pd ? 2 : 1
+    else
+        pd < 0.0 and d < pd ? -2 : -1
+
+// Conviction: level 0=NONE, 1=PRE, 2=WEAK, 3=STRONG; side +1=BULL, -1=BEAR
+assess_conv(bool floor_brk, bool ceil_brk, bool mid_against, bool mid_stall, float floor_d, float ceil_d, int leg) =>
+    int cv = 0
+    int sd = 0
+    if leg > 0
+        if floor_brk and mid_against and ceil_d <= 0.0
+            cv := 3
+            sd := -1
+        else if floor_brk
+            cv := 2
+            sd := -1
+        else if mid_stall and ceil_d <= 0.0
+            cv := 1
+            sd := -1
+    else if leg < 0
+        if ceil_brk and mid_against and floor_d >= 0.0
+            cv := 3
+            sd := 1
+        else if ceil_brk
+            cv := 2
+            sd := 1
+        else if mid_stall and floor_d >= 0.0
+            cv := 1
+            sd := 1
+    [cv, sd]
+
+// Leg transition: returns [dir, legnum, building, leg_hi, leg_lo, prev_hi, prev_lo, swing_class, fired]
+// swing_class: 0=none, 1=HH, 2=LH, 3=LL, 4=HL
+leg_transition(int cv, int sd, int dir, int legnum, int building, float leg_hi, float leg_lo, float prev_hi, float prev_lo, float child_hi, float child_lo) =>
+    int   n_dir      = dir
+    int   n_legnum   = legnum
+    int   n_building = building
+    float n_leg_hi   = na(leg_hi) ? child_hi : math.max(leg_hi, child_hi)
+    float n_leg_lo   = na(leg_lo) ? child_lo : math.min(leg_lo, child_lo)
+    float n_prev_hi  = prev_hi
+    float n_prev_lo  = prev_lo
+    int   n_swing    = 0
+    bool  fired      = false
+    if dir == 0 and cv == 3
+        n_dir      := sd
+        n_legnum   := 1
+        n_building := sd > 0 ? 1 : -1
+        n_leg_hi   := child_hi
+        n_leg_lo   := child_lo
+        fired      := true
+    else if cv == 3 and sd != dir
+        if dir > 0
+            n_swing := not na(prev_hi) ? (leg_hi > prev_hi ? 1 : 2) : 0
+            n_prev_hi := leg_hi
+        else
+            n_swing := not na(prev_lo) ? (leg_lo < prev_lo ? 3 : 4) : 0
+            n_prev_lo := leg_lo
+        n_dir      := sd
+        n_legnum   := legnum + 1
+        n_building := sd > 0 ? 1 : -1
+        n_leg_hi   := child_hi
+        n_leg_lo   := child_lo
+        fired      := true
+    else if cv == 3 and sd == dir
+        n_leg_hi := math.max(nz(leg_hi, child_hi), child_hi)
+        n_leg_lo := math.min(nz(leg_lo, child_lo), child_lo)
+    [n_dir, n_legnum, n_building, n_leg_hi, n_leg_lo, n_prev_hi, n_prev_lo, n_swing, fired]
+
+// --- M1 conviction + health + leg ---
+var int   m1_leg      = 0
+var int   m1_health   = 0
+var float m1_last_int = na
+if m1_leg == 0 and nz(m1_mid_d) != 0.0
+    m1_leg := nz(m1_mid_d) > 0.0 ? 1 : -1
+bool m1_fbrk = low < nz(m1_env_floor[1])
+bool m1_cbrk = high > nz(m1_env_ceil[1])
+bool m1_mag  = (m1_leg > 0 and nz(m1_mid_d) < 0.0) or (m1_leg < 0 and nz(m1_mid_d) > 0.0)
+bool m1_mst  = math.abs(nz(m1_mid_d)) < math.abs(nz(m1_mid_d[1])) * 0.3
+[m1_cv, m1_sd] = assess_conv(m1_fbrk, m1_cbrk, m1_mag, m1_mst, nz(m1_floor_d), nz(m1_ceil_d), m1_leg)
+int m1_gs = src_grad(m1_floor_d, m1_floor_d[1]) + src_grad(m1_mid_d, m1_mid_d[1]) + src_grad(m1_ceil_d, m1_ceil_d[1])
+if m1_cv == 2
+    float m1_ext = m1_sd == -1 ? low : high
+    if not na(m1_last_int)
+        bool m1_ctr = (m1_leg > 0 and m1_ext < m1_last_int) or (m1_leg < 0 and m1_ext > m1_last_int)
+        m1_health := m1_ctr ? math.min(m1_health + 1, 3) : math.max(m1_health - 1, 0)
+    m1_last_int := m1_ext
+if m1_cv == 3
+    m1_leg    := m1_sd
+    m1_health := 0
+    m1_last_int := na
+
+var int   m1_dir   = 0
+var int   m1_lnum  = 0
+var int   m1_bld   = 0
+var float m1_lhi   = na
+var float m1_llo   = na
+var float m1_phi   = na
+var float m1_plo   = na
+int  m1_swc  = 0
+bool m1_fired = false
+[m1_dir2, m1_lnum2, m1_bld2, m1_lhi2, m1_llo2, m1_phi2, m1_plo2, m1_swc2, m1_f2] = leg_transition(m1_cv, m1_sd, m1_dir, m1_lnum, m1_bld, m1_lhi, m1_llo, m1_phi, m1_plo, high, low)
+m1_dir  := m1_dir2
+m1_lnum := m1_lnum2
+m1_bld  := m1_bld2
+m1_lhi  := m1_lhi2
+m1_llo  := m1_llo2
+m1_phi  := m1_phi2
+m1_plo  := m1_plo2
+m1_swc  := m1_swc2
+m1_fired := m1_f2
+if m1_cv == 3
+    m1_leg := m1_sd
+
+// --- M5 conviction + health + leg ---
+var int   m5_leg      = 0
+var int   m5_health   = 0
+var float m5_last_int = na
+if m5_leg == 0 and nz(m5_mid_d) != 0.0
+    m5_leg := nz(m5_mid_d) > 0.0 ? 1 : -1
+bool m5_fbrk = low < m5_env_floor
+bool m5_cbrk = high > m5_env_ceil
+bool m5_mag  = (m5_leg > 0 and nz(m5_mid_d) < 0.0) or (m5_leg < 0 and nz(m5_mid_d) > 0.0)
+bool m5_mst  = math.abs(nz(m5_mid_d)) < math.abs(nz(m5_mid_d[1])) * 0.3
+[m5_cv, m5_sd] = assess_conv(m5_fbrk, m5_cbrk, m5_mag, m5_mst, nz(m5_floor_d), nz(m5_ceil_d), m5_leg)
+int m5_gs = src_grad(m5_floor_d, m5_floor_d[1]) + src_grad(m5_mid_d, m5_mid_d[1]) + src_grad(m5_ceil_d, m5_ceil_d[1])
+if m5_cv == 2
+    float m5_ext = m5_sd == -1 ? low : high
+    if not na(m5_last_int)
+        bool m5_ctr = (m5_leg > 0 and m5_ext < m5_last_int) or (m5_leg < 0 and m5_ext > m5_last_int)
+        m5_health := m5_ctr ? math.min(m5_health + 1, 3) : math.max(m5_health - 1, 0)
+    m5_last_int := m5_ext
+if m5_cv == 3
+    m5_leg    := m5_sd
+    m5_health := 0
+    m5_last_int := na
+
+var int   m5_dir   = 0
+var int   m5_lnum  = 0
+var int   m5_bld   = 0
+var float m5_lhi   = na
+var float m5_llo   = na
+var float m5_phi   = na
+var float m5_plo   = na
+int  m5_swc  = 0
+bool m5_fired = false
+[m5_dir2, m5_lnum2, m5_bld2, m5_lhi2, m5_llo2, m5_phi2, m5_plo2, m5_swc2, m5_f2] = leg_transition(m5_cv, m5_sd, m5_dir, m5_lnum, m5_bld, m5_lhi, m5_llo, m5_phi, m5_plo, high, low)
+m5_dir  := m5_dir2
+m5_lnum := m5_lnum2
+m5_bld  := m5_bld2
+m5_lhi  := m5_lhi2
+m5_llo  := m5_llo2
+m5_phi  := m5_phi2
+m5_plo  := m5_plo2
+m5_swc  := m5_swc2
+m5_fired := m5_f2
+if m5_cv == 3
+    m5_leg := m5_sd
+
+// --- M15 conviction + health + leg ---
+var int   m15_leg      = 0
+var int   m15_health   = 0
+var float m15_last_int = na
+if m15_leg == 0 and nz(m15_mid_d) != 0.0
+    m15_leg := nz(m15_mid_d) > 0.0 ? 1 : -1
+bool m15_fbrk = m5l < m15_env_floor
+bool m15_cbrk = m5h > m15_env_ceil
+bool m15_mag  = (m15_leg > 0 and nz(m15_mid_d) < 0.0) or (m15_leg < 0 and nz(m15_mid_d) > 0.0)
+bool m15_mst  = math.abs(nz(m15_mid_d)) < math.abs(nz(m15_mid_d[1])) * 0.3
+[m15_cv, m15_sd] = assess_conv(m15_fbrk, m15_cbrk, m15_mag, m15_mst, nz(m15_floor_d), nz(m15_ceil_d), m15_leg)
+int m15_gs = src_grad(m15_floor_d, m15_floor_d[1]) + src_grad(m15_mid_d, m15_mid_d[1]) + src_grad(m15_ceil_d, m15_ceil_d[1])
+if m15_cv == 2
+    float m15_ext = m15_sd == -1 ? m5l : m5h
+    if not na(m15_last_int)
+        bool m15_ctr = (m15_leg > 0 and m15_ext < m15_last_int) or (m15_leg < 0 and m15_ext > m15_last_int)
+        m15_health := m15_ctr ? math.min(m15_health + 1, 3) : math.max(m15_health - 1, 0)
+    m15_last_int := m15_ext
+if m15_cv == 3
+    m15_leg    := m15_sd
+    m15_health := 0
+    m15_last_int := na
+
+var int   m15_dir   = 0
+var int   m15_lnum  = 0
+var int   m15_bld   = 0
+var float m15_lhi   = na
+var float m15_llo   = na
+var float m15_phi   = na
+var float m15_plo   = na
+int  m15_swc  = 0
+bool m15_fired = false
+[m15_dir2, m15_lnum2, m15_bld2, m15_lhi2, m15_llo2, m15_phi2, m15_plo2, m15_swc2, m15_f2] = leg_transition(m15_cv, m15_sd, m15_dir, m15_lnum, m15_bld, m15_lhi, m15_llo, m15_phi, m15_plo, m5h, m5l)
+m15_dir  := m15_dir2
+m15_lnum := m15_lnum2
+m15_bld  := m15_bld2
+m15_lhi  := m15_lhi2
+m15_llo  := m15_llo2
+m15_phi  := m15_phi2
+m15_plo  := m15_plo2
+m15_swc  := m15_swc2
+m15_fired := m15_f2
+if m15_cv == 3
+    m15_leg := m15_sd
+
+// --- H1 conviction + health + leg ---
+var int   h1_leg      = 0
+var int   h1_health   = 0
+var float h1_last_int = na
+if h1_leg == 0 and nz(h1_mid_d) != 0.0
+    h1_leg := nz(h1_mid_d) > 0.0 ? 1 : -1
+bool h1_fbrk = m15l < h1_env_floor
+bool h1_cbrk = m15h > h1_env_ceil
+bool h1_mag  = (h1_leg > 0 and nz(h1_mid_d) < 0.0) or (h1_leg < 0 and nz(h1_mid_d) > 0.0)
+bool h1_mst  = math.abs(nz(h1_mid_d)) < math.abs(nz(h1_mid_d[1])) * 0.3
+[h1_cv, h1_sd] = assess_conv(h1_fbrk, h1_cbrk, h1_mag, h1_mst, nz(h1_floor_d), nz(h1_ceil_d), h1_leg)
+int h1_gs = src_grad(h1_floor_d, h1_floor_d[1]) + src_grad(h1_mid_d, h1_mid_d[1]) + src_grad(h1_ceil_d, h1_ceil_d[1])
+if h1_cv == 2
+    float h1_ext = h1_sd == -1 ? m15l : m15h
+    if not na(h1_last_int)
+        bool h1_ctr = (h1_leg > 0 and h1_ext < h1_last_int) or (h1_leg < 0 and h1_ext > h1_last_int)
+        h1_health := h1_ctr ? math.min(h1_health + 1, 3) : math.max(h1_health - 1, 0)
+    h1_last_int := h1_ext
+if h1_cv == 3
+    h1_leg    := h1_sd
+    h1_health := 0
+    h1_last_int := na
+
+var int   h1_dir   = 0
+var int   h1_lnum  = 0
+var int   h1_bld   = 0
+var float h1_lhi   = na
+var float h1_llo   = na
+var float h1_phi   = na
+var float h1_plo   = na
+int  h1_swc  = 0
+bool h1_fired = false
+[h1_dir2, h1_lnum2, h1_bld2, h1_lhi2, h1_llo2, h1_phi2, h1_plo2, h1_swc2, h1_f2] = leg_transition(h1_cv, h1_sd, h1_dir, h1_lnum, h1_bld, h1_lhi, h1_llo, h1_phi, h1_plo, m15h, m15l)
+h1_dir  := h1_dir2
+h1_lnum := h1_lnum2
+h1_bld  := h1_bld2
+h1_lhi  := h1_lhi2
+h1_llo  := h1_llo2
+h1_phi  := h1_phi2
+h1_plo  := h1_plo2
+h1_swc  := h1_swc2
+h1_fired := h1_f2
+if h1_cv == 3
+    h1_leg := h1_sd
+
+// --- H4 conviction + health + leg ---
+var int   h4_leg      = 0
+var int   h4_health   = 0
+var float h4_last_int = na
+if h4_leg == 0 and nz(h4_mid_d) != 0.0
+    h4_leg := nz(h4_mid_d) > 0.0 ? 1 : -1
+bool h4_fbrk = h1l < h4_env_floor
+bool h4_cbrk = h1h > h4_env_ceil
+bool h4_mag  = (h4_leg > 0 and nz(h4_mid_d) < 0.0) or (h4_leg < 0 and nz(h4_mid_d) > 0.0)
+bool h4_mst  = math.abs(nz(h4_mid_d)) < math.abs(nz(h4_mid_d[1])) * 0.3
+[h4_cv, h4_sd] = assess_conv(h4_fbrk, h4_cbrk, h4_mag, h4_mst, nz(h4_floor_d), nz(h4_ceil_d), h4_leg)
+int h4_gs = src_grad(h4_floor_d, h4_floor_d[1]) + src_grad(h4_mid_d, h4_mid_d[1]) + src_grad(h4_ceil_d, h4_ceil_d[1])
+if h4_cv == 2
+    float h4_ext = h4_sd == -1 ? h1l : h1h
+    if not na(h4_last_int)
+        bool h4_ctr = (h4_leg > 0 and h4_ext < h4_last_int) or (h4_leg < 0 and h4_ext > h4_last_int)
+        h4_health := h4_ctr ? math.min(h4_health + 1, 3) : math.max(h4_health - 1, 0)
+    h4_last_int := h4_ext
+if h4_cv == 3
+    h4_leg    := h4_sd
+    h4_health := 0
+    h4_last_int := na
+
+var int   h4_dir   = 0
+var int   h4_lnum  = 0
+var int   h4_bld   = 0
+var float h4_lhi   = na
+var float h4_llo   = na
+var float h4_phi   = na
+var float h4_plo   = na
+int  h4_swc  = 0
+bool h4_fired = false
+[h4_dir2, h4_lnum2, h4_bld2, h4_lhi2, h4_llo2, h4_phi2, h4_plo2, h4_swc2, h4_f2] = leg_transition(h4_cv, h4_sd, h4_dir, h4_lnum, h4_bld, h4_lhi, h4_llo, h4_phi, h4_plo, h1h, h1l)
+h4_dir  := h4_dir2
+h4_lnum := h4_lnum2
+h4_bld  := h4_bld2
+h4_lhi  := h4_lhi2
+h4_llo  := h4_llo2
+h4_phi  := h4_phi2
+h4_plo  := h4_plo2
+h4_swc  := h4_swc2
+h4_fired := h4_f2
+if h4_cv == 3
+    h4_leg := h4_sd
+
+// --- D conviction + health + leg ---
+var int   d_leg      = 0
+var int   d_health   = 0
+var float d_last_int = na
+if d_leg == 0 and nz(d_mid_d) != 0.0
+    d_leg := nz(d_mid_d) > 0.0 ? 1 : -1
+bool d_fbrk = h4l < d_env_floor
+bool d_cbrk = h4h > d_env_ceil
+bool d_mag  = (d_leg > 0 and nz(d_mid_d) < 0.0) or (d_leg < 0 and nz(d_mid_d) > 0.0)
+bool d_mst  = math.abs(nz(d_mid_d)) < math.abs(nz(d_mid_d[1])) * 0.3
+[d_cv, d_sd] = assess_conv(d_fbrk, d_cbrk, d_mag, d_mst, nz(d_floor_d), nz(d_ceil_d), d_leg)
+int d_gs = src_grad(d_floor_d, d_floor_d[1]) + src_grad(d_mid_d, d_mid_d[1]) + src_grad(d_ceil_d, d_ceil_d[1])
+if d_cv == 2
+    float d_ext = d_sd == -1 ? h4l : h4h
+    if not na(d_last_int)
+        bool d_ctr = (d_leg > 0 and d_ext < d_last_int) or (d_leg < 0 and d_ext > d_last_int)
+        d_health := d_ctr ? math.min(d_health + 1, 3) : math.max(d_health - 1, 0)
+    d_last_int := d_ext
+if d_cv == 3
+    d_leg    := d_sd
+    d_health := 0
+    d_last_int := na
+
+var int   d_dir   = 0
+var int   d_lnum  = 0
+var int   d_bld   = 0
+var float d_lhi   = na
+var float d_llo   = na
+var float d_phi   = na
+var float d_plo   = na
+int  d_swc  = 0
+bool d_fired = false
+[d_dir2, d_lnum2, d_bld2, d_lhi2, d_llo2, d_phi2, d_plo2, d_swc2, d_f2] = leg_transition(d_cv, d_sd, d_dir, d_lnum, d_bld, d_lhi, d_llo, d_phi, d_plo, h4h, h4l)
+d_dir  := d_dir2
+d_lnum := d_lnum2
+d_bld  := d_bld2
+d_lhi  := d_lhi2
+d_llo  := d_llo2
+d_phi  := d_phi2
+d_plo  := d_plo2
+d_swc  := d_swc2
+d_fired := d_f2
+if d_cv == 3
+    d_leg := d_sd
+
+// --- W conviction + health + leg ---
+var int   w_leg      = 0
+var int   w_health   = 0
+var float w_last_int = na
+if w_leg == 0 and nz(w_mid_d) != 0.0
+    w_leg := nz(w_mid_d) > 0.0 ? 1 : -1
+bool w_fbrk = d_l < w_env_floor
+bool w_cbrk = d_h > w_env_ceil
+bool w_mag  = (w_leg > 0 and nz(w_mid_d) < 0.0) or (w_leg < 0 and nz(w_mid_d) > 0.0)
+bool w_mst  = math.abs(nz(w_mid_d)) < math.abs(nz(w_mid_d[1])) * 0.3
+[w_cv, w_sd] = assess_conv(w_fbrk, w_cbrk, w_mag, w_mst, nz(w_floor_d), nz(w_ceil_d), w_leg)
+int w_gs = src_grad(w_floor_d, w_floor_d[1]) + src_grad(w_mid_d, w_mid_d[1]) + src_grad(w_ceil_d, w_ceil_d[1])
+if w_cv == 2
+    float w_ext = w_sd == -1 ? d_l : d_h
+    if not na(w_last_int)
+        bool w_ctr = (w_leg > 0 and w_ext < w_last_int) or (w_leg < 0 and w_ext > w_last_int)
+        w_health := w_ctr ? math.min(w_health + 1, 3) : math.max(w_health - 1, 0)
+    w_last_int := w_ext
+if w_cv == 3
+    w_leg    := w_sd
+    w_health := 0
+    w_last_int := na
+
+var int   w_dir   = 0
+var int   w_lnum  = 0
+var int   w_bld   = 0
+var float w_lhi   = na
+var float w_llo   = na
+var float w_phi   = na
+var float w_plo   = na
+int  w_swc  = 0
+bool w_fired = false
+[w_dir2, w_lnum2, w_bld2, w_lhi2, w_llo2, w_phi2, w_plo2, w_swc2, w_f2] = leg_transition(w_cv, w_sd, w_dir, w_lnum, w_bld, w_lhi, w_llo, w_phi, w_plo, d_h, d_l)
+w_dir  := w_dir2
+w_lnum := w_lnum2
+w_bld  := w_bld2
+w_lhi  := w_lhi2
+w_llo  := w_llo2
+w_phi  := w_phi2
+w_plo  := w_plo2
+w_swc  := w_swc2
+w_fired := w_f2
+if w_cv == 3
+    w_leg := w_sd
+
+// --- MN conviction + health + leg ---
+var int   mn_leg      = 0
+var int   mn_health   = 0
+var float mn_last_int = na
+if mn_leg == 0 and nz(mn_mid_d) != 0.0
+    mn_leg := nz(mn_mid_d) > 0.0 ? 1 : -1
+bool mn_fbrk = w_l < mn_env_floor
+bool mn_cbrk = w_h > mn_env_ceil
+bool mn_mag  = (mn_leg > 0 and nz(mn_mid_d) < 0.0) or (mn_leg < 0 and nz(mn_mid_d) > 0.0)
+bool mn_mst  = math.abs(nz(mn_mid_d)) < math.abs(nz(mn_mid_d[1])) * 0.3
+[mn_cv, mn_sd] = assess_conv(mn_fbrk, mn_cbrk, mn_mag, mn_mst, nz(mn_floor_d), nz(mn_ceil_d), mn_leg)
+int mn_gs = src_grad(mn_floor_d, mn_floor_d[1]) + src_grad(mn_mid_d, mn_mid_d[1]) + src_grad(mn_ceil_d, mn_ceil_d[1])
+if mn_cv == 2
+    float mn_ext = mn_sd == -1 ? w_l : w_h
+    if not na(mn_last_int)
+        bool mn_ctr = (mn_leg > 0 and mn_ext < mn_last_int) or (mn_leg < 0 and mn_ext > mn_last_int)
+        mn_health := mn_ctr ? math.min(mn_health + 1, 3) : math.max(mn_health - 1, 0)
+    mn_last_int := mn_ext
+if mn_cv == 3
+    mn_leg    := mn_sd
+    mn_health := 0
+    mn_last_int := na
+
+var int   mn_dir   = 0
+var int   mn_lnum  = 0
+var int   mn_bld   = 0
+var float mn_lhi   = na
+var float mn_llo   = na
+var float mn_phi   = na
+var float mn_plo   = na
+int  mn_swc  = 0
+bool mn_fired = false
+[mn_dir2, mn_lnum2, mn_bld2, mn_lhi2, mn_llo2, mn_phi2, mn_plo2, mn_swc2, mn_f2] = leg_transition(mn_cv, mn_sd, mn_dir, mn_lnum, mn_bld, mn_lhi, mn_llo, mn_phi, mn_plo, w_h, w_l)
+mn_dir  := mn_dir2
+mn_lnum := mn_lnum2
+mn_bld  := mn_bld2
+mn_lhi  := mn_lhi2
+mn_llo  := mn_llo2
+mn_phi  := mn_phi2
+mn_plo  := mn_plo2
+mn_swc  := mn_swc2
+mn_fired := mn_f2
+if mn_cv == 3
+    mn_leg := mn_sd
+
+// =============================================================================
+// === SECTION 7: PERIOD-LEVEL BREAKS + SWING STATE MACHINE
+// =============================================================================
+
+// --- track_period: tracks prev-period high/low and first break timestamps ---
+track_period(string tf) =>
+    bool new_period = ta.change(time(tf)) != 0
+    var float cur_hi   = na
+    var int   cur_hi_t = na
+    var float cur_lo   = na
+    var int   cur_lo_t = na
+    var float prev_hi   = na
+    var int   prev_hi_t = na
+    var float prev_lo   = na
+    var int   prev_lo_t = na
+    var int   hi_brk_t  = na
+    var int   lo_brk_t  = na
+    if new_period
+        prev_hi   := cur_hi
+        prev_hi_t := cur_hi_t
+        prev_lo   := cur_lo
+        prev_lo_t := cur_lo_t
+        cur_hi    := high
+        cur_hi_t  := time
+        cur_lo    := low
+        cur_lo_t  := time
+        hi_brk_t  := na
+        lo_brk_t  := na
+    else
+        if high >= nz(cur_hi)
+            cur_hi   := high
+            cur_hi_t := time
+        if low <= nz(cur_lo, 1e18)
+            cur_lo   := low
+            cur_lo_t := time
+    if na(hi_brk_t) and not na(prev_hi) and high > prev_hi
+        hi_brk_t := time
+    if na(lo_brk_t) and not na(prev_lo) and low < prev_lo
+        lo_brk_t := time
+    [prev_hi, prev_hi_t, prev_lo, prev_lo_t, hi_brk_t, lo_brk_t]
+
+// --- swing_state: classifies period breaks as BOS/CHoCH, HH/LH/HL/LL ---
+swing_state(float prev_hi, float prev_lo, int hi_brk, int lo_brk, float par_hi, float par_lo) =>
+    var int   st_trend = 0
+    var float st_shi   = na
+    var float st_slo   = na
+    var int   st_lcls  = 0
+    var int   st_ltyp  = 0
+    var bool  st_lprop = false
+    bool hi_edge = hi_brk == time and not na(prev_hi)
+    bool lo_edge = lo_brk == time and not na(prev_lo)
+    int  brk_evt = 0
+    int  cls     = 0
+    int  btype   = 0
+    bool propag  = false
+    if hi_edge
+        cls   := na(st_shi) or prev_hi > st_shi ? 1 : 2
+        btype := st_trend == 0 ? 3 : (st_trend > 0 ? 1 : 2)
+        st_shi   := prev_hi
+        st_trend := 1
+        brk_evt  := 1
+        propag   := not na(par_hi) and high > par_hi
+        st_lcls  := cls
+        st_ltyp  := btype
+        st_lprop := propag
+    if lo_edge
+        cls   := na(st_slo) or prev_lo < st_slo ? 3 : 4
+        btype := st_trend == 0 ? 3 : (st_trend < 0 ? 1 : 2)
+        st_slo   := prev_lo
+        st_trend := -1
+        brk_evt  := -1
+        propag   := not na(par_lo) and low < par_lo
+        st_lcls  := cls
+        st_ltyp  := btype
+        st_lprop := propag
+    [st_trend, brk_evt, cls, btype, propag, st_lcls, st_ltyp, st_lprop]
+
+// --- Call track_period for all 7 TFs ---
+[m5_tp_hi,  m5_tp_hi_t,  m5_tp_lo,  m5_tp_lo_t,  m5_tp_hbrk,  m5_tp_lbrk]  = track_period("5")
+[m15_tp_hi, m15_tp_hi_t, m15_tp_lo, m15_tp_lo_t, m15_tp_hbrk, m15_tp_lbrk] = track_period("15")
+[h1_tp_hi,  h1_tp_hi_t,  h1_tp_lo,  h1_tp_lo_t,  h1_tp_hbrk,  h1_tp_lbrk]  = track_period("60")
+[h4_tp_hi,  h4_tp_hi_t,  h4_tp_lo,  h4_tp_lo_t,  h4_tp_hbrk,  h4_tp_lbrk]  = track_period("240")
+[d_tp_hi,   d_tp_hi_t,   d_tp_lo,   d_tp_lo_t,   d_tp_hbrk,   d_tp_lbrk]   = track_period("1D")
+[w_tp_hi,   w_tp_hi_t,   w_tp_lo,   w_tp_lo_t,   w_tp_hbrk,   w_tp_lbrk]   = track_period("1W")
+[mn_tp_hi,  mn_tp_hi_t,  mn_tp_lo,  mn_tp_lo_t,  mn_tp_hbrk,  mn_tp_lbrk]  = track_period("1M")
+
+// --- Call swing_state for all 7 TFs (parent chain: M5→M15→H1→H4→D→W→MN→none) ---
+float no_par = na
+[m5_trend,  m5_brk,  m5_cls,  m5_bt,  m5_prop,  m5_lcls,  m5_ltyp,  m5_lprop]  = swing_state(m5_tp_hi,  m5_tp_lo,  m5_tp_hbrk,  m5_tp_lbrk,  m15_tp_hi, m15_tp_lo)
+[m15_trend, m15_brk, m15_cls, m15_bt, m15_prop, m15_lcls, m15_ltyp, m15_lprop] = swing_state(m15_tp_hi, m15_tp_lo, m15_tp_hbrk, m15_tp_lbrk, h1_tp_hi,  h1_tp_lo)
+[h1_trend,  h1_brk,  h1_cls,  h1_bt,  h1_prop,  h1_lcls,  h1_ltyp,  h1_lprop]  = swing_state(h1_tp_hi,  h1_tp_lo,  h1_tp_hbrk,  h1_tp_lbrk,  h4_tp_hi,  h4_tp_lo)
+[h4_trend,  h4_brk,  h4_cls,  h4_bt,  h4_prop,  h4_lcls,  h4_ltyp,  h4_lprop]  = swing_state(h4_tp_hi,  h4_tp_lo,  h4_tp_hbrk,  h4_tp_lbrk,  d_tp_hi,   d_tp_lo)
+[d_trend,   d_brk,   d_cls,   d_bt,   d_prop,   d_lcls,   d_ltyp,   d_lprop]   = swing_state(d_tp_hi,   d_tp_lo,   d_tp_hbrk,   d_tp_lbrk,   w_tp_hi,   w_tp_lo)
+[w_trend,   w_brk,   w_cls,   w_bt,   w_prop,   w_lcls,   w_ltyp,   w_lprop]   = swing_state(w_tp_hi,   w_tp_lo,   w_tp_hbrk,   w_tp_lbrk,   mn_tp_hi,  mn_tp_lo)
+[mn_trend,  mn_brk,  mn_cls,  mn_bt,  mn_prop,  mn_lcls,  mn_ltyp,  mn_lprop]  = swing_state(mn_tp_hi,  mn_tp_lo,  mn_tp_hbrk,  mn_tp_lbrk,  no_par,    no_par)
+
+// =============================================================================
+// === SECTION 8: ZONE UDT + ARRAYS
+// =============================================================================
+
+type Zone
+    float top       = na
+    float bottom    = na
+    int   side      = 0
+    int   swing_cls = 0
+    int   tf_idx    = 0
+    int   birth_bar = 0
+    bool  broken    = false
+    box   bx        = na
+
+var array<Zone> m1_sup  = array.new<Zone>(0)
+var array<Zone> m1_dem  = array.new<Zone>(0)
+var array<Zone> m5_sup  = array.new<Zone>(0)
+var array<Zone> m5_dem  = array.new<Zone>(0)
+var array<Zone> m15_sup = array.new<Zone>(0)
+var array<Zone> m15_dem = array.new<Zone>(0)
+var array<Zone> h1_sup  = array.new<Zone>(0)
+var array<Zone> h1_dem  = array.new<Zone>(0)
+var array<Zone> h4_sup  = array.new<Zone>(0)
+var array<Zone> h4_dem  = array.new<Zone>(0)
+var array<Zone> d_sup   = array.new<Zone>(0)
+var array<Zone> d_dem   = array.new<Zone>(0)
+
+// =============================================================================
+// === SECTION 9: ZONE CREATION FUNCTION
+// =============================================================================
+
+create_zone(array<Zone> arr, float ztop, float zbot, int side, int swc, int tf_idx, bool show, color clr, int max_z) =>
+    Zone z = Zone.new()
+    z.top       := ztop
+    z.bottom    := zbot
+    z.side      := side
+    z.swing_cls := swc
+    z.tf_idx    := tf_idx
+    z.birth_bar := bar_index
+    z.broken    := false
+    if show
+        z.bx := box.new(bar_index, ztop, bar_index + 50, zbot, border_color=color.new(clr, 50), bgcolor=color.new(clr, 85), border_width=1, extend=extend.right)
+    arr.unshift(z)
+    if arr.size() > max_z
+        Zone old = arr.pop()
+        if not na(old.bx)
+            box.delete(old.bx)
+
+// =============================================================================
+// === SECTION 10: ZONE CREATION ON LEG TRANSITIONS
+// =============================================================================
+
+// Zone colors per TF
+color z_m1_clr  = #78909C
+color z_m5_clr  = #26A69A
+color z_m15_clr = #42A5F5
+color z_h1_clr  = #AB47BC
+color z_h4_clr  = #FF7043
+color z_d_clr   = #FFCA28
+
+// --- M1 zones ---
+if m1_fired
+    if m1_swc == 1 or m1_swc == 2
+        float s_top = nz(m1_phi)
+        float s_bot = math.max(open, close)
+        if na(s_bot) or s_bot >= s_top
+            s_bot := s_top - (s_top - nz(m1_plo, s_top)) * 0.3
+        create_zone(m1_sup, s_top, s_bot, -1, m1_swc, 0, i_show_zones and i_zone_m1, z_m1_clr, i_max_zones)
+    else if m1_swc == 3 or m1_swc == 4
+        float d_bot = nz(m1_plo)
+        float d_top = math.min(open, close)
+        if na(d_top) or d_top <= d_bot
+            d_top := d_bot + (nz(m1_phi, d_bot) - d_bot) * 0.3
+        create_zone(m1_dem, d_bot, d_top, 1, m1_swc, 0, i_show_zones and i_zone_m1, z_m1_clr, i_max_zones)
+
+// --- M5 zones ---
+if m5_fired
+    if m5_swc == 1 or m5_swc == 2
+        float s_top = nz(m5_phi)
+        float s_bot = math.max(nz(m5o), nz(m5c))
+        if na(s_bot) or s_bot >= s_top
+            s_bot := s_top - (s_top - nz(m5_plo, s_top)) * 0.3
+        create_zone(m5_sup, s_top, s_bot, -1, m5_swc, 1, i_show_zones and i_zone_m5, z_m5_clr, i_max_zones)
+    else if m5_swc == 3 or m5_swc == 4
+        float d_bot = nz(m5_plo)
+        float d_top = math.min(nz(m5o), nz(m5c))
+        if na(d_top) or d_top <= d_bot
+            d_top := d_bot + (nz(m5_phi, d_bot) - d_bot) * 0.3
+        create_zone(m5_dem, d_bot, d_top, 1, m5_swc, 1, i_show_zones and i_zone_m5, z_m5_clr, i_max_zones)
+
+// --- M15 zones ---
+if m15_fired
+    if m15_swc == 1 or m15_swc == 2
+        float s_top = nz(m15_phi)
+        float s_bot = math.max(nz(m15o), nz(m15c))
+        if na(s_bot) or s_bot >= s_top
+            s_bot := s_top - (s_top - nz(m15_plo, s_top)) * 0.3
+        create_zone(m15_sup, s_top, s_bot, -1, m15_swc, 2, i_show_zones and i_zone_m15, z_m15_clr, i_max_zones)
+    else if m15_swc == 3 or m15_swc == 4
+        float d_bot = nz(m15_plo)
+        float d_top = math.min(nz(m15o), nz(m15c))
+        if na(d_top) or d_top <= d_bot
+            d_top := d_bot + (nz(m15_phi, d_bot) - d_bot) * 0.3
+        create_zone(m15_dem, d_bot, d_top, 1, m15_swc, 2, i_show_zones and i_zone_m15, z_m15_clr, i_max_zones)
+
+// --- H1 zones ---
+if h1_fired
+    if h1_swc == 1 or h1_swc == 2
+        float s_top = nz(h1_phi)
+        float s_bot = math.max(nz(h1o), nz(h1c))
+        if na(s_bot) or s_bot >= s_top
+            s_bot := s_top - (s_top - nz(h1_plo, s_top)) * 0.3
+        create_zone(h1_sup, s_top, s_bot, -1, h1_swc, 3, i_show_zones and i_zone_h1, z_h1_clr, i_max_zones)
+    else if h1_swc == 3 or h1_swc == 4
+        float d_bot = nz(h1_plo)
+        float d_top = math.min(nz(h1o), nz(h1c))
+        if na(d_top) or d_top <= d_bot
+            d_top := d_bot + (nz(h1_phi, d_bot) - d_bot) * 0.3
+        create_zone(h1_dem, d_bot, d_top, 1, h1_swc, 3, i_show_zones and i_zone_h1, z_h1_clr, i_max_zones)
+
+// --- H4 zones ---
+if h4_fired
+    if h4_swc == 1 or h4_swc == 2
+        float s_top = nz(h4_phi)
+        float s_bot = math.max(nz(h4o), nz(h4c))
+        if na(s_bot) or s_bot >= s_top
+            s_bot := s_top - (s_top - nz(h4_plo, s_top)) * 0.3
+        create_zone(h4_sup, s_top, s_bot, -1, h4_swc, 4, i_show_zones and i_zone_h4, z_h4_clr, i_max_zones)
+    else if h4_swc == 3 or h4_swc == 4
+        float d_bot = nz(h4_plo)
+        float d_top = math.min(nz(h4o), nz(h4c))
+        if na(d_top) or d_top <= d_bot
+            d_top := d_bot + (nz(h4_phi, d_bot) - d_bot) * 0.3
+        create_zone(h4_dem, d_bot, d_top, 1, h4_swc, 4, i_show_zones and i_zone_h4, z_h4_clr, i_max_zones)
+
+// --- D zones ---
+if d_fired
+    if d_swc == 1 or d_swc == 2
+        float s_top = nz(d_phi)
+        float s_bot = math.max(nz(d_o), nz(d_c))
+        if na(s_bot) or s_bot >= s_top
+            s_bot := s_top - (s_top - nz(d_plo, s_top)) * 0.3
+        create_zone(d_sup, s_top, s_bot, -1, d_swc, 5, i_show_zones and i_zone_d, z_d_clr, i_max_zones)
+    else if d_swc == 3 or d_swc == 4
+        float d_bot = nz(d_plo)
+        float d_top = math.min(nz(d_o), nz(d_c))
+        if na(d_top) or d_top <= d_bot
+            d_top := d_bot + (nz(d_phi, d_bot) - d_bot) * 0.3
+        create_zone(d_dem, d_bot, d_top, 1, d_swc, 5, i_show_zones and i_zone_d, z_d_clr, i_max_zones)
+
+// =============================================================================
+// === SECTION 11: ZONE BREAK CHECKING
+// =============================================================================
+
+check_zone_breaks(array<Zone> zones, bool is_supply) =>
+    int i = zones.size() - 1
+    while i >= 0
+        Zone z = zones.get(i)
+        bool brk = is_supply ? close > z.top : close < z.bottom
+        if brk
+            if not na(z.bx)
+                box.delete(z.bx)
+            zones.remove(i)
+        i -= 1
+
+check_zone_breaks(m1_sup, true)
+check_zone_breaks(m1_dem, false)
+check_zone_breaks(m5_sup, true)
+check_zone_breaks(m5_dem, false)
+check_zone_breaks(m15_sup, true)
+check_zone_breaks(m15_dem, false)
+check_zone_breaks(h1_sup, true)
+check_zone_breaks(h1_dem, false)
+check_zone_breaks(h4_sup, true)
+check_zone_breaks(h4_dem, false)
+check_zone_breaks(d_sup, true)
+check_zone_breaks(d_dem, false)
+
+// === TASK 6 CONTINUES HERE: Zone Counting + Opposing Nesting ===

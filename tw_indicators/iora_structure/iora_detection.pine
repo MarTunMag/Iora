@@ -304,8 +304,6 @@ bool m1_fbrk = low < nz(m1_env_floor[1])
 bool m1_cbrk = high > nz(m1_env_ceil[1])
 bool m1_mag  = (m1_leg > 0 and nz(m1_mid_d) < 0.0) or (m1_leg < 0 and nz(m1_mid_d) > 0.0)
 bool m1_mst  = math.abs(nz(m1_mid_d)) < math.abs(nz(m1_mid_d[1])) * 0.3
-int  m1_cv   = 0
-int  m1_sd   = 0
 [m1_cv, m1_sd] = assess_conv(m1_fbrk, m1_cbrk, m1_mag, m1_mst, nz(m1_floor_d), nz(m1_ceil_d), m1_leg)
 int m1_gs = src_grad(m1_floor_d, m1_floor_d[1]) + src_grad(m1_mid_d, m1_mid_d[1]) + src_grad(m1_ceil_d, m1_ceil_d[1])
 if m1_cv == 2
@@ -351,8 +349,6 @@ bool m5_fbrk = low < m5_env_floor
 bool m5_cbrk = high > m5_env_ceil
 bool m5_mag  = (m5_leg > 0 and nz(m5_mid_d) < 0.0) or (m5_leg < 0 and nz(m5_mid_d) > 0.0)
 bool m5_mst  = math.abs(nz(m5_mid_d)) < math.abs(nz(m5_mid_d[1])) * 0.3
-int  m5_cv   = 0
-int  m5_sd   = 0
 [m5_cv, m5_sd] = assess_conv(m5_fbrk, m5_cbrk, m5_mag, m5_mst, nz(m5_floor_d), nz(m5_ceil_d), m5_leg)
 int m5_gs = src_grad(m5_floor_d, m5_floor_d[1]) + src_grad(m5_mid_d, m5_mid_d[1]) + src_grad(m5_ceil_d, m5_ceil_d[1])
 if m5_cv == 2
@@ -398,8 +394,6 @@ bool m15_fbrk = m5l < m15_env_floor
 bool m15_cbrk = m5h > m15_env_ceil
 bool m15_mag  = (m15_leg > 0 and nz(m15_mid_d) < 0.0) or (m15_leg < 0 and nz(m15_mid_d) > 0.0)
 bool m15_mst  = math.abs(nz(m15_mid_d)) < math.abs(nz(m15_mid_d[1])) * 0.3
-int  m15_cv   = 0
-int  m15_sd   = 0
 [m15_cv, m15_sd] = assess_conv(m15_fbrk, m15_cbrk, m15_mag, m15_mst, nz(m15_floor_d), nz(m15_ceil_d), m15_leg)
 int m15_gs = src_grad(m15_floor_d, m15_floor_d[1]) + src_grad(m15_mid_d, m15_mid_d[1]) + src_grad(m15_ceil_d, m15_ceil_d[1])
 if m15_cv == 2
@@ -445,8 +439,6 @@ bool h1_fbrk = m15l < h1_env_floor
 bool h1_cbrk = m15h > h1_env_ceil
 bool h1_mag  = (h1_leg > 0 and nz(h1_mid_d) < 0.0) or (h1_leg < 0 and nz(h1_mid_d) > 0.0)
 bool h1_mst  = math.abs(nz(h1_mid_d)) < math.abs(nz(h1_mid_d[1])) * 0.3
-int  h1_cv   = 0
-int  h1_sd   = 0
 [h1_cv, h1_sd] = assess_conv(h1_fbrk, h1_cbrk, h1_mag, h1_mst, nz(h1_floor_d), nz(h1_ceil_d), h1_leg)
 int h1_gs = src_grad(h1_floor_d, h1_floor_d[1]) + src_grad(h1_mid_d, h1_mid_d[1]) + src_grad(h1_ceil_d, h1_ceil_d[1])
 if h1_cv == 2
@@ -492,8 +484,6 @@ bool h4_fbrk = h1l < h4_env_floor
 bool h4_cbrk = h1h > h4_env_ceil
 bool h4_mag  = (h4_leg > 0 and nz(h4_mid_d) < 0.0) or (h4_leg < 0 and nz(h4_mid_d) > 0.0)
 bool h4_mst  = math.abs(nz(h4_mid_d)) < math.abs(nz(h4_mid_d[1])) * 0.3
-int  h4_cv   = 0
-int  h4_sd   = 0
 [h4_cv, h4_sd] = assess_conv(h4_fbrk, h4_cbrk, h4_mag, h4_mst, nz(h4_floor_d), nz(h4_ceil_d), h4_leg)
 int h4_gs = src_grad(h4_floor_d, h4_floor_d[1]) + src_grad(h4_mid_d, h4_mid_d[1]) + src_grad(h4_ceil_d, h4_ceil_d[1])
 if h4_cv == 2
@@ -539,8 +529,6 @@ bool d_fbrk = h4l < d_env_floor
 bool d_cbrk = h4h > d_env_ceil
 bool d_mag  = (d_leg > 0 and nz(d_mid_d) < 0.0) or (d_leg < 0 and nz(d_mid_d) > 0.0)
 bool d_mst  = math.abs(nz(d_mid_d)) < math.abs(nz(d_mid_d[1])) * 0.3
-int  d_cv   = 0
-int  d_sd   = 0
 [d_cv, d_sd] = assess_conv(d_fbrk, d_cbrk, d_mag, d_mst, nz(d_floor_d), nz(d_ceil_d), d_leg)
 int d_gs = src_grad(d_floor_d, d_floor_d[1]) + src_grad(d_mid_d, d_mid_d[1]) + src_grad(d_ceil_d, d_ceil_d[1])
 if d_cv == 2
@@ -586,8 +574,6 @@ bool w_fbrk = d_l < w_env_floor
 bool w_cbrk = d_h > w_env_ceil
 bool w_mag  = (w_leg > 0 and nz(w_mid_d) < 0.0) or (w_leg < 0 and nz(w_mid_d) > 0.0)
 bool w_mst  = math.abs(nz(w_mid_d)) < math.abs(nz(w_mid_d[1])) * 0.3
-int  w_cv   = 0
-int  w_sd   = 0
 [w_cv, w_sd] = assess_conv(w_fbrk, w_cbrk, w_mag, w_mst, nz(w_floor_d), nz(w_ceil_d), w_leg)
 int w_gs = src_grad(w_floor_d, w_floor_d[1]) + src_grad(w_mid_d, w_mid_d[1]) + src_grad(w_ceil_d, w_ceil_d[1])
 if w_cv == 2
@@ -633,8 +619,6 @@ bool mn_fbrk = w_l < mn_env_floor
 bool mn_cbrk = w_h > mn_env_ceil
 bool mn_mag  = (mn_leg > 0 and nz(mn_mid_d) < 0.0) or (mn_leg < 0 and nz(mn_mid_d) > 0.0)
 bool mn_mst  = math.abs(nz(mn_mid_d)) < math.abs(nz(mn_mid_d[1])) * 0.3
-int  mn_cv   = 0
-int  mn_sd   = 0
 [mn_cv, mn_sd] = assess_conv(mn_fbrk, mn_cbrk, mn_mag, mn_mst, nz(mn_floor_d), nz(mn_ceil_d), mn_leg)
 int mn_gs = src_grad(mn_floor_d, mn_floor_d[1]) + src_grad(mn_mid_d, mn_mid_d[1]) + src_grad(mn_ceil_d, mn_ceil_d[1])
 if mn_cv == 2
