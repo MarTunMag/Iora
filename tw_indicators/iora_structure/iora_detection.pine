@@ -10,9 +10,10 @@ bool   i_show_choch  = input.bool(true,    "Show CHoCH labels",              gro
 bool   i_show_bos    = input.bool(false,   "Show BOS labels",                group="Structure Labels")
 bool   i_show_propag = input.bool(false,   "Show propagated (e+) labels",    group="Structure Labels")
 string i_struct_tf   = input.string("H1",  "Minimum TF for structure labels", group="Structure Labels", options=["M5","M15","H1","H4","D","W"])
+int    i_min_conv    = input.int(3,        "Minimum conviction to show",     group="Structure Labels", options=[1, 2, 3], tooltip="3=STRONG only, 2=WEAK+STRONG, 1=all")
 
 // --- Group: Swing Markers ---
-string i_swing_tf    = input.string("H1",  "Show swing markers for",         group="Swing Markers", options=["M5","M15","H1","H4","D","W","None"])
+string i_swing_tf    = input.string("None","Show swing markers for",         group="Swing Markers", options=["M5","M15","H1","H4","D","W","None"])
 
 // --- Group: Elliott Wave ---
 bool   i_ew_labels   = input.bool(false,   "Show EW wave labels",            group="Elliott Wave")
@@ -732,8 +733,8 @@ swing_state(float prev_hi, float prev_lo, int hi_brk, int lo_brk, float par_hi, 
     [st_trend, brk_evt, cls, btype, propag, st_lcls, st_ltyp, st_lprop]
 
 // --- draw_brk_lbl: draws CHoCH/BOS label at break bar ---
-draw_brk_lbl(int brk_evt, int cls, int btype, bool propag, string tf_name, color base_clr, bool show_choch, bool show_bos, bool show_prop) =>
-    if brk_evt != 0 and btype > 0 and btype < 3
+draw_brk_lbl(int brk_evt, int cls, int btype, bool propag, string tf_name, color base_clr, bool show_choch, bool show_bos, bool show_prop, int cv, int min_cv) =>
+    if brk_evt != 0 and btype > 0 and btype < 3 and cv >= min_cv
         bool show_type = (btype == 1 and show_bos) or (btype == 2 and show_choch)
         bool show_pr   = propag and show_prop
         bool show      = show_type or show_pr
@@ -787,20 +788,20 @@ color d_clr   = #FF7043
 color w_clr   = #FFCA28
 color mn_clr  = #EF5350
 
-// --- Draw CHoCH/BOS labels for each TF (gated by minimum TF filter) ---
+// --- Draw CHoCH/BOS labels for each TF (gated by minimum TF + conviction filters) ---
 if struct_tf_idx <= 0
-    draw_brk_lbl(m5_brk,  m5_cls,  m5_bt,  m5_prop,  "M5",  m5_clr,  i_show_choch, i_show_bos, i_show_propag)
+    draw_brk_lbl(m5_brk,  m5_cls,  m5_bt,  m5_prop,  "M5",  m5_clr,  i_show_choch, i_show_bos, i_show_propag, m5_cv,  i_min_conv)
 if struct_tf_idx <= 1
-    draw_brk_lbl(m15_brk, m15_cls, m15_bt, m15_prop, "M15", m15_clr, i_show_choch, i_show_bos, i_show_propag)
+    draw_brk_lbl(m15_brk, m15_cls, m15_bt, m15_prop, "M15", m15_clr, i_show_choch, i_show_bos, i_show_propag, m15_cv, i_min_conv)
 if struct_tf_idx <= 2
-    draw_brk_lbl(h1_brk,  h1_cls,  h1_bt,  h1_prop,  "H1",  h1_clr,  i_show_choch, i_show_bos, i_show_propag)
+    draw_brk_lbl(h1_brk,  h1_cls,  h1_bt,  h1_prop,  "H1",  h1_clr,  i_show_choch, i_show_bos, i_show_propag, h1_cv,  i_min_conv)
 if struct_tf_idx <= 3
-    draw_brk_lbl(h4_brk,  h4_cls,  h4_bt,  h4_prop,  "H4",  h4_clr,  i_show_choch, i_show_bos, i_show_propag)
+    draw_brk_lbl(h4_brk,  h4_cls,  h4_bt,  h4_prop,  "H4",  h4_clr,  i_show_choch, i_show_bos, i_show_propag, h4_cv,  i_min_conv)
 if struct_tf_idx <= 4
-    draw_brk_lbl(d_brk,   d_cls,   d_bt,   d_prop,   "D",   d_clr,   i_show_choch, i_show_bos, i_show_propag)
+    draw_brk_lbl(d_brk,   d_cls,   d_bt,   d_prop,   "D",   d_clr,   i_show_choch, i_show_bos, i_show_propag, d_cv,   i_min_conv)
 if struct_tf_idx <= 5
-    draw_brk_lbl(w_brk,   w_cls,   w_bt,   w_prop,   "W",   w_clr,   i_show_choch, i_show_bos, i_show_propag)
-draw_brk_lbl(mn_brk, mn_cls, mn_bt, mn_prop, "MN", mn_clr, i_show_choch, i_show_bos, i_show_propag)
+    draw_brk_lbl(w_brk,   w_cls,   w_bt,   w_prop,   "W",   w_clr,   i_show_choch, i_show_bos, i_show_propag, w_cv,   i_min_conv)
+draw_brk_lbl(mn_brk, mn_cls, mn_bt, mn_prop, "MN", mn_clr, i_show_choch, i_show_bos, i_show_propag, mn_cv, i_min_conv)
 
 // --- Swing marker mux: select TF data based on i_swing_tf ---
 int sw_cls = 0

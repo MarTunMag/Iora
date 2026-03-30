@@ -8,12 +8,12 @@ indicator("Iora Signal Engine", overlay=true, max_boxes_count=500, max_labels_co
 // --- Group: Zones ---
 bool   i_show_zones  = input.bool(true,           "Show zone boxes",           group="Zones")
 bool   i_zone_m1     = input.bool(false,           "Show M1 zones",             group="Zones")
-bool   i_zone_m5     = input.bool(true,            "Show M5 zones",             group="Zones")
-bool   i_zone_m15    = input.bool(true,            "Show M15 zones",            group="Zones")
+bool   i_zone_m5     = input.bool(false,           "Show M5 zones",             group="Zones")
+bool   i_zone_m15    = input.bool(false,           "Show M15 zones",            group="Zones")
 bool   i_zone_h1     = input.bool(true,            "Show H1 zones",             group="Zones")
 bool   i_zone_h4     = input.bool(true,            "Show H4 zones",             group="Zones")
 bool   i_zone_d      = input.bool(true,            "Show D zones",              group="Zones")
-int    i_max_zones   = input.int(8,                "Max zones per TF per side", group="Zones", options=[4, 6, 8, 12])
+int    i_max_zones   = input.int(4,                "Max zones per TF per side", group="Zones", options=[2, 4, 6, 8])
 
 // --- Group: Signals ---
 bool   i_show_model_a = input.bool(true,           "Show Model A signals",      group="Signals")
