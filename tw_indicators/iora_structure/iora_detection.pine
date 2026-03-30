@@ -1536,19 +1536,19 @@ plot(env_plot_floor, "Env Floor", color.new(#42A5F5, 50), 1, plot.style_stepline
 
 // Helper: conviction string
 conv_str(int cv) =>
-    cv == 3 ? "STRG" : (cv == 2 ? "WEAK" : (cv == 1 ? "PRE" : "\u2014"))
+    cv == 3 ? "STRG" : (cv == 2 ? "WEAK" : (cv == 1 ? "PRE" : "—"))
 
 // Helper: health string
 hlth_str(int h) =>
-    h == 0 ? "OK" : (h == 1 ? "1st" : (h == 2 ? "DEG" : (h == 3 ? "BRK" : "\u2014")))
+    h == 0 ? "OK" : (h == 1 ? "1st" : (h == 2 ? "DEG" : (h == 3 ? "BRK" : "—")))
 
 // Helper: swing class string
 swc_str(int sc) =>
-    sc == 1 ? "HH" : (sc == 2 ? "LH" : (sc == 3 ? "LL" : (sc == 4 ? "HL" : "\u2014")))
+    sc == 1 ? "HH" : (sc == 2 ? "LH" : (sc == 3 ? "LL" : (sc == 4 ? "HL" : "—")))
 
 // Helper: direction arrow
 dir_str(int d) =>
-    d > 0 ? "\u25b2" : (d < 0 ? "\u25bc" : "\u2014")
+    d > 0 ? "▲" : (d < 0 ? "▼" : "—")
 
 // Helper: EW wave label for phase/count
 ew_cell(int phase, int imp_cnt, int cor_cnt) =>
@@ -1560,12 +1560,12 @@ ew_cell(int phase, int imp_cnt, int cor_cnt) =>
     else if phase == 2 or phase == 4
         s := cor_cnt == 1 ? "A" : (cor_cnt == 2 ? "B" : "C")
     else
-        s := "\u2014"
+        s := "—"
     s
 
 // Helper: pattern name
 pat_str(int pat) =>
-    pat == 1 ? "IMP" : (pat == 2 ? "DIAG" : (pat == 3 ? "EXT" : (pat == 4 ? "FLAT" : (pat == 5 ? "EXPF" : (pat == 6 ? "RUNF" : (pat == 7 ? "ZZG" : (pat == 8 ? "DZZG" : (pat == 9 ? "TRI" : "\u2014"))))))))
+    pat == 1 ? "IMP" : (pat == 2 ? "DIAG" : (pat == 3 ? "EXT" : (pat == 4 ? "FLAT" : (pat == 5 ? "EXPF" : (pat == 6 ? "RUNF" : (pat == 7 ? "ZZG" : (pat == 8 ? "DZZG" : (pat == 9 ? "TRI" : "—"))))))))
 
 // Helper: conviction color
 conv_color(int cv, int sd) =>
@@ -1615,11 +1615,11 @@ if i_dash_on and barstate.islast
     table.cell(dash_tbl, 0, 1, "M5",            text_color=color.new(#78909C, 0), bgcolor=cell_bg,      text_size=cell_sz)
     table.cell(dash_tbl, 1, 1, dir_str(m5_dir), text_color=m5_dir_clr,            bgcolor=cell_bg,      text_size=cell_sz)
     table.cell(dash_tbl, 2, 1, swc_str(m5_lcls),text_color=color.new(#B0BEC5, 0), bgcolor=cell_bg,      text_size=cell_sz)
-    table.cell(dash_tbl, 3, 1, conv_str(m5_cv) + (m5_sd > 0 ? "\u2191" : (m5_sd < 0 ? "\u2193" : "")), text_color=color.white, bgcolor=conv_color(m5_cv, m5_sd), text_size=cell_sz)
+    table.cell(dash_tbl, 3, 1, conv_str(m5_cv) + (m5_sd > 0 ? "↑" : (m5_sd < 0 ? "↓" : "")), text_color=color.white, bgcolor=conv_color(m5_cv, m5_sd), text_size=cell_sz)
     table.cell(dash_tbl, 4, 1, hlth_str(m5_health), text_color=color.white, bgcolor=hlth_color(m5_health), text_size=cell_sz)
-    table.cell(dash_tbl, 5, 1, "\u2014",        text_color=color.new(#546E7A, 0), bgcolor=cell_bg,      text_size=cell_sz)
-    table.cell(dash_tbl, 6, 1, "\u2014",        text_color=color.new(#546E7A, 0), bgcolor=cell_bg,      text_size=cell_sz)
-    table.cell(dash_tbl, 7, 1, "\u2014",        text_color=color.new(#546E7A, 0), bgcolor=cell_bg,      text_size=cell_sz)
+    table.cell(dash_tbl, 5, 1, "—",        text_color=color.new(#546E7A, 0), bgcolor=cell_bg,      text_size=cell_sz)
+    table.cell(dash_tbl, 6, 1, "—",        text_color=color.new(#546E7A, 0), bgcolor=cell_bg,      text_size=cell_sz)
+    table.cell(dash_tbl, 7, 1, "—",        text_color=color.new(#546E7A, 0), bgcolor=cell_bg,      text_size=cell_sz)
 
     // --- Row 2: M15 ---
     color m15_dir_clr = m15_dir > 0 ? color.new(#26A69A, 0) : (m15_dir < 0 ? color.new(#EF5350, 0) : color.new(#78909C, 0))
@@ -1628,7 +1628,7 @@ if i_dash_on and barstate.islast
     table.cell(dash_tbl, 0, 2, "M15",            text_color=color.new(#26A69A, 0), bgcolor=cell_bg,       text_size=cell_sz)
     table.cell(dash_tbl, 1, 2, dir_str(m15_dir), text_color=m15_dir_clr,           bgcolor=cell_bg,       text_size=cell_sz)
     table.cell(dash_tbl, 2, 2, swc_str(m15_lcls),text_color=color.new(#B0BEC5, 0), bgcolor=cell_bg,       text_size=cell_sz)
-    table.cell(dash_tbl, 3, 2, conv_str(m15_cv) + (m15_sd > 0 ? "\u2191" : (m15_sd < 0 ? "\u2193" : "")), text_color=color.white, bgcolor=conv_color(m15_cv, m15_sd), text_size=cell_sz)
+    table.cell(dash_tbl, 3, 2, conv_str(m15_cv) + (m15_sd > 0 ? "↑" : (m15_sd < 0 ? "↓" : "")), text_color=color.white, bgcolor=conv_color(m15_cv, m15_sd), text_size=cell_sz)
     table.cell(dash_tbl, 4, 2, hlth_str(m15_health), text_color=color.white, bgcolor=hlth_color(m15_health), text_size=cell_sz)
     table.cell(dash_tbl, 5, 2, ew_cell(m15_ew_phase, m15_ew_imp_cnt, m15_ew_cor_cnt), text_color=color.new(#CE93D8, 0), bgcolor=cell_bg, text_size=cell_sz)
     table.cell(dash_tbl, 6, 2, pat_str(m15_ew_pattern), text_color=color.new(#90CAF9, 0), bgcolor=cell_bg, text_size=cell_sz)
@@ -1641,7 +1641,7 @@ if i_dash_on and barstate.islast
     table.cell(dash_tbl, 0, 3, "H1",            text_color=color.new(#42A5F5, 0), bgcolor=cell_bg,       text_size=cell_sz)
     table.cell(dash_tbl, 1, 3, dir_str(h1_dir), text_color=h1_dir_clr,           bgcolor=cell_bg,       text_size=cell_sz)
     table.cell(dash_tbl, 2, 3, swc_str(h1_lcls),text_color=color.new(#B0BEC5, 0), bgcolor=cell_bg,       text_size=cell_sz)
-    table.cell(dash_tbl, 3, 3, conv_str(h1_cv) + (h1_sd > 0 ? "\u2191" : (h1_sd < 0 ? "\u2193" : "")), text_color=color.white, bgcolor=conv_color(h1_cv, h1_sd), text_size=cell_sz)
+    table.cell(dash_tbl, 3, 3, conv_str(h1_cv) + (h1_sd > 0 ? "↑" : (h1_sd < 0 ? "↓" : "")), text_color=color.white, bgcolor=conv_color(h1_cv, h1_sd), text_size=cell_sz)
     table.cell(dash_tbl, 4, 3, hlth_str(h1_health), text_color=color.white, bgcolor=hlth_color(h1_health), text_size=cell_sz)
     table.cell(dash_tbl, 5, 3, ew_cell(h1_ew_phase, h1_ew_imp_cnt, h1_ew_cor_cnt), text_color=color.new(#CE93D8, 0), bgcolor=cell_bg, text_size=cell_sz)
     table.cell(dash_tbl, 6, 3, pat_str(h1_ew_pattern), text_color=color.new(#90CAF9, 0), bgcolor=cell_bg, text_size=cell_sz)
@@ -1654,7 +1654,7 @@ if i_dash_on and barstate.islast
     table.cell(dash_tbl, 0, 4, "H4",            text_color=color.new(#AB47BC, 0), bgcolor=cell_bg,       text_size=cell_sz)
     table.cell(dash_tbl, 1, 4, dir_str(h4_dir), text_color=h4_dir_clr,           bgcolor=cell_bg,       text_size=cell_sz)
     table.cell(dash_tbl, 2, 4, swc_str(h4_lcls),text_color=color.new(#B0BEC5, 0), bgcolor=cell_bg,       text_size=cell_sz)
-    table.cell(dash_tbl, 3, 4, conv_str(h4_cv) + (h4_sd > 0 ? "\u2191" : (h4_sd < 0 ? "\u2193" : "")), text_color=color.white, bgcolor=conv_color(h4_cv, h4_sd), text_size=cell_sz)
+    table.cell(dash_tbl, 3, 4, conv_str(h4_cv) + (h4_sd > 0 ? "↑" : (h4_sd < 0 ? "↓" : "")), text_color=color.white, bgcolor=conv_color(h4_cv, h4_sd), text_size=cell_sz)
     table.cell(dash_tbl, 4, 4, hlth_str(h4_health), text_color=color.white, bgcolor=hlth_color(h4_health), text_size=cell_sz)
     table.cell(dash_tbl, 5, 4, ew_cell(h4_ew_phase, h4_ew_imp_cnt, h4_ew_cor_cnt), text_color=color.new(#CE93D8, 0), bgcolor=cell_bg, text_size=cell_sz)
     table.cell(dash_tbl, 6, 4, pat_str(h4_ew_pattern), text_color=color.new(#90CAF9, 0), bgcolor=cell_bg, text_size=cell_sz)
@@ -1667,7 +1667,7 @@ if i_dash_on and barstate.islast
     table.cell(dash_tbl, 0, 5, "D",             text_color=color.new(#FF7043, 0), bgcolor=cell_bg,       text_size=cell_sz)
     table.cell(dash_tbl, 1, 5, dir_str(d_dir),  text_color=d_dir_clr,            bgcolor=cell_bg,       text_size=cell_sz)
     table.cell(dash_tbl, 2, 5, swc_str(d_lcls), text_color=color.new(#B0BEC5, 0), bgcolor=cell_bg,       text_size=cell_sz)
-    table.cell(dash_tbl, 3, 5, conv_str(d_cv) + (d_sd > 0 ? "\u2191" : (d_sd < 0 ? "\u2193" : "")), text_color=color.white, bgcolor=conv_color(d_cv, d_sd), text_size=cell_sz)
+    table.cell(dash_tbl, 3, 5, conv_str(d_cv) + (d_sd > 0 ? "↑" : (d_sd < 0 ? "↓" : "")), text_color=color.white, bgcolor=conv_color(d_cv, d_sd), text_size=cell_sz)
     table.cell(dash_tbl, 4, 5, hlth_str(d_health), text_color=color.white, bgcolor=hlth_color(d_health), text_size=cell_sz)
     table.cell(dash_tbl, 5, 5, ew_cell(d_ew_phase, d_ew_imp_cnt, d_ew_cor_cnt), text_color=color.new(#CE93D8, 0), bgcolor=cell_bg, text_size=cell_sz)
     table.cell(dash_tbl, 6, 5, pat_str(d_ew_pattern), text_color=color.new(#90CAF9, 0), bgcolor=cell_bg, text_size=cell_sz)
@@ -1678,21 +1678,21 @@ if i_dash_on and barstate.islast
     table.cell(dash_tbl, 0, 6, "W",             text_color=color.new(#FFCA28, 0), bgcolor=cell_bg,       text_size=cell_sz)
     table.cell(dash_tbl, 1, 6, dir_str(w_dir),  text_color=w_dir_clr,            bgcolor=cell_bg,       text_size=cell_sz)
     table.cell(dash_tbl, 2, 6, swc_str(w_lcls), text_color=color.new(#B0BEC5, 0), bgcolor=cell_bg,       text_size=cell_sz)
-    table.cell(dash_tbl, 3, 6, conv_str(w_cv) + (w_sd > 0 ? "\u2191" : (w_sd < 0 ? "\u2193" : "")), text_color=color.white, bgcolor=conv_color(w_cv, w_sd), text_size=cell_sz)
+    table.cell(dash_tbl, 3, 6, conv_str(w_cv) + (w_sd > 0 ? "↑" : (w_sd < 0 ? "↓" : "")), text_color=color.white, bgcolor=conv_color(w_cv, w_sd), text_size=cell_sz)
     table.cell(dash_tbl, 4, 6, hlth_str(w_health), text_color=color.white, bgcolor=hlth_color(w_health), text_size=cell_sz)
-    table.cell(dash_tbl, 5, 6, "\u2014",        text_color=color.new(#546E7A, 0), bgcolor=cell_bg,       text_size=cell_sz)
-    table.cell(dash_tbl, 6, 6, "\u2014",        text_color=color.new(#546E7A, 0), bgcolor=cell_bg,       text_size=cell_sz)
-    table.cell(dash_tbl, 7, 6, "\u2014",        text_color=color.new(#546E7A, 0), bgcolor=cell_bg,       text_size=cell_sz)
+    table.cell(dash_tbl, 5, 6, "—",        text_color=color.new(#546E7A, 0), bgcolor=cell_bg,       text_size=cell_sz)
+    table.cell(dash_tbl, 6, 6, "—",        text_color=color.new(#546E7A, 0), bgcolor=cell_bg,       text_size=cell_sz)
+    table.cell(dash_tbl, 7, 6, "—",        text_color=color.new(#546E7A, 0), bgcolor=cell_bg,       text_size=cell_sz)
 
     // --- Row 7: MN ---
     color mn_dir_clr = mn_dir > 0 ? color.new(#26A69A, 0) : (mn_dir < 0 ? color.new(#EF5350, 0) : color.new(#78909C, 0))
     table.cell(dash_tbl, 0, 7, "MN",            text_color=color.new(#EF5350, 0), bgcolor=cell_bg,       text_size=cell_sz)
     table.cell(dash_tbl, 1, 7, dir_str(mn_dir), text_color=mn_dir_clr,           bgcolor=cell_bg,       text_size=cell_sz)
     table.cell(dash_tbl, 2, 7, swc_str(mn_lcls),text_color=color.new(#B0BEC5, 0), bgcolor=cell_bg,       text_size=cell_sz)
-    table.cell(dash_tbl, 3, 7, conv_str(mn_cv) + (mn_sd > 0 ? "\u2191" : (mn_sd < 0 ? "\u2193" : "")), text_color=color.white, bgcolor=conv_color(mn_cv, mn_sd), text_size=cell_sz)
+    table.cell(dash_tbl, 3, 7, conv_str(mn_cv) + (mn_sd > 0 ? "↑" : (mn_sd < 0 ? "↓" : "")), text_color=color.white, bgcolor=conv_color(mn_cv, mn_sd), text_size=cell_sz)
     table.cell(dash_tbl, 4, 7, hlth_str(mn_health), text_color=color.white, bgcolor=hlth_color(mn_health), text_size=cell_sz)
-    table.cell(dash_tbl, 5, 7, "\u2014",        text_color=color.new(#546E7A, 0), bgcolor=cell_bg,       text_size=cell_sz)
-    table.cell(dash_tbl, 6, 7, "\u2014",        text_color=color.new(#546E7A, 0), bgcolor=cell_bg,       text_size=cell_sz)
-    table.cell(dash_tbl, 7, 7, "\u2014",        text_color=color.new(#546E7A, 0), bgcolor=cell_bg,       text_size=cell_sz)
+    table.cell(dash_tbl, 5, 7, "—",        text_color=color.new(#546E7A, 0), bgcolor=cell_bg,       text_size=cell_sz)
+    table.cell(dash_tbl, 6, 7, "—",        text_color=color.new(#546E7A, 0), bgcolor=cell_bg,       text_size=cell_sz)
+    table.cell(dash_tbl, 7, 7, "—",        text_color=color.new(#546E7A, 0), bgcolor=cell_bg,       text_size=cell_sz)
 
 // === END OF DETECTION ENGINE ===

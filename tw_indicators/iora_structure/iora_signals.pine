@@ -1155,19 +1155,21 @@ int h1_ew_thr = h1_ew_pattern == 2 ? 4 : h1_ew_pattern == 3 ? 8 : 5
 
 bool opp_nesting = false
 // H1 demand inside H4 supply
-for int i = 0 to math.min(h1_dem.size() - 1, 3)
-    Zone hd = h1_dem.get(i)
-    for int j = 0 to math.min(h4_sup.size() - 1, 3)
-        Zone hs = h4_sup.get(j)
-        if hd.top < hs.top and hd.bottom > hs.bottom
-            opp_nesting := true
+if h1_dem.size() > 0 and h4_sup.size() > 0
+    for int i = 0 to math.min(h1_dem.size() - 1, 3)
+        Zone hd = h1_dem.get(i)
+        for int j = 0 to math.min(h4_sup.size() - 1, 3)
+            Zone hs = h4_sup.get(j)
+            if hd.top < hs.top and hd.bottom > hs.bottom
+                opp_nesting := true
 // H1 supply inside H4 demand
-for int i = 0 to math.min(h1_sup.size() - 1, 3)
-    Zone hs2 = h1_sup.get(i)
-    for int j = 0 to math.min(h4_dem.size() - 1, 3)
-        Zone hd2 = h4_dem.get(j)
-        if hs2.bottom > hd2.bottom and hs2.top < hd2.top
-            opp_nesting := true
+if h1_sup.size() > 0 and h4_dem.size() > 0
+    for int i = 0 to math.min(h1_sup.size() - 1, 3)
+        Zone hs2 = h1_sup.get(i)
+        for int j = 0 to math.min(h4_dem.size() - 1, 3)
+            Zone hd2 = h4_dem.get(j)
+            if hs2.bottom > hd2.bottom and hs2.top < hd2.top
+                opp_nesting := true
 
 // =============================================================================
 // MOMENTUM CONSUMPTION
@@ -1253,10 +1255,11 @@ detect_123(array<Zone> sup_arr, array<Zone> dem_arr) =>
 // Zone containment check
 is_inside_zone(array<Zone> zones) =>
     bool inside = false
-    for int i = 0 to math.min(zones.size() - 1, 7)
-        Zone z = zones.get(i)
-        if close >= z.bottom and close <= z.top
-            inside := true
+    if zones.size() > 0
+        for int i = 0 to math.min(zones.size() - 1, 7)
+            Zone z = zones.get(i)
+            if close >= z.bottom and close <= z.top
+                inside := true
     inside
 
 // Cascade arming — bearish
@@ -1409,12 +1412,13 @@ is_m15_nested_h4(int reversal_dir) =>
     bool nested = false
     array<Zone> m15_z = reversal_dir > 0 ? m15_dem : m15_sup
     array<Zone> h4_z  = reversal_dir > 0 ? h4_dem  : h4_sup
-    for int i = 0 to math.min(m15_z.size() - 1, 3)
-        Zone mz = m15_z.get(i)
-        for int j = 0 to math.min(h4_z.size() - 1, 3)
-            Zone hz = h4_z.get(j)
-            if mz.top <= hz.top and mz.bottom >= hz.bottom
-                nested := true
+    if m15_z.size() > 0 and h4_z.size() > 0
+        for int i = 0 to math.min(m15_z.size() - 1, 3)
+            Zone mz = m15_z.get(i)
+            for int j = 0 to math.min(h4_z.size() - 1, 3)
+                Zone hz = h4_z.get(j)
+                if mz.top <= hz.top and mz.bottom >= hz.bottom
+                    nested := true
     nested
 
 // Model A: Terminal Reversal
