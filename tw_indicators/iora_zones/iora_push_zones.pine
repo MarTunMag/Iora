@@ -267,11 +267,18 @@ method process(array<Zone> zones, bool fire, float ztop, float zbot, bool is_sup
                 Zone z = zones.get(i)
                 if z.is_supply
                     z.is_push := true
+                    string scls = ""
+                    if trend_val == -1
+                        scls := "BOS"
+                    else if trend_val == 1
+                        scls := "CHoCH"
+                    z.struct_cls := scls
                     if not na(z.bx)
                         z.bx.set_bgcolor(i_psup_bg)
                         z.bx.set_border_color(i_psup_br)
                         z.bx.set_border_width(2)
-                        string ptxt = i_labels ? tf_label(tf_str) + " S PUSH" : na
+                        string suffix = scls != "" ? "-" + scls : ""
+                        string ptxt = i_labels ? tf_label(tf_str) + " S PUSH" + suffix : na
                         z.bx.set_text(ptxt)
                     break
             // Tag most recent demand as REVERSAL (the trigger zone just created)
@@ -297,11 +304,18 @@ method process(array<Zone> zones, bool fire, float ztop, float zbot, bool is_sup
                 Zone z = zones.get(i)
                 if not z.is_supply
                     z.is_push := true
+                    string scls = ""
+                    if trend_val == 1
+                        scls := "BOS"
+                    else if trend_val == -1
+                        scls := "CHoCH"
+                    z.struct_cls := scls
                     if not na(z.bx)
                         z.bx.set_bgcolor(i_pdem_bg)
                         z.bx.set_border_color(i_pdem_br)
                         z.bx.set_border_width(2)
-                        string ptxt = i_labels ? tf_label(tf_str) + " D PUSH" : na
+                        string suffix = scls != "" ? "-" + scls : ""
+                        string ptxt = i_labels ? tf_label(tf_str) + " D PUSH" + suffix : na
                         z.bx.set_text(ptxt)
                     break
             // Tag most recent supply as REVERSAL (the trigger zone just created)
@@ -336,9 +350,58 @@ string _base_sym = ticker.standard(syminfo.tickerid)
 [f7_raw, zt7, zb7, s7, tm7, hh7, ll7, hht7, llt7, h1s7, l1s7] = request.security(_base_sym, i_tf7, ha_detect(i_doji))
 
 // =============================================================================
-// S8 — EDGE DETECTION
+// S8 — PERIOD TRACKING + TREND STATE + EDGE DETECTION
 // =============================================================================
 
+// Period tracking (ungated — all 8 TFs)
+[tp0_hi, tp0_hi_t, tp0_lo, tp0_lo_t, tp0_hi_brk, tp0_lo_brk] = track_period(i_tf0)
+[tp1_hi, tp1_hi_t, tp1_lo, tp1_lo_t, tp1_hi_brk, tp1_lo_brk] = track_period(i_tf1)
+[tp2_hi, tp2_hi_t, tp2_lo, tp2_lo_t, tp2_hi_brk, tp2_lo_brk] = track_period(i_tf2)
+[tp3_hi, tp3_hi_t, tp3_lo, tp3_lo_t, tp3_hi_brk, tp3_lo_brk] = track_period(i_tf3)
+[tp4_hi, tp4_hi_t, tp4_lo, tp4_lo_t, tp4_hi_brk, tp4_lo_brk] = track_period(i_tf4)
+[tp5_hi, tp5_hi_t, tp5_lo, tp5_lo_t, tp5_hi_brk, tp5_lo_brk] = track_period(i_tf5)
+[tp6_hi, tp6_hi_t, tp6_lo, tp6_lo_t, tp6_hi_brk, tp6_lo_brk] = track_period(i_tf6)
+[tp7_hi, tp7_hi_t, tp7_lo, tp7_lo_t, tp7_hi_brk, tp7_lo_brk] = track_period(i_tf7)
+
+// Per-TF trend state
+var int trend0 = 0, var int trend1 = 0, var int trend2 = 0, var int trend3 = 0
+var int trend4 = 0, var int trend5 = 0, var int trend6 = 0, var int trend7 = 0
+
+// Edge-detect period breaks: na→timestamp means break just happened
+if not na(tp0_hi_brk) and na(tp0_hi_brk[1])
+    trend0 := 1
+if not na(tp0_lo_brk) and na(tp0_lo_brk[1])
+    trend0 := -1
+if not na(tp1_hi_brk) and na(tp1_hi_brk[1])
+    trend1 := 1
+if not na(tp1_lo_brk) and na(tp1_lo_brk[1])
+    trend1 := -1
+if not na(tp2_hi_brk) and na(tp2_hi_brk[1])
+    trend2 := 1
+if not na(tp2_lo_brk) and na(tp2_lo_brk[1])
+    trend2 := -1
+if not na(tp3_hi_brk) and na(tp3_hi_brk[1])
+    trend3 := 1
+if not na(tp3_lo_brk) and na(tp3_lo_brk[1])
+    trend3 := -1
+if not na(tp4_hi_brk) and na(tp4_hi_brk[1])
+    trend4 := 1
+if not na(tp4_lo_brk) and na(tp4_lo_brk[1])
+    trend4 := -1
+if not na(tp5_hi_brk) and na(tp5_hi_brk[1])
+    trend5 := 1
+if not na(tp5_lo_brk) and na(tp5_lo_brk[1])
+    trend5 := -1
+if not na(tp6_hi_brk) and na(tp6_hi_brk[1])
+    trend6 := 1
+if not na(tp6_lo_brk) and na(tp6_lo_brk[1])
+    trend6 := -1
+if not na(tp7_hi_brk) and na(tp7_hi_brk[1])
+    trend7 := 1
+if not na(tp7_lo_brk) and na(tp7_lo_brk[1])
+    trend7 := -1
+
+// Zone fire edge detection
 bool f0 = f0_raw and not f0_raw[1]
 bool f1 = f1_raw and not f1_raw[1]
 bool f2 = f2_raw and not f2_raw[1]
@@ -371,41 +434,41 @@ var float ph6 = na, var float pl6 = na
 var float ph7 = na, var float pl7 = na
 
 if i_tf0_on
-    [nph0, npl0] = zones0.process(f0, zt0, zb0, s0, tm0, h1s0, l1s0, hh0, ll0, 0, i_tf0, ph0, pl0)
+    [nph0, npl0] = zones0.process(f0, zt0, zb0, s0, tm0, h1s0, l1s0, hh0, ll0, trend0, i_tf0, ph0, pl0)
     ph0 := nph0
     pl0 := npl0
 
 if i_tf1_on
-    [nph1, npl1] = zones1.process(f1, zt1, zb1, s1, tm1, h1s1, l1s1, hh1, ll1, 0, i_tf1, ph1, pl1)
+    [nph1, npl1] = zones1.process(f1, zt1, zb1, s1, tm1, h1s1, l1s1, hh1, ll1, trend1, i_tf1, ph1, pl1)
     ph1 := nph1
     pl1 := npl1
 
 if i_tf2_on
-    [nph2, npl2] = zones2.process(f2, zt2, zb2, s2, tm2, h1s2, l1s2, hh2, ll2, 0, i_tf2, ph2, pl2)
+    [nph2, npl2] = zones2.process(f2, zt2, zb2, s2, tm2, h1s2, l1s2, hh2, ll2, trend2, i_tf2, ph2, pl2)
     ph2 := nph2
     pl2 := npl2
 
 if i_tf3_on
-    [nph3, npl3] = zones3.process(f3, zt3, zb3, s3, tm3, h1s3, l1s3, hh3, ll3, 0, i_tf3, ph3, pl3)
+    [nph3, npl3] = zones3.process(f3, zt3, zb3, s3, tm3, h1s3, l1s3, hh3, ll3, trend3, i_tf3, ph3, pl3)
     ph3 := nph3
     pl3 := npl3
 
 if i_tf4_on
-    [nph4, npl4] = zones4.process(f4, zt4, zb4, s4, tm4, h1s4, l1s4, hh4, ll4, 0, i_tf4, ph4, pl4)
+    [nph4, npl4] = zones4.process(f4, zt4, zb4, s4, tm4, h1s4, l1s4, hh4, ll4, trend4, i_tf4, ph4, pl4)
     ph4 := nph4
     pl4 := npl4
 
 if i_tf5_on
-    [nph5, npl5] = zones5.process(f5, zt5, zb5, s5, tm5, h1s5, l1s5, hh5, ll5, 0, i_tf5, ph5, pl5)
+    [nph5, npl5] = zones5.process(f5, zt5, zb5, s5, tm5, h1s5, l1s5, hh5, ll5, trend5, i_tf5, ph5, pl5)
     ph5 := nph5
     pl5 := npl5
 
 if i_tf6_on
-    [nph6, npl6] = zones6.process(f6, zt6, zb6, s6, tm6, h1s6, l1s6, hh6, ll6, 0, i_tf6, ph6, pl6)
+    [nph6, npl6] = zones6.process(f6, zt6, zb6, s6, tm6, h1s6, l1s6, hh6, ll6, trend6, i_tf6, ph6, pl6)
     ph6 := nph6
     pl6 := npl6
 
 if i_tf7_on
-    [nph7, npl7] = zones7.process(f7, zt7, zb7, s7, tm7, h1s7, l1s7, hh7, ll7, 0, i_tf7, ph7, pl7)
+    [nph7, npl7] = zones7.process(f7, zt7, zb7, s7, tm7, h1s7, l1s7, hh7, ll7, trend7, i_tf7, ph7, pl7)
     ph7 := nph7
     pl7 := npl7
