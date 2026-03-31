@@ -65,6 +65,8 @@ var string t6_state      = "IDLE"   // current triplet state
 var int    t6_dir        = 0        // +1 bullish, -1 bearish
 var float  t6_push_top   = na       // push zone top (SL reference for PUSH state)
 var float  t6_push_bot   = na       // push zone bottom (SL reference for PUSH state)
+var float  t6_last_pb_top = na      // last pullback zone top (for Resolution B check)
+var float  t6_last_pb_bot = na      // last pullback zone bottom (for Resolution B check)
 var int    t6_zone_count = 0        // zones created in current state
 ```
 
@@ -93,25 +95,74 @@ A new child zone matches the parent direction when:
 
 Counter-direction is the inverse.
 
+### M1 CHoCH Detection (Grandchild Confirmation)
+
+M1 CHoCH = M1 swing classification fires in the direction that opposes the pullback (i.e., confirms pullback is exhausting):
+
+- If `t6_dir > 0` (bullish parent, pullback was bearish): M1 CHoCH = `m1_fired and (m1_swc == 4)` (HL — M1 turned bullish)
+- If `t6_dir < 0` (bearish parent, pullback was bullish): M1 CHoCH = `m1_fired and (m1_swc == 2)` (LH — M1 turned bearish)
+
+This is tracked via a persistent variable:
+```pine
+var bool t6_m1_choch = false
+// Set true when M1 fires CHoCH opposing the pullback direction
+// Reset to false on state transition out of PULLBACK
+```
+
+### M15 Structural Level Lookup
+
+Finding "M15's last HL demand bottom" or "M15's last LH supply top" requires scanning the zone array by swing classification:
+
+```pine
+get_zone_by_cls(array<Zone> zones, int cls) =>
+    Zone result = na
+    for int i = 0 to math.min(zones.size() - 1, 7)
+        Zone z = zones.get(i)
+        if z.swing_cls == cls
+            result := z
+            break
+    result
+```
+
+- M15 structural HL demand = `get_zone_by_cls(m15_dem, 4)` (swing_cls == 4 = HL)
+- M15 structural LH supply = `get_zone_by_cls(m15_sup, 2)` (swing_cls == 2 = LH)
+
+Fallback: if no matching zone found, the structural level check defaults to `false` (treat as REVERSING rather than PULLBACK — conservative).
+
 ### State Transitions
 
 All transitions are driven by `m5_fired` (T6) or `m15_fired` (T5) events — the moment a new child zone is created.
 
+**Evaluation order on each bar:** (1) Update T6 state based on new zone event, (2) Check entry conditions against the **updated** state. This means the first counter-zone both transitions to PULLBACK and fires the PULLBACK entry on the same bar.
+
 | From | To | Trigger | Condition |
 |---|---|---|---|
-| IDLE | PUSHING | M5 zone in M15 direction | Price inside M15 zone (`is_inside_zone`) |
-| PUSHING | CONTINUING | Next M5 zone, same direction | Extends HH/LL beyond push zone |
-| PUSHING / CONTINUING | PULLBACK | M5 zone counter to M15 dir | Doesn't break M15 structural level |
-| PULLBACK | PUSHING | M5 zone in M15 dir again | M1 CHoCH confirms pullback resolution |
-| PULLBACK | REVERSING | M1 breaks M15 structural level | M15 swc changes (HH→LH, LL→HL, etc.) |
-| REVERSING | PUSHING | New M15 leg confirmed | M15 direction flips, first M5 zone in new dir |
+| IDLE | PUSHING | M5 zone in M15 direction | Bullish: `is_inside_zone(m15_dem)`. Bearish: `is_inside_zone(m15_sup)` |
+| PUSHING | CONTINUING | Next M5 zone, same direction | Bullish: new M5 dem zone bottom > `t6_push_top`. Bearish: new M5 sup zone top < `t6_push_bot` |
+| PUSHING / CONTINUING | PULLBACK | M5 zone counter to M15 dir | Doesn't break M15 structural level (see check below) |
+| PULLBACK | PUSHING (Resolution A) | M5 zone in M15 dir, at push zone | Bullish: new zone bottom <= `t6_push_top`. Bearish: new zone top >= `t6_push_bot`. Plus `t6_m1_choch == true` |
+| PULLBACK | PUSHING (Resolution B) | Last pullback zone body-close broken | Bullish: `close > t6_last_pb_top`. Bearish: `close < t6_last_pb_bot`. Plus M5 zone in M15 dir. Plus `t6_m1_choch == true` |
+| PULLBACK | REVERSING | M5 counter-zone breaks M15 structural level | See structural level check below |
+| REVERSING | PUSHING | New M15 leg confirmed | `m15_fired` and M15 direction flips, first M5 zone in new dir |
 
 ### "Doesn't Break M15 Structural Level" Check
 
-- For M15 bullish (t6_parent_dir > 0): the M5 counter-zone's low stays above M15's last HL demand bottom
-- For M15 bearish (t6_parent_dir < 0): the M5 counter-zone's high stays below M15's last LH supply top
+- For M15 bullish (`t6_parent_dir > 0`): the M5 counter-zone's low stays above M15's last HL demand bottom (`get_zone_by_cls(m15_dem, 4).bottom`). If no HL demand exists → defaults to REVERSING.
+- For M15 bearish (`t6_parent_dir < 0`): the M5 counter-zone's high stays below M15's last LH supply top (`get_zone_by_cls(m15_sup, 2).top`). If no LH supply exists → defaults to REVERSING.
 
 If the counter-zone DOES break the structural level → transition to REVERSING, not PULLBACK.
+
+### State Variable Updates on Transition
+
+| Transition | Variable Updates |
+|---|---|
+| → PUSHING | `t6_dir := t6_parent_dir`, `t6_push_top := new_zone.top`, `t6_push_bot := new_zone.bottom`, `t6_zone_count := 1`, `t6_m1_choch := false` |
+| → CONTINUING | `t6_zone_count += 1` |
+| → PULLBACK | `t6_last_pb_top := new_zone.top`, `t6_last_pb_bot := new_zone.bottom`, `t6_zone_count := 1`, `t6_m1_choch := false` |
+| → REVERSING | `t6_zone_count := 0` |
+| → IDLE | `t6_dir := 0`, `t6_push_top := na`, `t6_push_bot := na`, `t6_zone_count := 0` |
+
+On subsequent PULLBACK zones (still in PULLBACK state): update `t6_last_pb_top`/`t6_last_pb_bot` to the newest counter-zone, increment `t6_zone_count`.
 
 ### State Reset
 
@@ -176,7 +227,7 @@ M5 zone edge: `m5_dem.get(0).bottom` (long) / `m5_sup.get(0).top` (short).
 | PUSH | `t6_push_bot - mintick * 10` | `t6_push_top + mintick * 10` |
 | CONTINUE | `m5_dem.get(0).bottom - mintick * 10` | `m5_sup.get(0).top + mintick * 10` |
 | PULLBACK | `m5_dem.get(0).bottom - mintick * 10` | `m5_sup.get(0).top + mintick * 10` |
-| REVERSAL | M15 last HL dem bottom - 10 ticks | M15 last LH sup top + 10 ticks |
+| REVERSAL | `get_zone_by_cls(m15_dem, 4).bottom - mintick * 10` (M15 HL demand) | `get_zone_by_cls(m15_sup, 2).top + mintick * 10` (M15 LH supply) |
 
 ### Take Profit (state target)
 
@@ -185,7 +236,9 @@ M5 zone edge: `m5_dem.get(0).bottom` (long) / `m5_sup.get(0).top` (short).
 | PUSH | `m15_sup.get(0).bottom` (parent supply boundary) | `m15_dem.get(0).top` (parent demand boundary) |
 | CONTINUE | `m15_sup.get(0).bottom` (parent boundary) | `m15_dem.get(0).top` (parent boundary) |
 | PULLBACK | `t6_push_top` (push zone = magnet) | `t6_push_bot` (push zone = magnet) |
-| REVERSAL | M15 last zone in new direction | M15 last zone in new direction |
+| REVERSAL | `m15_sup.get(0).bottom` (next overhead supply) | `m15_dem.get(0).top` (next underlying demand) |
+
+Note: REVERSAL TP uses the same opposing-zone lookup as PUSH/CONTINUE. After a reversal, the nearest parent zone in the opposing direction is the natural target for the new leg.
 
 ### Guards
 
