@@ -220,7 +220,7 @@ track_period(string tf) =>
     [prev_hi, prev_hi_t, prev_lo, prev_lo_t, hi_brk_t, lo_brk_t]
 
 // =============================================================================
-// S6 — ZONE MANAGEMENT (stub)
+// S6 — ZONE MANAGEMENT
 // =============================================================================
 
 method delete_zone(array<Zone> zones, int idx) =>
@@ -228,6 +228,33 @@ method delete_zone(array<Zone> zones, int idx) =>
     if not na(z.bx)
         box.delete(z.bx)
     zones.remove(idx)
+
+method process(array<Zone> zones, bool fire, float ztop, float zbot, bool is_sup, int z_time, string hi_txt, string lo_txt, float seq_hh_val, float seq_ll_val, int trend_val, string tf_str, float prev_push_hi, float prev_push_lo) =>
+    int tf_ms  = timeframe.in_seconds(tf_str) * 1000
+    int max_ms = tf_max_age(tf_str) * tf_ms
+
+    if zones.size() > 0
+        for i = zones.size() - 1 to 0
+            Zone z = zones.get(i)
+            bool expired = (time - z.origin_time) > max_ms
+            if expired
+                zones.delete_zone(i)
+                continue
+            bool broken = z.is_supply ? (close > z.top) : (close < z.bottom)
+            if broken
+                zones.delete_zone(i)
+
+    bool valid = not na(ztop) and not na(zbot) and not na(z_time) and ztop > zbot
+    if fire and (time - z_time) < max_ms and valid
+        string cls     = is_sup ? hi_txt : lo_txt
+        string lbl_txt = i_labels ? tf_label(tf_str) + (is_sup ? " S " : " D ") + cls : na
+        color  bg_clr  = is_sup ? i_sup_bg : i_dem_bg
+        color  br_clr  = is_sup ? i_sup_br : i_dem_br
+        color  tx_clr  = is_sup ? color.new(#FF4444, 0) : color.new(#2196F3, 0)
+        box new_box    = box.new(z_time, ztop, z_time + tf_ms * 6, zbot, xloc = xloc.bar_time, extend = extend.right, bgcolor = bg_clr, border_color = br_clr, border_width = 1, text = lbl_txt, text_size = size.tiny, text_color = tx_clr, text_halign = text.align_right, text_valign = text.align_top)
+        zones.push(Zone.new(ztop, zbot, is_sup, z_time, new_box, false, false, "", cls))
+
+    [prev_push_hi, prev_push_lo]
 
 // =============================================================================
 // S7 — DATA REQUESTS (8 calls on raw OHLC)
@@ -258,7 +285,7 @@ bool f6 = f6_raw and not f6_raw[1]
 bool f7 = f7_raw and not f7_raw[1]
 
 // =============================================================================
-// S9 — ZONE ARRAYS (no process calls yet)
+// S9 — ZONE ARRAYS + PER-TF EXECUTION
 // =============================================================================
 
 var array<Zone> zones0 = array.new<Zone>()
@@ -269,3 +296,52 @@ var array<Zone> zones4 = array.new<Zone>()
 var array<Zone> zones5 = array.new<Zone>()
 var array<Zone> zones6 = array.new<Zone>()
 var array<Zone> zones7 = array.new<Zone>()
+
+var float ph0 = na, var float pl0 = na
+var float ph1 = na, var float pl1 = na
+var float ph2 = na, var float pl2 = na
+var float ph3 = na, var float pl3 = na
+var float ph4 = na, var float pl4 = na
+var float ph5 = na, var float pl5 = na
+var float ph6 = na, var float pl6 = na
+var float ph7 = na, var float pl7 = na
+
+if i_tf0_on
+    [nph0, npl0] = zones0.process(f0, zt0, zb0, s0, tm0, h1s0, l1s0, hh0, ll0, 0, i_tf0, ph0, pl0)
+    ph0 := nph0
+    pl0 := npl0
+
+if i_tf1_on
+    [nph1, npl1] = zones1.process(f1, zt1, zb1, s1, tm1, h1s1, l1s1, hh1, ll1, 0, i_tf1, ph1, pl1)
+    ph1 := nph1
+    pl1 := npl1
+
+if i_tf2_on
+    [nph2, npl2] = zones2.process(f2, zt2, zb2, s2, tm2, h1s2, l1s2, hh2, ll2, 0, i_tf2, ph2, pl2)
+    ph2 := nph2
+    pl2 := npl2
+
+if i_tf3_on
+    [nph3, npl3] = zones3.process(f3, zt3, zb3, s3, tm3, h1s3, l1s3, hh3, ll3, 0, i_tf3, ph3, pl3)
+    ph3 := nph3
+    pl3 := npl3
+
+if i_tf4_on
+    [nph4, npl4] = zones4.process(f4, zt4, zb4, s4, tm4, h1s4, l1s4, hh4, ll4, 0, i_tf4, ph4, pl4)
+    ph4 := nph4
+    pl4 := npl4
+
+if i_tf5_on
+    [nph5, npl5] = zones5.process(f5, zt5, zb5, s5, tm5, h1s5, l1s5, hh5, ll5, 0, i_tf5, ph5, pl5)
+    ph5 := nph5
+    pl5 := npl5
+
+if i_tf6_on
+    [nph6, npl6] = zones6.process(f6, zt6, zb6, s6, tm6, h1s6, l1s6, hh6, ll6, 0, i_tf6, ph6, pl6)
+    ph6 := nph6
+    pl6 := npl6
+
+if i_tf7_on
+    [nph7, npl7] = zones7.process(f7, zt7, zb7, s7, tm7, h1s7, l1s7, hh7, ll7, 0, i_tf7, ph7, pl7)
+    ph7 := nph7
+    pl7 := npl7
