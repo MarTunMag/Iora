@@ -84,16 +84,16 @@ Per TF: `bool XX_new = ta.change(XX_t) != 0` — detects when a new candle opens
 
 ```
 type FractalZone
-    float   top          // zone upper boundary (ORIZ)
-    float   bottom       // zone lower boundary (ORIZ)
-    int     side         // +1 demand, -1 supply
-    int     cls          // 1=HH, 2=LH, 3=LL, 4=HL
-    int     role         // 0=unassigned, 1=push, 2=continuation, 3=pullback, 4=reversal
-    string  tf_str       // "H1", "H4", "D", "W", "MN"
-    int     birth_bar    // bar_index at creation
-    int     max_age      // TF-specific: 50 for H1-H4, 30 for W, 20 for MN
-    box     bx           // drawn box (na if TF hidden)
-    label   lbl          // drawn label (na if TF hidden)
+    float   top       = na    // zone upper boundary (ORIZ)
+    float   bottom    = na    // zone lower boundary (ORIZ)
+    int     side      = 0     // +1 demand, -1 supply
+    int     cls       = 0     // 1=HH, 2=LH, 3=LL, 4=HL
+    int     role      = 0     // 0=unassigned, 1=push, 2=continuation, 3=pullback, 4=reversal
+    string  tf_str    = ""    // "H1", "H4", "D", "W", "MN"
+    int     birth_bar = 0     // bar_index at creation
+    int     max_age   = 50    // TF-specific: 50 for H1-D, 30 for W, 20 for MN
+    box     bx        = na    // drawn box (na if TF hidden)
+    label   lbl       = na    // drawn label (na if TF hidden)
 ```
 
 ### 4.2 HA Run Tracking (per TF, `var` persistent)
@@ -143,7 +143,7 @@ Per zone in every array:
 ### 4.5 Zone Expiry (every bar)
 
 - `bar_index - zone.birth_bar > zone.max_age` → delete and remove.
-- Max age per TF: H1=50, H4=50, D=50, W=30, MN=20 (per spec).
+- Max age per TF: H1=50, H4=50, D=50 (grouped with sub-daily per spec "M1–H4"), W=30, MN=20.
 
 ### 4.6 Zone Colors (Layer 1 defaults, overridden by Layer 2 roles)
 
@@ -163,21 +163,32 @@ Supply/demand distinguished by box border: supply = red-tinted, demand = blue-ti
 
 ```
 type TripletState
-    string  id              // "T1" through "T6"
-    int     state           // 1=PUSHING, 2=CONTINUING, 3=PULLING_BACK, 4=REVERSING
-    int     direction       // +1 bullish, -1 bearish (parent's direction)
-    int     push_idx        // index of push zone in child's zone array (-1 = none)
-    int     push_side       // +1 demand push, -1 supply push
-    float   push_target     // parent zone boundary being pushed toward
-    float   pb_target       // push zone edge (magnet for pullbacks)
-    float   parent_lh_top   // parent's LH supply top (for reversal detection)
-    float   parent_hl_bot   // parent's HL demand bottom (for reversal detection)
-    bool    grand_choch     // grandchild CHoCH detected
-    bool    grand_break     // grandchild broke parent structure
-    bool    compression     // child oscillating at parent boundary
-    int     push_fail_cnt   // count of failed body-close attempts at parent boundary
-    int     tl_hold_cnt     // count of times child TL held on pullback
+    string  id              = ""    // "T1" through "T6"
+    int     state           = 0     // 0=INIT, 1=PUSHING, 2=CONTINUING, 3=PULLING_BACK, 4=REVERSING
+    int     direction       = 0     // +1 bullish, -1 bearish (derived from parent's last zone)
+    int     push_idx        = -1    // index of push zone in child's zone array (-1 = none)
+    int     push_side       = 0     // +1 demand push, -1 supply push
+    float   push_target     = na    // parent zone boundary being pushed toward
+    float   pb_target       = na    // push zone edge (magnet for pullbacks)
+    float   parent_zone_top = na    // the parent zone that produced parent's last HH/LL — top
+    float   parent_zone_bot = na    // same zone — bottom
+    float   parent_lh_top   = na    // parent's LH supply top (reversal detection)
+    float   parent_hl_bot   = na    // parent's HL demand bottom (reversal detection)
+    bool    grand_choch     = false // grandchild CHoCH detected
+    bool    grand_break     = false // grandchild broke parent structure
+    bool    compression     = false // child oscillating at parent boundary
+    bool    failed_reversal = false // child built HL→HH but failed to break parent zone, then collapsed
+    int     push_fail_cnt   = 0    // count of failed body-close attempts at parent boundary
+    int     tl_hold_cnt     = 0    // count of times child TL held on pullback
+    // Zone role tracking — indices into child zone arrays
+    array<int> cont_idxs            // continuation zone indices in child array
+    array<int> pb_idxs              // pullback zone indices in child array
+    int     reversal_idx    = -1    // reversal zone index in child array
 ```
+
+**Direction derivation:** When the parent creates a new zone, direction is set from the parent zone type:
+- Parent last zone = supply → `direction = -1` (bearish for child)
+- Parent last zone = demand → `direction = +1` (bullish for child)
 
 ### 5.2 Six Instances
 
@@ -190,54 +201,212 @@ var TripletState t5 = TripletState.new("T5", ...)  // H1 → M15 → M5 (future)
 var TripletState t6 = TripletState.new("T6", ...)  // M15 → M5 → M1 (future)
 ```
 
-### 5.3 State Transition Function
+### 5.3 Event Dispatch
 
-One function, called for each triplet on every new zone event:
-
-```
-update_triplet(TripletState ts,
-               array<FractalZone> parent_sup, array<FractalZone> parent_dem,
-               array<FractalZone> child_sup, array<FractalZone> child_dem,
-               array<FractalZone> grand_sup, array<FractalZone> grand_dem,
-               bool child_new_zone, int child_zone_cls, int child_zone_side,
-               bool grand_new_zone, int grand_zone_cls)
-```
-
-**Transition logic (per Addendum A.2):**
+When a new zone fires on TF X, determine which triplets are affected and in what role:
 
 ```
-IF child_new_zone:
-  IF zone inside parent's current zone:
-    IF same direction as ts.direction:
-      IF ts.push_idx == -1 → ts.state = PUSHING, record push zone
-      IF ts.push_idx >= 0 AND extends HH/LL → ts.state = CONTINUING
-    IF counter to ts.direction:
-      ts.state = PULLING_BACK, record pullback zone
-
-  IF pullback resolution A (price reaches push zone):
-    ts.state = PUSHING (new cycle, new push zone)
-  IF pullback resolution B (last pullback zone body-close broken):
-    ts.state = PUSHING (extending without full retrace)
-
-IF grand_new_zone:
-  IF grand CHoCH against child's direction:
-    ts.grand_choch = true
-  IF grand breaks parent structural zone (LH/HL):
-    ts.state = REVERSING
-    ts.grand_break = true
+ON new_zone(tf X, zone Z):
+  FOR each triplet T in [t1, t2, t3, t4]:
+    IF X == T.parent_tf → call reset_triplet(T, Z)
+    IF X == T.child_tf  → call update_child(T, Z)
+    IF X == T.grand_tf  → call update_grandchild(T, Z)
 ```
 
-**Compression detection (Addendum B Rule 3):**
+**Order matters:** Process parent resets first (they clear state), then child updates (they set state), then grandchild confirmations (they modify state). Within each category, process from highest triplet (T1) to lowest (T4).
+
+### 5.4 Parent Reset — `reset_triplet(T, Z)`
+
+When the parent creates a new zone, the triplet resets entirely (per Addendum A.8):
+
 ```
-IF child pushes to parent zone boundary AND fails body-close:
-  ts.push_fail_cnt += 1
-IF child pulls back to TL AND holds:
-  ts.tl_hold_cnt += 1
-IF ts.push_fail_cnt >= 2 AND ts.tl_hold_cnt >= 2:
-  ts.compression = true
+reset_triplet(TripletState ts, FractalZone parent_zone):
+  // Derive direction from parent zone type
+  ts.direction = parent_zone.side > 0 ? 1 : -1   // demand = bullish, supply = bearish
+
+  // Record parent zone boundaries
+  ts.parent_zone_top = parent_zone.top
+  ts.parent_zone_bot = parent_zone.bottom
+
+  // Update structural levels for reversal detection
+  IF parent_zone.cls == 2 (LH):  ts.parent_lh_top = parent_zone.top
+  IF parent_zone.cls == 4 (HL):  ts.parent_hl_bot = parent_zone.bottom
+
+  // Clear child state — fresh cycle begins
+  ts.state = 0 (INIT — waiting for first child zone)
+  ts.push_idx = -1
+  ts.cont_idxs.clear()
+  ts.pb_idxs.clear()
+  ts.reversal_idx = -1
+  ts.grand_choch = false
+  ts.grand_break = false
+  ts.compression = false
+  ts.failed_reversal = false
+  ts.push_fail_cnt = 0
+  ts.tl_hold_cnt = 0
+  ts.push_target = direction > 0 ? parent_zone.top : parent_zone.bottom
+  ts.pb_target = na
 ```
 
-### 5.4 Zone Role Recoloring
+### 5.5 Child Update — `update_child(T, Z)`
+
+```
+update_child(TripletState ts, FractalZone child_zone,
+             array<FractalZone> child_sup, array<FractalZone> child_dem):
+
+  bool inside_parent = child_zone.top <= ts.parent_zone_top
+                   AND child_zone.bottom >= ts.parent_zone_bot
+  bool same_dir = (ts.direction > 0 AND child_zone.side > 0)   // bullish + demand
+               OR (ts.direction < 0 AND child_zone.side < 0)   // bearish + supply
+  bool counter  = NOT same_dir
+
+  IF ts.state == 0 (INIT) AND inside_parent AND same_dir:
+    // First child zone in parent's direction inside parent zone = push zone
+    ts.state = 1 (PUSHING)
+    ts.push_idx = 0  // just-created zone is at front of array
+    ts.push_side = child_zone.side
+    ts.pb_target = ts.direction > 0 ? child_zone.bottom : child_zone.top
+    assign child_zone.role = 1 (push)
+
+  ELSE IF (ts.state == 1 OR ts.state == 2) AND same_dir:
+    // Additional zone in same direction extending HH/LL = continuation
+    IF extends_structure(child_zone, ts):  // new HH or new LL
+      ts.state = 2 (CONTINUING)
+      ts.cont_idxs.push(0)
+      assign child_zone.role = 2 (continuation)
+
+  ELSE IF (ts.state == 1 OR ts.state == 2) AND counter:
+    // Zone counter to parent direction = pullback begins
+    ts.state = 3 (PULLING_BACK)
+    ts.pb_idxs.push(0)
+    assign child_zone.role = 3 (pullback)
+
+  ELSE IF ts.state == 3 AND counter:
+    // Additional pullback zone — deeper pullback
+    ts.pb_idxs.push(0)
+    assign child_zone.role = 3 (pullback)
+
+  ELSE IF ts.state == 3 AND same_dir:
+    // Zone in parent's direction while pulling back — check resolutions
+    // (Resolution checks happen per-bar, not just on zone creation — see 5.7)
+    pass
+```
+
+### 5.6 Grandchild Update — `update_grandchild(T, Z)`
+
+```
+update_grandchild(TripletState ts, FractalZone grand_zone):
+
+  // CHoCH detection: grandchild creates zone counter to child's current push
+  IF ts.state == 1 OR ts.state == 2:  // child is pushing/continuing
+    IF grand_zone classifies as LH (cls=2) AND ts.direction > 0:
+      ts.grand_choch = true  // early warning: child push exhausting
+    IF grand_zone classifies as HL (cls=4) AND ts.direction < 0:
+      ts.grand_choch = true
+
+  IF ts.state == 3:  // child is pulling back
+    // Grand CHoCH against pullback direction = pullback exhaustion signal
+    IF grand_zone is CHoCH vs pullback direction:
+      ts.grand_choch = true  // needed for pullback resolution confirmation
+
+  // Reversal detection: grandchild breaks parent structural zone
+  IF ts.direction > 0 AND grand_zone.side < 0:  // bearish grand zone
+    IF close < ts.parent_hl_bot:  // body close below parent HL demand
+      ts.state = 4 (REVERSING)
+      ts.grand_break = true
+      // Find the child zone that drove the break → mark as reversal
+  IF ts.direction < 0 AND grand_zone.side > 0:  // bullish grand zone
+    IF close > ts.parent_lh_top:  // body close above parent LH supply
+      ts.state = 4 (REVERSING)
+      ts.grand_break = true
+```
+
+### 5.7 Per-Bar Checks (Pullback Resolution + Compression)
+
+Run every bar, not just on zone creation:
+
+```
+FOR each active triplet T where T.state == 3 (PULLING_BACK):
+
+  // Resolution A: price reaches push zone
+  IF ts.direction > 0 AND close <= ts.pb_target:  // pullback down reached push demand
+    IF ts.grand_choch:  // grandchild confirmation required (Addendum A.2)
+      ts.state = 1 (PUSHING — new cycle)
+      reset push/cont/pb tracking, keep parent zone
+  IF ts.direction < 0 AND close >= ts.pb_target:
+    IF ts.grand_choch:
+      ts.state = 1 (PUSHING — new cycle)
+
+  // Resolution B: last pullback zone body-close broken
+  IF ts.pb_idxs.size() > 0:
+    last_pb = get zone at ts.pb_idxs.last()
+    IF ts.direction > 0 AND close > last_pb.top:  // broke bearish pullback zone
+      IF ts.grand_choch:  // grandchild confirmation required
+        ts.state = 1 (PUSHING — extending without full retrace)
+    IF ts.direction < 0 AND close < last_pb.bottom:
+      IF ts.grand_choch:
+        ts.state = 1 (PUSHING — extending)
+
+  // Compression detection (Addendum B Rule 3)
+  // Tracked via push_fail_cnt and tl_hold_cnt (updated in trendline layer)
+  IF ts.push_fail_cnt >= 2 AND ts.tl_hold_cnt >= 2:
+    ts.compression = true
+```
+
+### 5.8 Cascade Propagation
+
+When a triplet changes state, adjacent triplets may be affected (Addendum A.4):
+
+```
+// Downward: when T(n) enters PUSHING, T(n+1) re-evaluates direction
+propagate_direction_down(TripletState t_changed, TripletState t_below):
+  // t_below's parent TF is t_changed's child TF
+  // The new child zone that started the push becomes t_below's parent zone
+  // t_below resets via reset_triplet() — this happens naturally when the
+  // child zone fires and is also t_below's parent TF
+
+// Upward: when T(n) enters REVERSING, T(n-1) is notified
+propagate_reversal_up(TripletState t_changed, TripletState t_above):
+  // t_changed's reversal means t_above's grandchild broke parent structure
+  // This is handled by update_grandchild() — when the reversal zone fires,
+  // it is a zone event on t_above's grandchild TF
+  // No explicit propagation needed if dispatch (5.3) correctly routes events
+
+// Key insight: cascade propagation is handled implicitly by the event dispatch
+// in 5.3 — each zone event is routed to ALL triplets where that TF participates.
+// A zone on D affects T1 (as grandchild), T2 (as child), T3 (as parent).
+// This IS the cascade connectivity.
+```
+
+### 5.9 Failed Reversal Detection (Addendum B Rule 2)
+
+```
+// Detect: child built HL→HH but failed to break parent zone, then child TL breaks
+IF ts.state was 3 (PULLING_BACK) with child pushing counter:
+  AND child built structure (HL → HH if bullish counter-push)
+  AND child failed to body-close break parent zone
+  AND child ascending TL subsequently broken:
+    ts.failed_reversal = true
+    // Signal: enter parent direction with increased conviction
+    // Target = push zone (magnet)
+```
+
+### 5.10 Signal Hierarchy (Addendum B Rule 4)
+
+The grandchild CHoCH is not a single binary — it exists on a confidence hierarchy:
+
+| Level | Signal | Action |
+|-------|--------|--------|
+| 1 | M1 CHoCH | Flag only — do not act |
+| 2 | M5/M15 HL or LH | Prepare — tighten stops |
+| 3 | H1 structural event | Alert — ready to act |
+| 4 | H4 zone holds/breaks | Confirm — high confidence |
+| 5 | Child TL break | Confirmed direction change |
+| 6 | Parent zone break (body close) | Maximum conviction |
+
+For v0.1, the dashboard displays the highest confirmed level. The `grand_choch` boolean in TripletState is set at level 1-3; `grand_break` is set at level 4+.
+
+### 5.11 Zone Role Recoloring
 
 When a triplet assigns a role to a child zone, the zone's box color is overridden:
 
@@ -250,12 +419,16 @@ When a triplet assigns a role to a child zone, the zone's box color is overridde
 
 Zone label updated to include role suffix: `D S LH [PULL]`, `H4 D HL [PUSH]`, etc.
 
-### 5.5 "Inside Parent Zone" Check
+A zone may participate in multiple triplets with different roles (e.g., a D zone is child in T2 and parent in T3). The displayed role uses the **highest triplet** where the zone is a child — that is its primary structural role.
+
+### 5.12 "Inside Parent Zone" Check
 
 A child zone is "inside" the parent zone if:
-- Child zone `top <= parent zone top` AND `bottom >= parent zone bottom`
+- Child zone overlaps with parent zone: `child.top >= parent.bottom AND child.bottom <= parent.top`
 
-This uses the most recent active parent zone of the relevant type (supply or demand, depending on parent direction).
+This is an overlap check, not full containment — per the walkthrough (E4), child zones can be created at the parent boundary with partial overlap, and these still qualify as "inside."
+
+**Which parent zone?** The triplet tracks `parent_zone_top` and `parent_zone_bot` — set when `reset_triplet()` fires on parent zone creation. This is specifically "the parent zone that produced the parent's last HH/LL" (spec Section 4a). It is NOT just "any active parent zone" — it is the one recorded in the triplet state.
 
 ## 6. Layer 3 — Trendlines & Magnet Lines
 
@@ -267,6 +440,8 @@ When a push zone exists and continuation zone(s) follow:
 - **Bearish TL:** `line` from push zone supply `top` at `birth_bar` → latest continuation zone supply `top` at `birth_bar`. Extended right.
 
 Line redrawn when new continuation zone added (delete old line, create new).
+
+**Finding push/continuation zones:** L3 reads from the TripletState: `ts.push_idx` gives the push zone index in the child array; `ts.cont_idxs` gives the continuation zone indices. L3 retrieves these zones from the child's zone arrays to get `birth_bar` and price levels for anchor points. If a referenced zone has been deleted (broken/expired), the trendline is also deleted.
 
 ### 6.2 Trendline Break Detection
 
@@ -311,7 +486,7 @@ When triplet state = PULLING_BACK:
 
 ### 7.1 Layout
 
-Table in input-selectable corner. 2 columns, 10 rows.
+Table in input-selectable corner. 2 columns, dynamic row count (based on enabled triplets).
 
 | Row | Col 0 | Col 1 |
 |-----|-------|-------|
@@ -337,12 +512,14 @@ Each triplet row shows: `{STATE} {↑|↓}` with color coding:
 
 ### 7.3 Composite Bias (Addendum A.6 Step 5)
 
+v0.1 evaluates T1-T3 only (T4 optional). Composite formula:
+
 ```
-IF all active triplets same direction + PUSHING/CONTINUING:
+IF all enabled triplets same direction + PUSHING/CONTINUING:
   "FULL ALIGN {↑|↓}" — green/red
-IF higher triplets (T1-T2) aligned, lower (T3+) may differ:
+IF higher triplets (T1-T2) aligned, T3 may differ:
   "PARTIAL {↑|↓}" — yellow
-IF higher triplets PULLING_BACK or REVERSING:
+IF T1 or T2 PULLING_BACK or REVERSING:
   "CONFLICT" — gray
 ```
 
