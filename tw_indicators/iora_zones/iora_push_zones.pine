@@ -279,7 +279,7 @@ method process(array<Zone> zones, bool fire, float ztop, float zbot, bool is_sup
                     if not na(z.bx)
                         z.bx.set_bgcolor(i_psup_bg)
                         z.bx.set_border_color(i_psup_br)
-                        z.bx.set_border_width(2)
+                        z.bx.set_border_width(1)
                         string suffix = scls != "" ? "-" + scls : ""
                         string ptxt = i_labels ? tf_label(tf_str) + " S PUSH" + suffix : na
                         z.bx.set_text(ptxt)
@@ -292,7 +292,7 @@ method process(array<Zone> zones, bool fire, float ztop, float zbot, bool is_sup
                     if not na(z.bx)
                         z.bx.set_bgcolor(i_rev_bg)
                         z.bx.set_border_color(i_rev_br)
-                        z.bx.set_border_width(2)
+                        z.bx.set_border_width(1)
                         string rtxt = i_labels ? tf_label(tf_str) + " D REV" : na
                         z.bx.set_text(rtxt)
                     break
@@ -316,7 +316,7 @@ method process(array<Zone> zones, bool fire, float ztop, float zbot, bool is_sup
                     if not na(z.bx)
                         z.bx.set_bgcolor(i_pdem_bg)
                         z.bx.set_border_color(i_pdem_br)
-                        z.bx.set_border_width(2)
+                        z.bx.set_border_width(1)
                         string suffix = scls != "" ? "-" + scls : ""
                         string ptxt = i_labels ? tf_label(tf_str) + " D PUSH" + suffix : na
                         z.bx.set_text(ptxt)
@@ -329,7 +329,7 @@ method process(array<Zone> zones, bool fire, float ztop, float zbot, bool is_sup
                     if not na(z.bx)
                         z.bx.set_bgcolor(i_rev_bg)
                         z.bx.set_border_color(i_rev_br)
-                        z.bx.set_border_width(2)
+                        z.bx.set_border_width(1)
                         string rtxt = i_labels ? tf_label(tf_str) + " S REV" : na
                         z.bx.set_text(rtxt)
                     break
