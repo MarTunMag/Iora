@@ -254,7 +254,71 @@ method process(array<Zone> zones, bool fire, float ztop, float zbot, bool is_sup
         box new_box    = box.new(z_time, ztop, z_time + tf_ms * 6, zbot, xloc = xloc.bar_time, extend = extend.right, bgcolor = bg_clr, border_color = br_clr, border_width = 1, text = lbl_txt, text_size = size.tiny, text_color = tx_clr, text_halign = text.align_right, text_valign = text.align_top)
         zones.push(Zone.new(ztop, zbot, is_sup, z_time, new_box, false, false, "", cls))
 
-    [prev_push_hi, prev_push_lo]
+    // 3. Push validation (after zone creation)
+    float new_push_hi = prev_push_hi
+    float new_push_lo = prev_push_lo
+
+    // Bearish push: demand fires with LL, tag supply as PUSH
+    if fire and not is_sup and lo_txt == "LL"
+        bool boundary_ok = na(prev_push_lo) or seq_ll_val < prev_push_lo
+        if boundary_ok and zones.size() > 0
+            // Tag most recent supply as PUSH
+            for i = zones.size() - 1 to 0
+                Zone z = zones.get(i)
+                if z.is_supply
+                    z.is_push := true
+                    if not na(z.bx)
+                        z.bx.set_bgcolor(i_psup_bg)
+                        z.bx.set_border_color(i_psup_br)
+                        z.bx.set_border_width(2)
+                        string ptxt = i_labels ? tf_label(tf_str) + " S PUSH" : na
+                        z.bx.set_text(ptxt)
+                    break
+            // Tag most recent demand as REVERSAL (the trigger zone just created)
+            for i = zones.size() - 1 to 0
+                Zone z = zones.get(i)
+                if not z.is_supply
+                    z.is_reversal := true
+                    if not na(z.bx)
+                        z.bx.set_bgcolor(i_rev_bg)
+                        z.bx.set_border_color(i_rev_br)
+                        z.bx.set_border_width(2)
+                        string rtxt = i_labels ? tf_label(tf_str) + " D REV" : na
+                        z.bx.set_text(rtxt)
+                    break
+            new_push_lo := seq_ll_val
+
+    // Bullish push: supply fires with HH, tag demand as PUSH
+    if fire and is_sup and hi_txt == "HH"
+        bool boundary_ok = na(prev_push_hi) or seq_hh_val > prev_push_hi
+        if boundary_ok and zones.size() > 0
+            // Tag most recent demand as PUSH
+            for i = zones.size() - 1 to 0
+                Zone z = zones.get(i)
+                if not z.is_supply
+                    z.is_push := true
+                    if not na(z.bx)
+                        z.bx.set_bgcolor(i_pdem_bg)
+                        z.bx.set_border_color(i_pdem_br)
+                        z.bx.set_border_width(2)
+                        string ptxt = i_labels ? tf_label(tf_str) + " D PUSH" : na
+                        z.bx.set_text(ptxt)
+                    break
+            // Tag most recent supply as REVERSAL (the trigger zone just created)
+            for i = zones.size() - 1 to 0
+                Zone z = zones.get(i)
+                if z.is_supply
+                    z.is_reversal := true
+                    if not na(z.bx)
+                        z.bx.set_bgcolor(i_rev_bg)
+                        z.bx.set_border_color(i_rev_br)
+                        z.bx.set_border_width(2)
+                        string rtxt = i_labels ? tf_label(tf_str) + " S REV" : na
+                        z.bx.set_text(rtxt)
+                    break
+            new_push_hi := seq_hh_val
+
+    [new_push_hi, new_push_lo]
 
 // =============================================================================
 // S7 — DATA REQUESTS (8 calls on raw OHLC)
