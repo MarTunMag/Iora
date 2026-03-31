@@ -167,18 +167,9 @@ Both edges must be inside — partial overlap does NOT count as nesting (this is
 
 **Skip filter:** If the parent zone overlaps an opposing zone at the same TF (e.g., a parent demand has an active supply zone whose bottom < parent top), the nesting signal is weak → skip the nesting label.
 
-### 4.7 Last-Created Zone Tracking (per TF per side)
+### 4.7 Reversal Target Zone Identification (Rule 11)
 
-Track the most recently created zone per TF per side for reversal target identification (Rule 11):
-
-```
-var FractalZone h1_last_sup  = na    // last created H1 supply
-var FractalZone h1_last_dem  = na    // last created H1 demand
-var FractalZone h4_last_sup  = na    // ... etc for each TF
-...
-```
-
-On each zone creation, update the corresponding tracker. These are used by Layer 2 (reversal target marking) and Layer 3 (reversal target lines).
+When the triplet engine marks a zone's role as push (1) or continuation (2), that zone becomes a candidate reversal target. When a triplet enters PULLING_BACK, the engine scans the child push-direction array for the most recent push/continuation zone and flags it with `is_rev_target = true`. No separate per-TF tracker variables are needed — the role-based scan in `mark_reversal_target()` (Section 5.11) handles identification directly.
 
 ### 4.8 Zone Colors (Layer 1 defaults, overridden by Layer 2 roles)
 
@@ -654,8 +645,7 @@ Derived from the `is_rev_target` flagged zone in the most active triplet (T3 pre
 - ORIZ boundaries with doji handling
 - HH/LH/HL/LL classification
 - Zone lifecycle (break by body close, expiry, overflow)
-- Zone nesting detection with terminal flagging (Rule 04)
-- Last-created zone tracking per TF per side (Rule 11)
+- Zone nesting detection with terminal flagging and skip filter (Rule 04)
 - Triplet engine T1-T3 (MN→W→D, W→D→H4, D→H4→H1)
 - Role-based zone recoloring
 - Reversal target marking on CHoCH zones (Rule 11)

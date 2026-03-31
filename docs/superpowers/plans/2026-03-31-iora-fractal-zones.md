@@ -55,6 +55,7 @@ bool   i_triplets  = input.bool(true,           "Enable triplet engine",      gr
 bool   i_show_t1   = input.bool(true,           "T1 (MN→W→D)",               group="Triplet Engine")
 bool   i_show_t2   = input.bool(true,           "T2 (W→D→H4)",               group="Triplet Engine")
 bool   i_show_t3   = input.bool(true,           "T3 (D→H4→H1)",              group="Triplet Engine")
+bool   i_show_t4   = input.bool(false,          "T4 (H4→H1→M15)",            group="Triplet Engine")
 
 // --- Trendlines ---
 bool   i_trendlines = input.bool(true,          "Show trendlines",            group="Trendlines")
@@ -174,36 +175,15 @@ var array<FractalZone> mn_sup  = array.new<FractalZone>(0)
 var array<FractalZone> mn_dem  = array.new<FractalZone>(0)
 ```
 
-- [ ] **Step 3: Write last-created zone trackers (Rule 11)**
+- [ ] **Step 3: Compile**
 
-```pine
-// =============================================================================
-// === L1: LAST-CREATED ZONE TRACKING (Rule 11 — reversal target identification)
-// =============================================================================
+Expected: compiles, no visual output. UDT and arrays declared.
 
-var int h1_last_sup_bar  = -1
-var int h1_last_dem_bar  = -1
-var int h4_last_sup_bar  = -1
-var int h4_last_dem_bar  = -1
-var int d_last_sup_bar   = -1
-var int d_last_dem_bar   = -1
-var int w_last_sup_bar   = -1
-var int w_last_dem_bar   = -1
-var int mn_last_sup_bar  = -1
-var int mn_last_dem_bar  = -1
-```
-
-These store the `birth_bar` of the most recently created zone per TF per side. Updated in Task 4 when zones are created.
-
-- [ ] **Step 4: Compile**
-
-Expected: compiles, no visual output. UDT, arrays, and trackers declared.
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add tw_indicators/iora_zones/iora_fractal_zones.pine
-git commit -m "feat(fractal-zones): L1a — FractalZone UDT, zone arrays, last-zone trackers"
+git commit -m "feat(fractal-zones): L1a — FractalZone UDT and per-TF zone arrays"
 ```
 
 ---
@@ -368,25 +348,23 @@ if h4_new and not na(h4_ha_c)
         if h4_ha_dir > 0 and h4_ha_dir_now < 0
             // Blue→Red = SUPPLY
             float s_top = h4_run_hi
-            float s_bot = h4_is_doji ? h4_ha_l : h4_ha_l
+            float s_bot = h4_ha_l  // ORIZ: transition candle's HA low (doji uses same value)
             int s_cls = not na(h4_prev_s_top) ? (s_top > h4_prev_s_top ? 1 : 2) : 1
             h4_prev_s_top := s_top
             create_zone(h4_sup, s_top, s_bot, -1, s_cls, "H4", 50, i_zone_h4, Z_CLR_H4, i_max_zones)
             h4_zone_fired := true
             h4_zone_side  := -1
             h4_zone_cls   := s_cls
-            h4_last_sup_bar := bar_index
         else if h4_ha_dir < 0 and h4_ha_dir_now > 0
             // Red→Blue = DEMAND
             float d_bot = h4_run_lo
-            float d_top = h4_is_doji ? h4_ha_h : h4_ha_h
+            float d_top = h4_ha_h  // ORIZ: transition candle's HA high (doji uses same value)
             int d_cls = not na(h4_prev_d_bot) ? (d_bot < h4_prev_d_bot ? 3 : 4) : 4
             h4_prev_d_bot := d_bot
             create_zone(h4_dem, d_top, d_bot, 1, d_cls, "H4", 50, i_zone_h4, Z_CLR_H4, i_max_zones)
             h4_zone_fired := true
             h4_zone_side  := 1
             h4_zone_cls   := d_cls
-            h4_last_dem_bar := bar_index
         // Reset run tracking
         h4_run_hi := h4_h
         h4_run_lo := h4_l
@@ -456,25 +434,40 @@ check_zone_breaks(array<FractalZone> zones, bool is_supply) =>
 // === L1: ZONE NESTING DETECTION (Rule 04)
 // =============================================================================
 
+// Skip filter helper: check if parent zone overlaps an opposing zone at same TF
+parent_zone_overlapped(FractalZone parent_z, array<FractalZone> opposing_arr) =>
+    bool overlapped = false
+    for int i = 0 to math.max(opposing_arr.size() - 1, 0)
+        if i < opposing_arr.size()
+            FractalZone opp = opposing_arr.get(i)
+            if opp.top >= parent_z.bottom and opp.bottom <= parent_z.top
+                overlapped := true
+                break
+    overlapped
+
 check_nesting(FractalZone child, array<FractalZone> parent_sup, array<FractalZone> parent_dem, string parent_tf) =>
     for int i = 0 to math.max(parent_sup.size() - 1, 0)
         if i < parent_sup.size()
             FractalZone p = parent_sup.get(i)
             if child.top <= p.top and child.bottom >= p.bottom
-                child.is_nested := true
-                child.nested_in := parent_tf
-                // Opposing: child demand inside parent supply = terminal
-                child.is_terminal := child.side > 0
+                // Skip filter: if parent supply overlapped by a demand zone, signal is weak
+                if not parent_zone_overlapped(p, parent_dem)
+                    child.is_nested := true
+                    child.nested_in := parent_tf
+                    // Opposing: child demand inside parent supply = terminal
+                    child.is_terminal := child.side > 0
                 break
     if not child.is_nested
         for int i = 0 to math.max(parent_dem.size() - 1, 0)
             if i < parent_dem.size()
                 FractalZone p = parent_dem.get(i)
                 if child.top <= p.top and child.bottom >= p.bottom
-                    child.is_nested := true
-                    child.nested_in := parent_tf
-                    // Opposing: child supply inside parent demand = terminal
-                    child.is_terminal := child.side < 0
+                    // Skip filter: if parent demand overlapped by a supply zone, signal is weak
+                    if not parent_zone_overlapped(p, parent_sup)
+                        child.is_nested := true
+                        child.nested_in := parent_tf
+                        // Opposing: child supply inside parent demand = terminal
+                        child.is_terminal := child.side < 0
                     break
     // Update label if nested
     if child.is_nested and not na(child.lbl)
@@ -482,11 +475,11 @@ check_nesting(FractalZone child, array<FractalZone> parent_sup, array<FractalZon
         string side_str = child.side < 0 ? "S" : "D"
         string suffix = child.is_terminal ? " [TERM]" : " @" + parent_tf
         label.set_text(child.lbl, child.tf_str + " " + side_str + " " + cls_str + suffix)
-        if child.is_terminal
+        if child.is_terminal and not na(child.bx)
             box.set_border_style(child.bx, line.style_dotted)
 ```
 
-Call nesting after zone creation (after all TF zone blocks):
+Call nesting **immediately after all zone creation blocks** (end of Task 4's section), BEFORE break detection:
 ```pine
 // Check nesting: H1→H4, H4→D, D→W, W→MN
 if h1_zone_fired
@@ -589,6 +582,13 @@ t3.id := "T3"
 if barstate.isfirst
     t3.cont_bars := array.new<int>(0)
     t3.pb_bars   := array.new<int>(0)
+
+// T4 stub — declared for future M15 expansion, not wired in v0.1
+var TripletState t4 = TripletState.new()
+t4.id := "T4"
+if barstate.isfirst
+    t4.cont_bars := array.new<int>(0)
+    t4.pb_bars   := array.new<int>(0)
 ```
 
 - [ ] **Step 3: Compile**
@@ -901,28 +901,36 @@ After the event dispatch block, iterate all zone arrays and recolor any zone wit
 if i_layer_2 and i_triplets
     for int i = 0 to math.max(w_sup.size() - 1, 0)
         if i < w_sup.size()
-            recolor_zone(w_sup.get(i))
+            FractalZone z = w_sup.get(i)
+            recolor_zone(z)
     for int i = 0 to math.max(w_dem.size() - 1, 0)
         if i < w_dem.size()
-            recolor_zone(w_dem.get(i))
+            FractalZone z = w_dem.get(i)
+            recolor_zone(z)
     for int i = 0 to math.max(d_sup.size() - 1, 0)
         if i < d_sup.size()
-            recolor_zone(d_sup.get(i))
+            FractalZone z = d_sup.get(i)
+            recolor_zone(z)
     for int i = 0 to math.max(d_dem.size() - 1, 0)
         if i < d_dem.size()
-            recolor_zone(d_dem.get(i))
+            FractalZone z = d_dem.get(i)
+            recolor_zone(z)
     for int i = 0 to math.max(h4_sup.size() - 1, 0)
         if i < h4_sup.size()
-            recolor_zone(h4_sup.get(i))
+            FractalZone z = h4_sup.get(i)
+            recolor_zone(z)
     for int i = 0 to math.max(h4_dem.size() - 1, 0)
         if i < h4_dem.size()
-            recolor_zone(h4_dem.get(i))
+            FractalZone z = h4_dem.get(i)
+            recolor_zone(z)
     for int i = 0 to math.max(h1_sup.size() - 1, 0)
         if i < h1_sup.size()
-            recolor_zone(h1_sup.get(i))
+            FractalZone z = h1_sup.get(i)
+            recolor_zone(z)
     for int i = 0 to math.max(h1_dem.size() - 1, 0)
         if i < h1_dem.size()
-            recolor_zone(h1_dem.get(i))
+            FractalZone z = h1_dem.get(i)
+            recolor_zone(z)
 ```
 
 - [ ] **Step 5: Compile and verify**
@@ -953,16 +961,19 @@ Add trendline drawing from push → continuation zones, trendline break detectio
 // =============================================================================
 
 // T1 trendline
-var line t1_tl     = na
-var bool t1_tl_brk = false
+var line  t1_tl      = na
+var bool  t1_tl_brk  = false
+var float t1_tl_prev = na   // previous bar's projected TL value (avoids [1] on local)
 
 // T2 trendline
-var line t2_tl     = na
-var bool t2_tl_brk = false
+var line  t2_tl      = na
+var bool  t2_tl_brk  = false
+var float t2_tl_prev = na
 
 // T3 trendline
-var line t3_tl     = na
-var bool t3_tl_brk = false
+var line  t3_tl      = na
+var bool  t3_tl_brk  = false
+var float t3_tl_prev = na
 
 // Magnet lines
 var line t1_mag = na
@@ -982,9 +993,10 @@ color REV_CLR    = #E040FB   // magenta for reversal targets
 - [ ] **Step 2: Write trendline update function**
 
 ```pine
-update_trendline(TripletState ts, line tl_ref, array<FractalZone> child_sup, array<FractalZone> child_dem) =>
+update_trendline(TripletState ts, line tl_ref, float prev_proj, array<FractalZone> child_sup, array<FractalZone> child_dem) =>
     line new_tl = tl_ref
     bool broken = false
+    float curr_proj = na
     if i_layer_3 and i_trendlines and ts.push_bar >= 0 and not na(ts.cont_bars) and ts.cont_bars.size() > 0
         // Find push zone
         array<FractalZone> push_arr = ts.push_side > 0 ? child_dem : child_sup
@@ -1001,11 +1013,11 @@ update_trendline(TripletState ts, line tl_ref, array<FractalZone> child_sup, arr
             if not na(new_tl)
                 line.delete(new_tl)
             new_tl := line.new(x1, y1, x2, y2, color=color.new(TL_CLR, 20), width=2, extend=extend.right)
-            // Check break
+            // Check break using prev_proj (avoids [1] on local variable)
             if x2 > x1
                 float slope = (y2 - y1) / (x2 - x1)
-                float projected = y2 + slope * (bar_index - x2)
-                bool brk = ts.direction > 0 ? (close < projected and close[1] >= nz(projected[1])) : (close > projected and close[1] <= nz(projected[1]))
+                curr_proj := y2 + slope * (bar_index - x2)
+                bool brk = ts.direction > 0 ? (close < curr_proj and not na(prev_proj) and close[1] >= prev_proj) : (close > curr_proj and not na(prev_proj) and close[1] <= prev_proj)
                 if brk
                     broken := true
                     line.set_style(new_tl, line.style_dotted)
@@ -1014,7 +1026,7 @@ update_trendline(TripletState ts, line tl_ref, array<FractalZone> child_sup, arr
         if not na(new_tl)
             line.delete(new_tl)
             new_tl := na
-    [new_tl, broken]
+    [new_tl, broken, curr_proj]
 ```
 
 - [ ] **Step 3: Write magnet line update function**
@@ -1071,17 +1083,20 @@ update_rev_target_line(TripletState ts, line rev_ref, array<FractalZone> child_s
 
 ```pine
 if i_layer_3
-    [t1_tl_new, t1_tl_b] = update_trendline(t1, t1_tl, w_sup, w_dem)
-    t1_tl     := t1_tl_new
-    t1_tl_brk := t1_tl_b
+    [t1_tl_new, t1_tl_b, t1_proj] = update_trendline(t1, t1_tl, t1_tl_prev, w_sup, w_dem)
+    t1_tl      := t1_tl_new
+    t1_tl_brk  := t1_tl_b
+    t1_tl_prev := t1_proj
 
-    [t2_tl_new, t2_tl_b] = update_trendline(t2, t2_tl, d_sup, d_dem)
-    t2_tl     := t2_tl_new
-    t2_tl_brk := t2_tl_b
+    [t2_tl_new, t2_tl_b, t2_proj] = update_trendline(t2, t2_tl, t2_tl_prev, d_sup, d_dem)
+    t2_tl      := t2_tl_new
+    t2_tl_brk  := t2_tl_b
+    t2_tl_prev := t2_proj
 
-    [t3_tl_new, t3_tl_b] = update_trendline(t3, t3_tl, h4_sup, h4_dem)
-    t3_tl     := t3_tl_new
-    t3_tl_brk := t3_tl_b
+    [t3_tl_new, t3_tl_b, t3_proj] = update_trendline(t3, t3_tl, t3_tl_prev, h4_sup, h4_dem)
+    t3_tl      := t3_tl_new
+    t3_tl_brk  := t3_tl_b
+    t3_tl_prev := t3_proj
 
     t1_mag := update_magnet(t1, t1_mag)
     t2_mag := update_magnet(t2, t2_mag)
@@ -1145,6 +1160,7 @@ dir_arrow(int d) =>
 - [ ] **Step 2: Write dashboard table**
 
 ```pine
+var table dash = na
 if i_layer_4 and i_dash and barstate.islast
     string tbl_pos = switch i_dash_pos
         "Top Left"     => position.top_left
@@ -1152,12 +1168,9 @@ if i_layer_4 and i_dash and barstate.islast
         "Bottom Left"  => position.bottom_left
         =>                position.bottom_right
 
-    var table dash = na
-    if not na(dash)
-        table.delete(dash)
-
     int rows = 12
-    dash := table.new(tbl_pos, 2, rows, bgcolor=color.new(#0D1117, 10), border_width=1, border_color=color.new(#3A3A5A, 50), frame_width=1, frame_color=color.new(#3A3A5A, 30))
+    if na(dash)
+        dash := table.new(tbl_pos, 2, rows, bgcolor=color.new(#0D1117, 10), border_width=1, border_color=color.new(#3A3A5A, 50), frame_width=1, frame_color=color.new(#3A3A5A, 30))
 
     color hdr_bg  = color.new(#0D1117, 0)
     color hdr_txt = color.new(#58A6FF, 0)
@@ -1170,15 +1183,21 @@ if i_layer_4 and i_dash and barstate.islast
 
     // Row 1: T1
     table.cell(dash, 0, 1, "T1: MN→W→D", text_color=color.new(#B0BEC5, 0), bgcolor=cell_bg, text_size=sz)
-    table.cell(dash, 1, 1, state_str(t1.state) + dir_arrow(t1.direction), text_color=state_clr(t1.state), bgcolor=cell_bg, text_size=sz)
+    color t1_clr = t1.compression ? #FFEB3B : state_clr(t1.state)
+    string t1_str = (t1.compression ? "COMPRESS" : state_str(t1.state)) + dir_arrow(t1.direction)
+    table.cell(dash, 1, 1, t1_str, text_color=t1_clr, bgcolor=cell_bg, text_size=sz)
 
     // Row 2: T2
     table.cell(dash, 0, 2, "T2: W→D→H4", text_color=color.new(#B0BEC5, 0), bgcolor=cell_bg, text_size=sz)
-    table.cell(dash, 1, 2, state_str(t2.state) + dir_arrow(t2.direction), text_color=state_clr(t2.state), bgcolor=cell_bg, text_size=sz)
+    color t2_clr = t2.compression ? #FFEB3B : state_clr(t2.state)
+    string t2_str = (t2.compression ? "COMPRESS" : state_str(t2.state)) + dir_arrow(t2.direction)
+    table.cell(dash, 1, 2, t2_str, text_color=t2_clr, bgcolor=cell_bg, text_size=sz)
 
     // Row 3: T3
     table.cell(dash, 0, 3, "T3: D→H4→H1", text_color=color.new(#B0BEC5, 0), bgcolor=cell_bg, text_size=sz)
-    table.cell(dash, 1, 3, state_str(t3.state) + dir_arrow(t3.direction), text_color=state_clr(t3.state), bgcolor=cell_bg, text_size=sz)
+    color t3_clr = t3.compression ? #FFEB3B : state_clr(t3.state)
+    string t3_str = (t3.compression ? "COMPRESS" : state_str(t3.state)) + dir_arrow(t3.direction)
+    table.cell(dash, 1, 3, t3_str, text_color=t3_clr, bgcolor=cell_bg, text_size=sz)
 
     // Row 4: Separator
     table.cell(dash, 0, 4, "", bgcolor=hdr_bg, text_size=sz)
@@ -1209,7 +1228,7 @@ if i_layer_4 and i_dash and barstate.islast
     string pb_str = "—"
     if t3.state == 3 and not na(t3.pb_target) and not na(t3.push_target)
         float total_range = math.abs(t3.push_target - t3.pb_target)
-        float current_depth = ts.direction > 0 ? math.abs(t3.push_target - close) : math.abs(close - t3.push_target)
+        float current_depth = t3.direction > 0 ? math.abs(t3.push_target - close) : math.abs(close - t3.push_target)
         float pct = total_range > 0 ? current_depth / total_range * 100 : 0
         pb_str := "PB: " + str.tostring(pct, "#") + "%"
     table.cell(dash, 0, 7, "Depth", text_color=color.new(#B0BEC5, 0), bgcolor=cell_bg, text_size=sz)
@@ -1268,14 +1287,7 @@ if i_layer_4 and i_dash and barstate.islast
     table.cell(dash, 1, 11, rev_str, text_color=color.new(REV_CLR, 0), bgcolor=cell_bg, text_size=sz)
 ```
 
-- [ ] **Step 3: Fix pullback depth reference**
-
-Note: the pullback depth block has a typo — `ts.direction` should be `t3.direction`. Fix:
-```pine
-        float current_depth = t3.direction > 0 ? math.abs(t3.push_target - close) : math.abs(close - t3.push_target)
-```
-
-- [ ] **Step 4: Compile and verify**
+- [ ] **Step 3: Compile and verify**
 
 Expected: dashboard appears in bottom-right corner showing T1/T2/T3 states, composite bias, target price, pullback depth %, signal status, alignment grid (H1/H4/D/W arrows), and reversal target zone (if any triplet is pulling back). Compare triplet states with the GBPUSD walkthrough from Addendum B — T2 should show PULLING BACK ↓, T3 should show PUSHING ↓.
 
@@ -1337,7 +1349,7 @@ git commit -m "feat(fractal-zones): visual polish + validation pass"
 | Task | Layer | What | Est. complexity |
 |------|-------|------|-----------------|
 | 1 | Scaffold | Inputs + security calls + new-period | Low |
-| 2 | L1a | UDT + arrays + last-zone trackers (Rule 11) | Low |
+| 2 | L1a | UDT + arrays | Low |
 | 3 | L1b | HA run tracking + create_zone() | Medium |
 | 4 | L1c | Zone creation for all 5 TFs + last-zone updates | Medium |
 | 5 | L1d | Break detection + expiry + nesting detection (Rule 04) | Medium |
