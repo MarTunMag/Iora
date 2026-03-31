@@ -51,7 +51,7 @@ bool   i_labels  = input.bool(true, "Show Zone Labels", group = GRP_CLR)
 
 string GRP_DASH  = "Dashboard"
 bool   i_dash    = input.bool(true, "Show Dashboard", group = GRP_DASH)
-string i_dash_pos = input.string("Top Right", "Position", options = ["Top Left", "Top Right", "Bottom Left", "Bottom Right"], group = GRP_DASH)
+string i_dash_pos = input.string("Bottom Left", "Position", options = ["Top Left", "Top Right", "Bottom Left", "Bottom Right"], group = GRP_DASH)
 
 // =============================================================================
 // S2 — ZONE UDT
