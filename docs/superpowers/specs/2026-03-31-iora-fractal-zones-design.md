@@ -92,6 +92,10 @@ type FractalZone
     string  tf_str    = ""    // "H1", "H4", "D", "W", "MN"
     int     birth_bar = 0     // bar_index at creation
     int     max_age   = 50    // TF-specific: 50 for H1-D, 30 for W, 20 for MN
+    bool    is_nested = false // fully contained inside a parent-TF zone
+    bool    is_terminal = false // opposing nest — this zone WILL be broken
+    string  nested_in = ""   // parent TF string if nested (e.g., "H4")
+    bool    is_rev_target = false // marked as reversal target by Rule 11
     box     bx        = na    // drawn box (na if TF hidden)
     label   lbl       = na    // drawn label (na if TF hidden)
 ```
@@ -145,7 +149,38 @@ Per zone in every array:
 - `bar_index - zone.birth_bar > zone.max_age` → delete and remove.
 - Max age per TF: H1=50, H4=50, D=50 (grouped with sub-daily per spec "M1–H4"), W=30, MN=20.
 
-### 4.6 Zone Colors (Layer 1 defaults, overridden by Layer 2 roles)
+### 4.6 Zone Nesting Detection (per zone creation)
+
+When a new child-TF zone is created, check if it is fully contained inside any active parent-TF zone (Rule 04):
+
+```
+child.top <= parent.top  AND  child.bot >= parent.bot
+```
+
+Both edges must be inside — partial overlap does NOT count as nesting (this is stricter than the triplet engine's overlap check in 5.12).
+
+**Nesting hierarchy:** H1 checks H4, H4 checks D, D checks W, W checks MN.
+
+**Classification:**
+- **Same-direction nest** (child supply inside parent supply, or child demand inside parent demand) → continuation signal. Zone label gets `@{parent_tf}` suffix (e.g., `H1 S LH @H4`).
+- **Opposing-direction nest** (child supply inside parent demand, or child demand inside parent supply) → terminal signal. The child zone **will be broken** because the parent force overwhelms it. Zone gets `is_terminal = true` and label gets `[TERM]` suffix.
+
+**Skip filter:** If the parent zone overlaps an opposing zone at the same TF (e.g., a parent demand has an active supply zone whose bottom < parent top), the nesting signal is weak → skip the nesting label.
+
+### 4.7 Last-Created Zone Tracking (per TF per side)
+
+Track the most recently created zone per TF per side for reversal target identification (Rule 11):
+
+```
+var FractalZone h1_last_sup  = na    // last created H1 supply
+var FractalZone h1_last_dem  = na    // last created H1 demand
+var FractalZone h4_last_sup  = na    // ... etc for each TF
+...
+```
+
+On each zone creation, update the corresponding tracker. These are used by Layer 2 (reversal target marking) and Layer 3 (reversal target lines).
+
+### 4.8 Zone Colors (Layer 1 defaults, overridden by Layer 2 roles)
 
 | TF | Color |
 |----|-------|
@@ -411,7 +446,23 @@ The hierarchy is expressed in triplet-relative terms (applies to any T1-T6 insta
 
 For v0.1, the dashboard displays the highest confirmed level per triplet. The `grand_choch` boolean in TripletState is set at level 1-2; `grand_break` is set at level 4+. Levels 3-5 are detected by combining child zone events with trendline state from Layer 3.
 
-### 5.11 Zone Role Recoloring
+### 5.11 Reversal Target Marking (Rule 11)
+
+When a triplet enters PULLING_BACK (state=3), the last-created child zone in the push direction **before** the pullback began is marked as the reversal target:
+
+```
+IF ts transitions to PULLING_BACK:
+  // The CHoCH zone = reversal target for the parent level
+  last_push_dir_zone = last created child zone on push side
+  last_push_dir_zone.is_rev_target = true
+  // Visual: dotted border on zone box, "★" prefix on label
+```
+
+This is the zone that price must reach or break for the current structural cycle to complete. It becomes the TP target for trades aligned with the pullback direction, and the entry zone for trades in the parent direction.
+
+When the triplet resets (parent zone fires), all `is_rev_target` flags on child zones are cleared.
+
+### 5.12 Zone Role Recoloring
 
 When a triplet assigns a role to a child zone, the zone's box color is overridden:
 
@@ -505,6 +556,9 @@ Table in input-selectable corner. 2 columns, dynamic row count (based on enabled
 | 7 | `Target` | Current magnet price |
 | 8 | `PB Depth` | % toward push zone |
 | 9 | `Signal` | TL/Zone confirmation status |
+| 10 | Separator | — |
+| 11 | `Alignment` | Per-TF bias alignment grid (from momentum consumption concept) |
+| 12 | `Rev Target` | Current reversal target zone + price (from Rule 11) |
 
 ### 7.2 State Display
 
@@ -544,6 +598,33 @@ Shows the two-layer confirmation status for the most relevant triplet:
 - `D: REVERSED` (red) — TL broken + zone broken
 - `D: BREAKOUT` (white) — TL intact + zone broken
 
+### 7.6 Alignment Grid (from Momentum Consumption concept)
+
+Shows per-TF directional alignment using the triplet states as a proxy for bias:
+
+```
+H1: ↑  H4: ↑  D: ↓  W: ↓  MN: ↓
+```
+
+Direction derived from the triplet where each TF is the child:
+- H1 direction from T3 (D→H4→H1)
+- H4 direction from T3 child or T2 grandchild
+- D direction from T2 (W→D→H4) or T1 grandchild
+- W direction from T1 (MN→W→D)
+- MN: always from T1 parent direction
+
+Color: green if aligned with composite bias, red if opposed, gray if INIT.
+
+### 7.7 Reversal Target Row (from Rule 11)
+
+Shows the nearest reversal target zone identified by the triplet engine:
+
+```
+Rev Target: H4 S LH @ 1.2650-1.2680
+```
+
+Derived from the `is_rev_target` flagged zone in the most active triplet (T3 preferred, fallback T2).
+
 ## 8. Implementation Constraints
 
 ### 8.1 Pine Script v6 Rules (from CLAUDE.md)
@@ -573,11 +654,17 @@ Shows the two-layer confirmation status for the most relevant triplet:
 - ORIZ boundaries with doji handling
 - HH/LH/HL/LL classification
 - Zone lifecycle (break by body close, expiry, overflow)
+- Zone nesting detection with terminal flagging (Rule 04)
+- Last-created zone tracking per TF per side (Rule 11)
 - Triplet engine T1-T3 (MN→W→D, W→D→H4, D→H4→H1)
 - Role-based zone recoloring
+- Reversal target marking on CHoCH zones (Rule 11)
 - Trendlines with two-layer confirmation
 - Magnet lines during pullbacks
+- Reversal target lines (horizontal, from Rule 11 marked zones)
 - Dashboard with triplet states, composite bias, targets
+- Dashboard alignment grid (momentum consumption concept)
+- Dashboard reversal target display
 
 **Out of scope (future):**
 - T4-T6 (requires M15/M5/M1 data — 6 more security calls)
