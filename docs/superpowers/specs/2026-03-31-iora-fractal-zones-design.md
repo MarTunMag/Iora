@@ -166,7 +166,7 @@ type TripletState
     string  id              = ""    // "T1" through "T6"
     int     state           = 0     // 0=INIT, 1=PUSHING, 2=CONTINUING, 3=PULLING_BACK, 4=REVERSING
     int     direction       = 0     // +1 bullish, -1 bearish (derived from parent's last zone)
-    int     push_idx        = -1    // index of push zone in child's zone array (-1 = none)
+    int     push_bar        = -1    // birth_bar of push zone (-1 = none)
     int     push_side       = 0     // +1 demand push, -1 supply push
     float   push_target     = na    // parent zone boundary being pushed toward
     float   pb_target       = na    // push zone edge (magnet for pullbacks)
@@ -180,15 +180,17 @@ type TripletState
     bool    failed_reversal = false // child built HL→HH but failed to break parent zone, then collapsed
     int     push_fail_cnt   = 0    // count of failed body-close attempts at parent boundary
     int     tl_hold_cnt     = 0    // count of times child TL held on pullback
-    // Zone role tracking — indices into child zone arrays
-    array<int> cont_idxs            // continuation zone indices in child array
-    array<int> pb_idxs              // pullback zone indices in child array
-    int     reversal_idx    = -1    // reversal zone index in child array
+    // Zone role tracking — by birth_bar (stable across array mutations)
+    array<int> cont_bars    = na    // birth_bars of continuation zones (init with array.new<int>())
+    array<int> pb_bars      = na    // birth_bars of pullback zones (init with array.new<int>())
+    int     reversal_bar    = -1    // birth_bar of reversal zone
 ```
 
 **Direction derivation:** When the parent creates a new zone, direction is set from the parent zone type:
 - Parent last zone = supply → `direction = -1` (bearish for child)
 - Parent last zone = demand → `direction = +1` (bullish for child)
+
+**Zone referencing strategy:** TripletState references zones by `birth_bar` (not array index). Array indices shift when zones are added (`.unshift()`) or removed (break/expiry). `birth_bar` is stable — it never changes after zone creation. To find a zone by `birth_bar`, scan the relevant array: `for z in array: if z.birth_bar == target_bar → found`. This is O(n) but arrays are small (max 20 per side). The `cont_bars` and `pb_bars` arrays use `array.new<int>()` at construction time (Pine v6 does not allow array literals as UDT defaults — initialize in the `var` declaration block).
 
 ### 5.2 Six Instances
 
@@ -234,17 +236,17 @@ reset_triplet(TripletState ts, FractalZone parent_zone):
 
   // Clear child state — fresh cycle begins
   ts.state = 0 (INIT — waiting for first child zone)
-  ts.push_idx = -1
-  ts.cont_idxs.clear()
-  ts.pb_idxs.clear()
-  ts.reversal_idx = -1
+  ts.push_bar = -1
+  ts.cont_bars.clear()
+  ts.pb_bars.clear()
+  ts.reversal_bar = -1
   ts.grand_choch = false
   ts.grand_break = false
   ts.compression = false
   ts.failed_reversal = false
   ts.push_fail_cnt = 0
   ts.tl_hold_cnt = 0
-  ts.push_target = direction > 0 ? parent_zone.top : parent_zone.bottom
+  ts.push_target = ts.direction > 0 ? parent_zone.top : parent_zone.bottom
   ts.pb_target = na
 ```
 
@@ -263,7 +265,7 @@ update_child(TripletState ts, FractalZone child_zone,
   IF ts.state == 0 (INIT) AND inside_parent AND same_dir:
     // First child zone in parent's direction inside parent zone = push zone
     ts.state = 1 (PUSHING)
-    ts.push_idx = 0  // just-created zone is at front of array
+    ts.push_bar = child_zone.birth_bar
     ts.push_side = child_zone.side
     ts.pb_target = ts.direction > 0 ? child_zone.bottom : child_zone.top
     assign child_zone.role = 1 (push)
@@ -272,24 +274,25 @@ update_child(TripletState ts, FractalZone child_zone,
     // Additional zone in same direction extending HH/LL = continuation
     IF extends_structure(child_zone, ts):  // new HH or new LL
       ts.state = 2 (CONTINUING)
-      ts.cont_idxs.push(0)
+      ts.cont_bars.push(child_zone.birth_bar)
       assign child_zone.role = 2 (continuation)
 
   ELSE IF (ts.state == 1 OR ts.state == 2) AND counter:
     // Zone counter to parent direction = pullback begins
     ts.state = 3 (PULLING_BACK)
-    ts.pb_idxs.push(0)
+    ts.pb_bars.push(child_zone.birth_bar)
     assign child_zone.role = 3 (pullback)
 
   ELSE IF ts.state == 3 AND counter:
     // Additional pullback zone — deeper pullback
-    ts.pb_idxs.push(0)
+    ts.pb_bars.push(child_zone.birth_bar)
     assign child_zone.role = 3 (pullback)
 
   ELSE IF ts.state == 3 AND same_dir:
-    // Zone in parent's direction while pulling back — check resolutions
-    // (Resolution checks happen per-bar, not just on zone creation — see 5.7)
-    pass
+    // Zone in parent's direction while pulling back
+    // This zone is not assigned a role yet — it may become the new push zone
+    // if pullback resolution is confirmed (per-bar checks in 5.7).
+    // Leave role = 0 (unassigned) until resolution triggers.
 ```
 
 ### 5.6 Grandchild Update — `update_grandchild(T, Z)`
@@ -338,8 +341,8 @@ FOR each active triplet T where T.state == 3 (PULLING_BACK):
       ts.state = 1 (PUSHING — new cycle)
 
   // Resolution B: last pullback zone body-close broken
-  IF ts.pb_idxs.size() > 0:
-    last_pb = get zone at ts.pb_idxs.last()
+  IF ts.pb_bars.size() > 0:
+    last_pb = find zone where birth_bar == ts.pb_bars.last()
     IF ts.direction > 0 AND close > last_pb.top:  // broke bearish pullback zone
       IF ts.grand_choch:  // grandchild confirmation required
         ts.state = 1 (PUSHING — extending without full retrace)
@@ -395,16 +398,18 @@ IF ts.state was 3 (PULLING_BACK) with child pushing counter:
 
 The grandchild CHoCH is not a single binary — it exists on a confidence hierarchy:
 
-| Level | Signal | Action |
-|-------|--------|--------|
-| 1 | M1 CHoCH | Flag only — do not act |
-| 2 | M5/M15 HL or LH | Prepare — tighten stops |
-| 3 | H1 structural event | Alert — ready to act |
-| 4 | H4 zone holds/breaks | Confirm — high confidence |
-| 5 | Child TL break | Confirmed direction change |
-| 6 | Parent zone break (body close) | Maximum conviction |
+The hierarchy is expressed in triplet-relative terms (applies to any T1-T6 instance):
 
-For v0.1, the dashboard displays the highest confirmed level. The `grand_choch` boolean in TripletState is set at level 1-3; `grand_break` is set at level 4+.
+| Level | Signal (triplet-relative) | Example for T3 (D→H4→H1) | Action |
+|-------|---------------------------|---------------------------|--------|
+| 1 | Grandchild CHoCH | H1 CHoCH | Flag only — do not act |
+| 2 | Grandchild structural (HL/LH) | H1 HL or LH | Prepare — tighten stops |
+| 3 | Child structural event | H4 structural event | Alert — ready to act |
+| 4 | Child zone holds/breaks | H4 zone holds/breaks | Confirm — high confidence |
+| 5 | Child TL break | H4 TL break | Confirmed direction change |
+| 6 | Parent zone break (body close) | D zone break | Maximum conviction |
+
+For v0.1, the dashboard displays the highest confirmed level per triplet. The `grand_choch` boolean in TripletState is set at level 1-2; `grand_break` is set at level 4+. Levels 3-5 are detected by combining child zone events with trendline state from Layer 3.
 
 ### 5.11 Zone Role Recoloring
 
@@ -441,7 +446,7 @@ When a push zone exists and continuation zone(s) follow:
 
 Line redrawn when new continuation zone added (delete old line, create new).
 
-**Finding push/continuation zones:** L3 reads from the TripletState: `ts.push_idx` gives the push zone index in the child array; `ts.cont_idxs` gives the continuation zone indices. L3 retrieves these zones from the child's zone arrays to get `birth_bar` and price levels for anchor points. If a referenced zone has been deleted (broken/expired), the trendline is also deleted.
+**Finding push/continuation zones:** L3 reads from the TripletState: `ts.push_bar` identifies the push zone by its `birth_bar`; `ts.cont_bars` identifies continuation zones by their `birth_bar`s. L3 scans the child zone arrays to find zones matching these birth_bars, then uses their `birth_bar` and price levels as trendline anchor points. If a referenced zone has been deleted (broken/expired — no matching birth_bar found in the array), the trendline is also deleted.
 
 ### 6.2 Trendline Break Detection
 
