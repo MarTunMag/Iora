@@ -343,8 +343,6 @@ if h4_new and not na(h4_ha_c)
     h4_run_lo := na(h4_run_lo) ? h4_l : math.min(h4_run_lo, h4_l)
     // Check for transition
     if h4_ha_dir != 0 and h4_ha_dir_now != h4_ha_dir
-        float h4_ha_range = h4_ha_h - h4_ha_l
-        bool h4_is_doji = h4_ha_range > 0 ? (math.abs(h4_ha_c - h4_ha_o) / h4_ha_range < 0.05) : true
         if h4_ha_dir > 0 and h4_ha_dir_now < 0
             // Blue→Red = SUPPLY
             float s_top = h4_run_hi
@@ -377,7 +375,7 @@ Load on GBPUSD M15 chart. Expected: H4 supply (red border) and demand (blue bord
 
 - [ ] **Step 4: Replicate for H1, D, W, MN**
 
-Same pattern as H4, substituting the appropriate variables. Key differences:
+Same pattern as H4, substituting the appropriate variables. No doji variable needed (both doji and non-doji cases use the same ORIZ formula). Key differences:
 - H1: `h1_ha_*`, `h1_*`, `h1_new`, max_age=50, color=`Z_CLR_H1`, show=`i_zone_h1`
 - D: `d_ha_*`, `d_*`, `d_new`, max_age=50, color=`Z_CLR_D`, show=`i_zone_d`
 - W: `w_ha_*`, `w_*`, `w_new`, max_age=30, color=`Z_CLR_W`, show=`i_zone_w`
@@ -566,27 +564,21 @@ type TripletState
 
 ```pine
 var TripletState t1 = TripletState.new()
-t1.id := "T1"
+var TripletState t2 = TripletState.new()
+var TripletState t3 = TripletState.new()
+var TripletState t4 = TripletState.new()  // stub for future M15 expansion, not wired in v0.1
+
 if barstate.isfirst
+    t1.id        := "T1"
     t1.cont_bars := array.new<int>(0)
     t1.pb_bars   := array.new<int>(0)
-
-var TripletState t2 = TripletState.new()
-t2.id := "T2"
-if barstate.isfirst
+    t2.id        := "T2"
     t2.cont_bars := array.new<int>(0)
     t2.pb_bars   := array.new<int>(0)
-
-var TripletState t3 = TripletState.new()
-t3.id := "T3"
-if barstate.isfirst
+    t3.id        := "T3"
     t3.cont_bars := array.new<int>(0)
     t3.pb_bars   := array.new<int>(0)
-
-// T4 stub — declared for future M15 expansion, not wired in v0.1
-var TripletState t4 = TripletState.new()
-t4.id := "T4"
-if barstate.isfirst
+    t4.id        := "T4"
     t4.cont_bars := array.new<int>(0)
     t4.pb_bars   := array.new<int>(0)
 ```
@@ -627,7 +619,7 @@ find_zone_by_bar(array<FractalZone> arr, int target_bar) =>
             FractalZone z = arr.get(i)
             if z.birth_bar == target_bar
                 result := z
-                found  := true
+                break
     result
 ```
 
@@ -724,7 +716,8 @@ check_pullback_resolution(TripletState ts, array<FractalZone> child_sup, array<F
         // Resolution A: price reaches push zone
         bool reached = (ts.direction > 0 and close <= ts.pb_target) or (ts.direction < 0 and close >= ts.pb_target)
         if reached and ts.grand_choch
-            ts.state      := 1
+            // Reset to INIT so next same-direction zone becomes the new push zone
+            ts.state      := 0
             ts.push_bar   := -1
             ts.grand_choch := false
             if not na(ts.cont_bars)
@@ -741,7 +734,8 @@ check_pullback_resolution(TripletState ts, array<FractalZone> child_sup, array<F
                     if pz.birth_bar == last_pb_bar
                         bool broken = (ts.direction > 0 and close > pz.top) or (ts.direction < 0 and close < pz.bottom)
                         if broken and ts.grand_choch
-                            ts.state      := 1
+                            // Reset to INIT so next same-direction zone becomes the new push zone
+                            ts.state      := 0
                             ts.push_bar   := -1
                             ts.grand_choch := false
                             if not na(ts.cont_bars)
@@ -1256,7 +1250,7 @@ if i_layer_4 and i_dash and barstate.islast
     int h4_dir = t3.direction  // H4 is grandchild of T2, child influence from T3
     int d_dir  = t2.direction
     int w_dir  = t1.direction
-    int mn_dir = t1.direction > 0 ? -1 : (t1.direction < 0 ? 1 : 0)  // parent = opposite of child push
+    int mn_dir = t1.direction  // MN bias = T1 parent direction (derived from MN zone type)
     string align_str = "H1:" + dir_arrow(h1_dir) + " H4:" + dir_arrow(h4_dir) + " D:" + dir_arrow(d_dir) + " W:" + dir_arrow(w_dir)
     table.cell(dash, 0, 10, "Alignment", text_color=color.new(#B0BEC5, 0), bgcolor=cell_bg, text_size=sz)
     table.cell(dash, 1, 10, align_str, text_color=color.new(#B0BEC5, 0), bgcolor=cell_bg, text_size=sz)
@@ -1291,11 +1285,11 @@ if i_layer_4 and i_dash and barstate.islast
 
 Expected: dashboard appears in bottom-right corner showing T1/T2/T3 states, composite bias, target price, pullback depth %, signal status, alignment grid (H1/H4/D/W arrows), and reversal target zone (if any triplet is pulling back). Compare triplet states with the GBPUSD walkthrough from Addendum B — T2 should show PULLING BACK ↓, T3 should show PUSHING ↓.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add tw_indicators/iora_zones/iora_fractal_zones.pine
-git commit -m "feat(fractal-zones): L4 — dashboard with triplet states + composite bias"
+git commit -m "feat(fractal-zones): L4 — dashboard with triplet states + composite bias + alignment grid"
 ```
 
 ---

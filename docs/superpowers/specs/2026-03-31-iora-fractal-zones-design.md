@@ -360,21 +360,21 @@ FOR each active triplet T where T.state == 3 (PULLING_BACK):
   // Resolution A: price reaches push zone
   IF ts.direction > 0 AND close <= ts.pb_target:  // pullback down reached push demand
     IF ts.grand_choch:  // grandchild confirmation required (Addendum A.2)
-      ts.state = 1 (PUSHING — new cycle)
+      ts.state = 0 (INIT — next same-direction zone becomes new push)
       reset push/cont/pb tracking, keep parent zone
   IF ts.direction < 0 AND close >= ts.pb_target:
     IF ts.grand_choch:
-      ts.state = 1 (PUSHING — new cycle)
+      ts.state = 0 (INIT — next same-direction zone becomes new push)
 
   // Resolution B: last pullback zone body-close broken
   IF ts.pb_bars.size() > 0:
     last_pb = find zone where birth_bar == ts.pb_bars.last()
     IF ts.direction > 0 AND close > last_pb.top:  // broke bearish pullback zone
       IF ts.grand_choch:  // grandchild confirmation required
-        ts.state = 1 (PUSHING — extending without full retrace)
+        ts.state = 0 (INIT — extending without full retrace, next zone = new push)
     IF ts.direction < 0 AND close < last_pb.bottom:
       IF ts.grand_choch:
-        ts.state = 1 (PUSHING — extending)
+        ts.state = 0 (INIT — extending)
 
   // Compression detection (Addendum B Rule 3)
   // Tracked via push_fail_cnt and tl_hold_cnt (updated in trendline layer)
