@@ -48,6 +48,7 @@ color  i_pdem_br = input.color(color.new(#2196F3, 0),  "Push Demand Border", gro
 color  i_rev_bg  = input.color(color.new(#FFB300, 75), "Reversal Fill",      group = GRP_CLR)
 color  i_rev_br  = input.color(color.new(#FFB300, 0),  "Reversal Border",    group = GRP_CLR)
 bool   i_labels  = input.bool(true, "Show Zone Labels", group = GRP_CLR)
+bool   i_normal  = input.bool(false, "Show Normal Zones (border only)", group = GRP_CLR)
 
 string GRP_DASH  = "Dashboard"
 bool   i_dash    = input.bool(true, "Show Dashboard", group = GRP_DASH)
@@ -247,10 +248,12 @@ method process(array<Zone> zones, bool fire, float ztop, float zbot, bool is_sup
     bool valid = not na(ztop) and not na(zbot) and not na(z_time) and ztop > zbot
     if fire and (time - z_time) < max_ms and valid
         string cls     = is_sup ? hi_txt : lo_txt
-        string lbl_txt = i_labels ? tf_label(tf_str) + (is_sup ? " S " : " D ") + cls : na
-        color  bg_clr  = is_sup ? i_sup_bg : i_dem_bg
-        color  br_clr  = is_sup ? i_sup_br : i_dem_br
         color  tx_clr  = is_sup ? color.new(#FF4444, 0) : color.new(#2196F3, 0)
+        // Normal zones start hidden — push/reversal restyling makes them visible
+        // When i_normal is on: border-only (no fill). When off: fully transparent.
+        color  bg_clr  = color.new(color.white, 100)
+        color  br_clr  = i_normal ? (is_sup ? i_sup_br : i_dem_br) : color.new(color.white, 100)
+        string lbl_txt = i_normal and i_labels ? tf_label(tf_str) + (is_sup ? " S " : " D ") + cls : na
         box new_box    = box.new(z_time, ztop, z_time + tf_ms * 6, zbot, xloc = xloc.bar_time, extend = extend.right, bgcolor = bg_clr, border_color = br_clr, border_width = 1, text = lbl_txt, text_size = size.tiny, text_color = tx_clr, text_halign = text.align_right, text_valign = text.align_top)
         zones.push(Zone.new(ztop, zbot, is_sup, z_time, new_box, false, false, "", cls))
 
