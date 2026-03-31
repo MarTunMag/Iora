@@ -1428,17 +1428,23 @@ is_m15_nested_h4(int reversal_dir) =>
                     nested := true
     nested
 
+// M5 zone proximity: is price inside the M5 zone we'd use for entry?
+bool at_m5_dem = is_inside_zone(m5_dem)
+bool at_m5_sup = is_inside_zone(m5_sup)
+
 // Model A: Terminal Reversal
 int reversal_dir = d_dir < 0 ? 1 : d_dir > 0 ? -1 : 0
 bool m15_tl_brk = reversal_dir > 0 ? m15_tl_bear_break : m15_tl_bull_break
-bool model_a = terminal_active and consume.score >= 2 and is_m15_nested_h4(reversal_dir) and m15_tl_brk and (cascade_dir == reversal_dir and cascade_level == "M5") and m1_cv == 3 and m1_sd == reversal_dir
+bool at_m5_a = reversal_dir > 0 ? at_m5_dem : at_m5_sup
+bool model_a = terminal_active and consume.score >= 2 and is_m15_nested_h4(reversal_dir) and m15_tl_brk and (cascade_dir == reversal_dir and cascade_level == "M5") and m1_cv == 3 and m1_sd == reversal_dir and at_m5_a
 
 var bool model_a_prev = false
 bool model_a_fire = model_a and not model_a_prev
 model_a_prev := model_a
 
 // Model B: Mode B Continuation — D-cycle Phase D push with full consumption
-bool model_b = d_cycle_phase == 4 and consume.score == 4 and (m5_fired or m15_fired)
+bool at_m5_b = d_dir > 0 ? at_m5_dem : at_m5_sup
+bool model_b = d_cycle_phase == 4 and consume.score == 4 and (m5_fired or m15_fired) and at_m5_b
 
 var bool model_b_prev = false
 bool model_b_fire = model_b and not model_b_prev
@@ -1449,7 +1455,8 @@ model_b_prev := model_b
 // =============================================================================
 int cascade_add_dir = cascade_dir
 bool in_zone_c = cascade_add_dir > 0 ? (is_inside_zone(m15_dem) or is_inside_zone(h1_dem)) : (is_inside_zone(m15_sup) or is_inside_zone(h1_sup))
-bool model_c = cascade_level == "M5" and m1_cv == 3 and m1_sd == cascade_add_dir and in_zone_c
+bool at_m5_c = cascade_add_dir > 0 ? at_m5_dem : at_m5_sup
+bool model_c = cascade_level == "M5" and m1_cv == 3 and m1_sd == cascade_add_dir and in_zone_c and at_m5_c
 
 var bool model_c_prev = false
 bool model_c_fire = model_c and not model_c_prev
@@ -1460,7 +1467,8 @@ model_c_prev := model_c
 // =============================================================================
 bool m5_tl_brk_d = d_dir > 0 ? m5_tl_bull_break : m5_tl_bear_break
 bool in_zone_d = d_dir > 0 ? (is_inside_zone(h4_dem) or is_inside_zone(d_dem)) : (is_inside_zone(h4_sup) or is_inside_zone(d_sup))
-bool model_d = m5_tl_brk_d and in_zone_d and not terminal_active
+bool at_m5_d = d_dir > 0 ? at_m5_dem : at_m5_sup
+bool model_d = m5_tl_brk_d and in_zone_d and not terminal_active and at_m5_d
 
 var bool model_d_prev = false
 bool model_d_fire = model_d and not model_d_prev
