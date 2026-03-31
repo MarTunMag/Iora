@@ -50,6 +50,7 @@ Copied from `iora_zones.pine` template. No changes.
   - Demand: top = HA high (order-block edge), bottom = OHLC low (structural extreme)
 - Tracks sequence HH/LL with classification text (`hi1_txt`, `lo1_txt`)
 - Returns 11-value tuple: `[fire, ztop, zbot, is_sup, zt_origin, seq_hh, seq_ll, seq_hh_time, seq_ll_time, hi1_txt, lo1_txt]`
+- On any given fire bar, only one of `hi1_txt`/`lo1_txt` is freshly updated — the one matching the current run transition direction. The other retains its value from the last opposite-direction fire (`var string` persistence).
 
 ### `track_period(string tf)`
 
@@ -59,6 +60,7 @@ Copied from `iora_bos_choch.pine`. No changes.
 - Detects first break time of each level
 - Runs on chart TF — zero extra `request.security()` calls
 - Returns 6-value tuple: `[prev_hi, prev_hi_t, prev_lo, prev_lo_t, hi_brk_t, lo_brk_t]`
+- Called once per enabled TF — the same 8 TFs used for `request.security()` (M1, M5, M15, H1, H4, D, W, MN). Note: `iora_bos_choch.pine` uses a different TF set; this indicator creates its own `track_period()` calls matching its 8 TFs
 
 ---
 
@@ -66,31 +68,47 @@ Copied from `iora_bos_choch.pine`. No changes.
 
 The critical rule that the prior push zone indicators were missing.
 
+### Key concept: trigger zone vs tagged zone
+
+Zone fires happen on HA color-run transitions. The zone that **fires** (trigger) is not the zone that gets **tagged** as PUSH — they are on opposite sides:
+
+- Blue→red transition fires a **supply** zone (with `hi1_txt` = HH or LH)
+- Red→blue transition fires a **demand** zone (with `lo1_txt` = LL or HL)
+
+The trigger zone confirms the **previous opposite-side zone** as the push zone, because the completed run is what created the structural extreme.
+
 ### State per TF
 
 ```
-var float prev_push_sup_top = na    // previous supply push zone's top
-var float prev_push_sup_bot = na    // previous supply push zone's bottom
-var float prev_push_dem_top = na    // previous demand push zone's top
-var float prev_push_dem_bot = na    // previous demand push zone's bottom
+var float prev_push_extreme_hi = na   // seq_hh value of last confirmed bullish push
+var float prev_push_extreme_lo = na   // seq_ll value of last confirmed bearish push
 ```
 
 ### Bearish push validation (supply pushing to new LL)
 
-1. `ha_detect()` fires a new supply zone with `lo1_txt == "LL"` (new sequence low)
-2. Check: did the OHLC low of the HA run break below `prev_push_sup_bot`?
-   - Wick or body — any price exceedance counts
-3. If yes → valid push:
-   - Tag the most recent unbroken supply zone as PUSH
-   - Update `prev_push_sup_top/bot` to this zone's boundaries
-   - Tag the most recent unbroken demand zone as REVERSAL (base of the push)
-4. If no → not a push:
-   - Zone created as normal, no push tag
-   - Previous push zone remains active
+All push validation runs **only on fire bars** with the correct direction guard. Since `hi1_txt`/`lo1_txt` are `var string` that persist across bars, a supply fire could see stale `lo1_txt == "LL"` from a previous demand fire. The `is_sup` check prevents cross-contamination:
+
+- Bearish: `if fire and not is_sup and lo1_txt == "LL"`
+- Bullish: `if fire and is_sup and hi1_txt == "HH"`
+
+1. Red HA run pushes price down, creating a new sequence low
+2. Red→blue transition fires a **demand** zone with `lo1_txt == "LL"`
+3. This is the **trigger** — the completed red run made a new LL
+4. **Boundary check:** did `seq_ll` break below `prev_push_extreme_lo`?
+   - Wick or body — any price exceedance counts for push validation
+   - **Bootstrap:** if `prev_push_extreme_lo` is `na` (first LL ever), auto-qualifies as push
+5. If yes → valid push:
+   - Tag the **most recent unbroken supply zone** as PUSH — iterate the TF's zone array from the end (highest index = most recently added), filter by `is_supply == true`, pick the first match. This is the zone whose red run created the LL.
+   - Update `prev_push_extreme_lo` to `seq_ll`
+   - Tag the **most recent unbroken demand zone** as REVERSAL — same search (filter `is_supply == false`, highest index). This is the demand zone just created by the trigger fire — it marks the base of the push. The tag is applied immediately after zone creation in the same `process()` invocation.
+   - The reversal zone retains its original `swing_cls` from detection (e.g., "LL") — this field is unused in reversal label rendering.
+6. If no → not a push:
+   - Zones remain normal, no push/reversal tags
+   - Previous push state unchanged
 
 ### Bullish push validation (demand pushing to new HH)
 
-Mirror: check if OHLC high broke above `prev_push_dem_top`. If yes, tag demand zone as PUSH, tag most recent supply zone as REVERSAL.
+Mirror: blue HA run pushes price up. Blue→red transition fires a **supply** zone with `hi1_txt == "HH"` (only evaluated on fire bars). Check `seq_hh > prev_push_extreme_hi` (or `na` bootstrap). If yes, tag most recent unbroken demand zone (highest index, `is_supply == false`) as PUSH, most recent unbroken supply zone (highest index, `is_supply == true`) as REVERSAL, update `prev_push_extreme_hi`.
 
 ### On push zone break
 
@@ -99,6 +117,18 @@ Broken push zones are deleted immediately (body close through boundary). No ghos
 ### On reversal zone break
 
 Deleted like any broken zone. The push structure has failed — new zones forming will establish the next push/reversal naturally.
+
+### Break standards (three levels, all intentional)
+
+Three different break standards are used, each fit for purpose:
+
+- **Push validation** (boundary-break): wick or body exceedance counts. The question is "did price reach a new extreme?" — wicks count because they represent real price action.
+- **Zone breaks**: body-close only. Wicks into a zone are liquidity sweeps, not structural breaks. A zone is only broken when the candle body closes through its boundary.
+- **Period-level breaks** (`track_period()` for BOS/CHoCH trend): wick-based (`high > prev_hi` / `low < prev_lo`). Period high/low breaks are structural — a wick that exceeds a prior period's range represents genuine structural extension regardless of close. This drives the `trend` state used for BOS/CHoCH classification.
+
+### HH/LL classification note
+
+The `hi1_txt` / `lo1_txt` values from `ha_detect()` are **run-to-run** comparisons (each HA run's extreme vs the previous same-side run), not swing-structure HH/LL. This is the correct granularity for push detection — each HA run is a directional move, and we want to know if it extended beyond the previous move in that direction.
 
 ---
 
@@ -116,13 +146,17 @@ Updated when `track_period()` detects a break:
 
 ### Classification rules
 
-**BOS (Break of Structure)** — push continues the existing trend:
-- Trend bearish + new push makes LL → BOS
-- Trend bullish + new push makes HH → BOS
+BOS/CHoCH is classified **at push-validation time** using the current `trend` state. The `trend` state is updated independently by `track_period()` break events — it reflects the last period-level break direction, not the push direction. The push direction comes from `ha_detect()` HH/LL (run-to-run). These are independent signals that combine at classification time.
 
-**CHoCH (Change of Character)** — push reverses the trend:
-- Trend bearish + new push makes HH (breaks previous period high) → CHoCH
-- Trend bullish + new push makes LL (breaks previous period low) → CHoCH
+**BOS (Break of Structure)** — push direction matches current trend:
+- `trend == -1` (bearish) + new push makes LL → BOS
+- `trend == +1` (bullish) + new push makes HH → BOS
+
+**CHoCH (Change of Character)** — push direction opposes current trend:
+- `trend == -1` (bearish) + new push makes HH → CHoCH
+- `trend == +1` (bullish) + new push makes LL → CHoCH
+
+**Uninitialized trend** (`trend == 0`): first push gets no BOS/CHoCH classification — `struct_cls` remains `""`.
 
 ### Cascading TF view
 
