@@ -22,6 +22,9 @@ bool   i_show_pullback = input.bool(true,            "Show PULLBACK signals",   
 bool   i_show_reversal = input.bool(true,            "Show REVERSAL signals",     group="Signals")
 bool   i_show_sl_tp    = input.bool(true,            "Show SL/TP lines",          group="Signals")
 
+// --- Group: Debug ---
+bool   i_debug       = input.bool(false,           "Debug: show triplet states", group="Debug")
+
 // --- Group: Dashboard ---
 bool   i_dash_on     = input.bool(true,            "Show Dashboard",            group="Dashboard")
 string i_dash_pos    = input.string("Bottom Left", "Position",                  group="Dashboard", options=["Top Left", "Top Right", "Bottom Left", "Bottom Right"])
@@ -1680,3 +1683,30 @@ if any_signal and i_show_sl_tp
         sl_ln := line.new(bar_index, sig_sl, bar_index + 50, sig_sl, color=color.new(#EF5350, 30), style=line.style_dashed, width=1)
     if not na(sig_tp)
         tp_ln := line.new(bar_index, sig_tp, bar_index + 50, sig_tp, color=color.new(#26A69A, 30), style=line.style_dashed, width=1)
+
+// =============================================================================
+// === SECTION 18: DEBUG — TRIPLET STATE VISUALS
+// =============================================================================
+
+// Background color for T6 state
+color t6_bg = switch t6_state
+    "PUSHING"    => color.new(#26A69A, 92)
+    "CONTINUING" => color.new(#42A5F5, 92)
+    "PULLBACK"   => color.new(#FFCA28, 92)
+    "REVERSING"  => color.new(#EF5350, 92)
+    => na
+
+bgcolor(i_debug ? t6_bg : na, title="T6 State")
+
+// State transition marker
+plotshape(i_debug and t6_changed, "T6 Transition", shape.diamond, location.bottom, color.white, size=size.tiny)
+
+// T6 labels every 100 bars
+string t6_dir_arrow = t6_dir > 0 ? " ▲" : t6_dir < 0 ? " ▼" : ""
+if i_debug and bar_index % 100 == 0
+    label.new(bar_index, low, "T6:" + t6_state + t6_dir_arrow + " z:" + str.tostring(t6_zone_count), style=label.style_label_up, color=color.new(color.gray, 70), textcolor=color.white, size=size.tiny)
+
+// T5 labels every 100 bars (offset by 50)
+string t5_dir_arrow = t5_dir > 0 ? " ▲" : t5_dir < 0 ? " ▼" : ""
+if i_debug and (bar_index + 50) % 100 == 0
+    label.new(bar_index, high, "T5:" + t5_state + t5_dir_arrow + " [" + t5_confidence + "]", style=label.style_label_down, color=color.new(color.gray, 70), textcolor=color.white, size=size.tiny)
