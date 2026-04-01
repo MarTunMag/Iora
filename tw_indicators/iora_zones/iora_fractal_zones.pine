@@ -1,0 +1,71 @@
+//@version=6
+indicator("Iora Fractal Zones", overlay=true, max_boxes_count=500, max_labels_count=500, max_lines_count=500)
+
+// =============================================================================
+// === INPUTS
+// =============================================================================
+
+// --- Zones ---
+bool   i_zone_h1   = input.bool(true,           "Show H1 zones",              group="Zones")
+bool   i_zone_h4   = input.bool(true,           "Show H4 zones",              group="Zones")
+bool   i_zone_d    = input.bool(true,           "Show D zones",               group="Zones")
+bool   i_zone_w    = input.bool(true,           "Show W zones",               group="Zones")
+bool   i_zone_mn   = input.bool(true,           "Show MN zones",              group="Zones")
+int    i_max_zones = input.int(20,              "Max zones per TF per side",  group="Zones", minval=4, maxval=40)
+
+// --- Triplet Engine ---
+bool   i_triplets  = input.bool(true,           "Enable triplet engine",      group="Triplet Engine")
+bool   i_show_t1   = input.bool(true,           "T1 (MN→W→D)",               group="Triplet Engine")
+bool   i_show_t2   = input.bool(true,           "T2 (W→D→H4)",               group="Triplet Engine")
+bool   i_show_t3   = input.bool(true,           "T3 (D→H4→H1)",              group="Triplet Engine")
+bool   i_show_t4   = input.bool(false,          "T4 (H4→H1→M15)",            group="Triplet Engine")
+
+// --- Trendlines ---
+bool   i_trendlines = input.bool(true,          "Show trendlines",            group="Trendlines")
+bool   i_magnets    = input.bool(true,          "Show magnet lines",          group="Trendlines")
+
+// --- Dashboard ---
+bool   i_dash      = input.bool(true,           "Show dashboard",             group="Dashboard")
+string i_dash_pos  = input.string("Bottom Right","Position",                  group="Dashboard", options=["Top Left","Top Right","Bottom Left","Bottom Right"])
+
+// --- Layers (debug) ---
+bool   i_layer_1   = input.bool(true,           "L1: Zones + classification", group="Layers")
+bool   i_layer_2   = input.bool(true,           "L2: Triplet engine + roles", group="Layers")
+bool   i_layer_3   = input.bool(true,           "L3: Trendlines + magnets",   group="Layers")
+bool   i_layer_4   = input.bool(true,           "L4: Dashboard",              group="Layers")
+
+// =============================================================================
+// === REQUEST.SECURITY — 5 TFs × 2 CALLS = 10 TOTAL
+// =============================================================================
+
+string ha_tkr = ticker.heikinashi(syminfo.tickerid)
+
+// --- H1 ---
+[h1_ha_o, h1_ha_h, h1_ha_l, h1_ha_c] = request.security(ha_tkr,              "60",  [open, high, low, close], lookahead=barmerge.lookahead_on)
+[h1_o, h1_h, h1_l, h1_c, h1_t]       = request.security(syminfo.tickerid,    "60",  [open, high, low, close, time], lookahead=barmerge.lookahead_on)
+
+// --- H4 ---
+[h4_ha_o, h4_ha_h, h4_ha_l, h4_ha_c] = request.security(ha_tkr,              "240", [open, high, low, close], lookahead=barmerge.lookahead_on)
+[h4_o, h4_h, h4_l, h4_c, h4_t]       = request.security(syminfo.tickerid,    "240", [open, high, low, close, time], lookahead=barmerge.lookahead_on)
+
+// --- D ---
+[d_ha_o, d_ha_h, d_ha_l, d_ha_c]     = request.security(ha_tkr,              "1D",  [open, high, low, close], lookahead=barmerge.lookahead_on)
+[d_o, d_h, d_l, d_c, d_t]            = request.security(syminfo.tickerid,    "1D",  [open, high, low, close, time], lookahead=barmerge.lookahead_on)
+
+// --- W ---
+[w_ha_o, w_ha_h, w_ha_l, w_ha_c]     = request.security(ha_tkr,              "1W",  [open, high, low, close], lookahead=barmerge.lookahead_on)
+[w_o, w_h, w_l, w_c, w_t]            = request.security(syminfo.tickerid,    "1W",  [open, high, low, close, time], lookahead=barmerge.lookahead_on)
+
+// --- MN ---
+[mn_ha_o, mn_ha_h, mn_ha_l, mn_ha_c] = request.security(ha_tkr,              "1M",  [open, high, low, close], lookahead=barmerge.lookahead_on)
+[mn_o, mn_h, mn_l, mn_c, mn_t]       = request.security(syminfo.tickerid,    "1M",  [open, high, low, close, time], lookahead=barmerge.lookahead_on)
+
+// =============================================================================
+// === NEW-PERIOD DETECTION
+// =============================================================================
+
+bool h1_new  = ta.change(h1_t)  != 0
+bool h4_new  = ta.change(h4_t)  != 0
+bool d_new   = ta.change(d_t)   != 0
+bool w_new   = ta.change(w_t)   != 0
+bool mn_new  = ta.change(mn_t)  != 0
