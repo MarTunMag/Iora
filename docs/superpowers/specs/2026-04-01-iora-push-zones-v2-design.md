@@ -70,22 +70,37 @@ tf_parent(string tf) =>
 
 ## Zone Counting Logic
 
+### Two kinds of count
+
+1. **Creation count** (`count_num` on Zone UDT) — monotonic sequence number assigned at zone creation. Tracks the zone's position in the push cycle. Never changes after assignment. Used in zone labels (`#3`, `#5`).
+2. **Unbroken count** (computed dynamically) — current number of live, unbroken same-side zones created since the last reset. Used for exhaustion evaluation in the dashboard and for exhaustion markers. Computed by filtering the zone array: count zones where `is_supply` matches and `origin_time >= last_reset_time`.
+
+The creation count and unbroken count may differ when zones are broken/deleted mid-cycle. A zone labeled `#5` might be the 3rd unbroken zone if two earlier ones were broken. The label reflects creation order (structural context); the dashboard reflects current pressure (exhaustion state).
+
 ### State per TF
 
 ```
-var int sup_count = 0   // supply zones since last parent supply fire
-var int dem_count = 0   // demand zones since last parent demand fire
+var int sup_count = 0       // creation counter for supply zones
+var int dem_count = 0       // creation counter for demand zones
+var int sup_reset_time = 0  // timestamp of last supply count reset
+var int dem_reset_time = 0  // timestamp of last demand count reset
 ```
 
 Bidirectional — supply and demand counters are fully independent.
 
-### Count reset
+### Count reset (two triggers)
 
-When the parent TF fires a new zone, reset the child's same-side counter:
-- Parent H4 supply fires → reset H1 `sup_count` to 0
-- Parent H4 demand fires → reset H1 `dem_count` to 0
+**Trigger 1 — Parent TF fires same-side zone:**
+- Parent H4 supply fires → reset H1 `sup_count` to 0, update `sup_reset_time`
+- Parent H4 demand fires → reset H1 `dem_count` to 0, update `dem_reset_time`
 
-Reset detection: `process()` receives `parent_fire` (bool) and `parent_is_sup` (bool) parameters. When `parent_fire` is true, reset the matching counter.
+**Trigger 2 — Same-TF structural invalidation (from Rule 3):**
+- H1 makes new HH (bullish break) → reset H1 `sup_count` to 0 (bearish structure invalidated)
+- H1 makes new LL (bearish break) → reset H1 `dem_count` to 0 (bullish structure invalidated)
+
+HH/LL detection uses the existing `hi_txt == "HH"` / `lo_txt == "LL"` from `ha_detect()`, guarded by `is_sup` direction check (same guards as push validation).
+
+Reset detection: `process()` receives `parent_fire` (bool) and `parent_is_sup` (bool) parameters for trigger 1. Trigger 2 uses the existing fire + hi_txt/lo_txt already passed to `process()`.
 
 ### Count increment
 
@@ -95,14 +110,25 @@ When a new child zone is created in `process()`:
 
 **All zones count** — push, reversal, and normal zones all increment the counter. The 5+3 pattern tracks total structural pressure, not just push zones.
 
-### Exhaustion markers
+### Exhaustion evaluation
 
-| Count | Meaning | Label marker |
-|-------|---------|-------------|
+Exhaustion is evaluated using the **unbroken count** (dynamic), not the creation count:
+- Compute: count zones in array where `is_supply` matches the side and `origin_time >= reset_time`
+- Dashboard #S/#D columns show this unbroken count
+- Dashboard cell color: white (1-4), yellow (5), red (8+)
+
+### Exhaustion markers in labels
+
+Labels use the **creation count** (`count_num`) for the number, with exhaustion markers based on the number itself:
+
+| count_num | Meaning | Label marker |
+|-----------|---------|-------------|
 | 1-4 | Impulse active | count number only |
 | 5 | Impulse exhausted | `⚠` suffix |
 | 6-7 | Correction zones (A, B) | count number only |
 | 8 | Terminal exhaustion | `✕` suffix |
+
+Note: count-8 exhaustion marker (`✕`) and opposing-nesting terminal marker (`✕`) intentionally share the same symbol. At count 8, zones are typically the ones that end up opposing-nested — the convergence is meaningful, reinforcing the terminal signal.
 
 ---
 
@@ -147,6 +173,10 @@ Iterate the parent zone array. If multiple parent zones contain the child (overl
 
 When no parent exists (MN, or parent TF disabled), pass an empty array — nesting check naturally finds nothing.
 
+### Skip filter (deferred)
+
+Rule 4 includes a skip filter: "IF parent zone overlaps an opposing zone → weak signal, skip." This filter checks whether the parent zone is clean (no overlapping opposite-side zone eating into it). This is deferred to a future iteration — v2 fires nesting signals regardless of parent zone cleanliness. The rationale: the skip filter requires cross-checking the parent TF's zone array for opposing overlaps, adding complexity. The terminal signal without the filter is still directionally correct; the filter would improve signal quality but is not essential for the first working version.
+
 ### Optional visual connectors
 
 Input toggle: `Show Nesting Lines`, default `false`.
@@ -162,15 +192,16 @@ method process(array<Zone> zones, bool fire, float ztop, float zbot, bool is_sup
                string hi_txt, string lo_txt, float seq_hh_val, float seq_ll_val,
                int trend_val, string tf_str, float prev_push_hi, float prev_push_lo,
                array<Zone> parent_zones, bool parent_fire, bool parent_is_sup,
-               int sup_count_in, int dem_count_in) =>
+               int sup_count_in, int dem_count_in,
+               int sup_reset_time_in, int dem_reset_time_in) =>
 ```
 
 Returns expanded tuple:
 ```pine
-    [new_push_hi, new_push_lo, new_sup_count, new_dem_count]
+    [new_push_hi, new_push_lo, new_sup_count, new_dem_count, new_sup_reset_time, new_dem_reset_time]
 ```
 
-The counting state (`sup_count`, `dem_count`) is passed in and returned, same pattern as `prev_push_hi`/`prev_push_lo` in v1.
+The counting state (`sup_count`, `dem_count`, reset times) is passed in and returned, same pattern as `prev_push_hi`/`prev_push_lo` in v1.
 
 ---
 
@@ -232,11 +263,13 @@ Labels remain `size.tiny`, right-aligned at top of zone box.
 
 Normal zones hidden by default (toggle `Show Normal Zones`, default off).
 
+**Note:** Push zone transparency (92% fill, 30% border, width 1) reflects the v1 values as iterated through user visual feedback. The v1 design spec originally specified 70%/0%/2, but the implementation was adjusted through multiple rounds of chart review. V2 preserves the user-approved values.
+
 ---
 
 ## Dashboard
 
-Compact table, one row per enabled TF:
+Compact table with **6 columns** (`table.new()` must specify 6), one row per enabled TF:
 
 | Column | Content | Source |
 |--------|---------|--------|
@@ -257,6 +290,37 @@ This ensures the parent TF's zone array is populated before the child TF checks 
 
 The `if i_tfN_on` gate blocks still apply — disabled TFs are skipped.
 
+### Parent wiring in S9
+
+Each child TF's `process()` call receives the parent TF's zone array, fire signal, and fire side. The parent fire signal (`fN`) and side (`sN`) come from the same `request.security()` + edge detection already computed in S7/S8.
+
+Example wiring for H1 (index 3, parent = H4, index 4):
+
+```pine
+if i_tf3_on
+    // Parent = H4 (index 4). If H4 disabled, no counting/nesting.
+    array<Zone> p3 = i_tf4_on ? zones4 : array.new<Zone>()
+    bool pf3 = i_tf4_on ? f4 : false
+    bool ps3 = i_tf4_on ? s4 : false
+    [nph3, npl3, nsc3, ndc3, nsrt3, ndrt3] = zones3.process(f3, zt3, zb3, s3, tm3, h1s3, l1s3, hh3, ll3, trend3, i_tf3, ph3, pl3, p3, pf3, ps3, sc3, dc3, srt3, drt3)
+    ph3 := nph3, pl3 := npl3, sc3 := nsc3, dc3 := ndc3, srt3 := nsrt3, drt3 := ndrt3
+```
+
+Full parent mapping for all 8 TFs:
+
+| TF Index | TF | Parent Index | Parent TF | Parent zones | Parent fire | Parent side |
+|----------|----|-------------|-----------|-------------|-------------|-------------|
+| 7 | MN | — | none | empty array | false | false |
+| 6 | W | 7 | MN | zones7 | f7 | s7 |
+| 5 | D | 6 | W | zones6 | f6 | s6 |
+| 4 | H4 | 5 | D | zones5 | f5 | s5 |
+| 3 | H1 | 4 | H4 | zones4 | f4 | s4 |
+| 2 | M15 | 3 | H1 | zones3 | f3 | s3 |
+| 1 | M5 | 3 | H1 | zones3 | f3 | s3 |
+| 0 | M1 | 2 | M15 | zones2 | f2 | s2 |
+
+Note: M5 and M15 share the same parent (H1, index 3). This is correct per the natural mapping.
+
 ---
 
 ## Inputs
@@ -267,7 +331,7 @@ The `if i_tfN_on` gate blocks still apply — disabled TFs are skipped.
 |-------|-------|---------|
 | Colors | Terminal Fill | `#9C27B0` @ 92% |
 | Colors | Terminal Border | `#9C27B0` @ 30% |
-| Colors | Show Nesting Lines | `false` |
+| Display | Show Nesting Lines | `false` |
 
 All v1 inputs preserved unchanged.
 
@@ -287,15 +351,16 @@ edge-detect ──► new HH/LL   edge-detect ──► BOS/CHoCH
     └───────────┬───────────────────┘
                 ▼
     process() per TF (HIGH → LOW order):
-    1. Count reset (if parent fired same-side zone)
+    1. Count reset (if parent fired same-side zone, or same-TF HH/LL)
     2. Expire + break check (body close)
     3. Create new zone (with count_num assigned)
-    4. Nesting check (against parent zone array)
-    5. Terminal detection (opposing nesting)
-    6. Push validation (boundary-break rule)
-    7. Reversal zone tagging
-    8. BOS/CHoCH classification
-    9. Visual styling + labels (combining all classifications)
+    4. Push validation (boundary-break rule)
+    5. Reversal zone tagging
+    6. BOS/CHoCH classification
+    7. Nesting check (against parent zone array)
+    8. Terminal detection (opposing nesting)
+    9. Label rendering (final pass — combines count, push/rev, BOS/CHoCH, nesting)
+    10. Visual styling (colors/borders based on final classification)
 ```
 
 ---
