@@ -1254,5 +1254,156 @@ m15_zone_matches_dir(int dir) =>
     else
         false
 
+// =============================================================================
+// === SECTION 13: TRIPLET STATE MACHINES
+// =============================================================================
+
+// --- T6: Parent=M15, Child=M5, Grandchild=M1 ---
+
+var string t6_state       = "IDLE"
+var int    t6_dir         = 0
+var float  t6_push_top    = na
+var float  t6_push_bot    = na
+var float  t6_last_pb_top = na
+var float  t6_last_pb_bot = na
+var int    t6_zone_count  = 0
+var bool   t6_m1_choch    = false
+var int    t6_prev_parent = 0
+
+// T6 parent direction — derived from M15's last swing classification
+int t6_parent_dir = (m15_swc == 1 or m15_swc == 4) ? 1 : (m15_swc == 2 or m15_swc == 3) ? -1 : 0
+
+// M1 CHoCH — grandchild confirms pullback exhaustion
+// Bullish parent: M1 HL (swc==4) = pullback exhausting, parent direction resuming
+// Bearish parent: M1 LH (swc==2) = pullback exhausting, parent direction resuming
+if t6_state == "PULLBACK" and m1_fired
+    if t6_dir > 0 and m1_swc == 4
+        t6_m1_choch := true
+    else if t6_dir < 0 and m1_swc == 2
+        t6_m1_choch := true
+
+// M15 structural level — used to distinguish PULLBACK from REVERSING
+// Bullish M15: last HL demand bottom is the structural floor
+// Bearish M15: last LH supply top is the structural ceiling
+Zone t6_struct_zone = t6_parent_dir > 0 ? get_zone_by_cls(m15_dem, 4) : get_zone_by_cls(m15_sup, 2)
+float t6_struct_level = t6_parent_dir > 0 ? t6_struct_zone.bottom : t6_struct_zone.top
+bool t6_struct_valid = not na(t6_struct_level)
+
+// T6 state transitions — driven by M5 zone creation events
+string t6_prev_state = t6_state
+
+if m5_fired
+    bool is_with    = m5_zone_matches_dir(t6_parent_dir)
+    bool is_counter = m5_zone_matches_dir(-t6_parent_dir)
+
+    if t6_state == "IDLE"
+        // IDLE → PUSHING: first M5 zone in parent direction, inside parent zone
+        bool inside_parent = t6_parent_dir > 0 ? is_inside_zone(m15_dem) : is_inside_zone(m15_sup)
+        if is_with and inside_parent
+            t6_state      := "PUSHING"
+            t6_dir        := t6_parent_dir
+            t6_push_top   := t6_parent_dir > 0 ? m5_dem.get(0).top : m5_sup.get(0).top
+            t6_push_bot   := t6_parent_dir > 0 ? m5_dem.get(0).bottom : m5_sup.get(0).bottom
+            t6_zone_count := 1
+            t6_m1_choch   := false
+
+    else if t6_state == "PUSHING"
+        if is_with
+            // PUSHING → CONTINUING: next zone same dir, extends beyond push zone
+            bool extends = t6_dir > 0 ? (m5_dem.get(0).bottom > t6_push_top) : (m5_sup.get(0).top < t6_push_bot)
+            if extends
+                t6_state      := "CONTINUING"
+                t6_zone_count := t6_zone_count + 1
+            else
+                t6_zone_count := t6_zone_count + 1
+        else if is_counter
+            // PUSHING → PULLBACK or REVERSING
+            if t6_struct_valid
+                bool breaks_struct = t6_parent_dir > 0 ? (low < t6_struct_level) : (high > t6_struct_level)
+                if breaks_struct
+                    t6_state      := "REVERSING"
+                    t6_zone_count := 0
+                else
+                    t6_state       := "PULLBACK"
+                    t6_last_pb_top := is_counter and t6_parent_dir > 0 ? m5_sup.get(0).top : m5_dem.get(0).top
+                    t6_last_pb_bot := is_counter and t6_parent_dir > 0 ? m5_sup.get(0).bottom : m5_dem.get(0).bottom
+                    t6_zone_count  := 1
+                    t6_m1_choch    := false
+            else
+                // No structural level found — conservative: treat as REVERSING
+                t6_state      := "REVERSING"
+                t6_zone_count := 0
+
+    else if t6_state == "CONTINUING"
+        if is_with
+            t6_zone_count := t6_zone_count + 1
+        else if is_counter
+            // Same PULLBACK/REVERSING check as PUSHING
+            if t6_struct_valid
+                bool breaks_struct2 = t6_parent_dir > 0 ? (low < t6_struct_level) : (high > t6_struct_level)
+                if breaks_struct2
+                    t6_state      := "REVERSING"
+                    t6_zone_count := 0
+                else
+                    t6_state       := "PULLBACK"
+                    t6_last_pb_top := is_counter and t6_parent_dir > 0 ? m5_sup.get(0).top : m5_dem.get(0).top
+                    t6_last_pb_bot := is_counter and t6_parent_dir > 0 ? m5_sup.get(0).bottom : m5_dem.get(0).bottom
+                    t6_zone_count  := 1
+                    t6_m1_choch    := false
+            else
+                t6_state      := "REVERSING"
+                t6_zone_count := 0
+
+    else if t6_state == "PULLBACK"
+        if is_counter
+            // Additional pullback zone — update last_pb tracking
+            t6_last_pb_top := t6_parent_dir > 0 ? m5_sup.get(0).top : m5_dem.get(0).top
+            t6_last_pb_bot := t6_parent_dir > 0 ? m5_sup.get(0).bottom : m5_dem.get(0).bottom
+            t6_zone_count  := t6_zone_count + 1
+            // Check if this counter-zone breaks structural level
+            if t6_struct_valid
+                bool breaks_struct3 = t6_parent_dir > 0 ? (low < t6_struct_level) : (high > t6_struct_level)
+                if breaks_struct3
+                    t6_state      := "REVERSING"
+                    t6_zone_count := 0
+        else if is_with and t6_m1_choch
+            // Resolution A: zone at push zone level
+            bool at_push = t6_dir > 0 ? (m5_dem.get(0).bottom <= t6_push_top) : (m5_sup.get(0).top >= t6_push_bot)
+            // Resolution B: last pullback zone body-close broken
+            bool pb_broken = t6_dir > 0 ? (close > t6_last_pb_top) : (close < t6_last_pb_bot)
+            if at_push or pb_broken
+                t6_state      := "PUSHING"
+                t6_dir        := t6_parent_dir
+                t6_push_top   := t6_dir > 0 ? m5_dem.get(0).top : m5_sup.get(0).top
+                t6_push_bot   := t6_dir > 0 ? m5_dem.get(0).bottom : m5_sup.get(0).bottom
+                t6_zone_count := 1
+                t6_m1_choch   := false
+
+    else if t6_state == "REVERSING"
+        // Wait for M15 to confirm new direction
+        if is_with and t6_parent_dir != t6_dir
+            // M15 has flipped — this is first zone in new direction
+            t6_state      := "PUSHING"
+            t6_dir        := t6_parent_dir
+            t6_push_top   := t6_dir > 0 ? m5_dem.get(0).top : m5_sup.get(0).top
+            t6_push_bot   := t6_dir > 0 ? m5_dem.get(0).bottom : m5_sup.get(0).bottom
+            t6_zone_count := 1
+            t6_m1_choch   := false
+
+// State reset on M15 direction change
+// Compare against stored previous parent dir (not current-bar t6_parent_dir,
+// which already reflects this bar's m15_swc and would always match)
+if m15_fired
+    if t6_parent_dir != t6_prev_parent and t6_state != "REVERSING"
+        t6_state      := "IDLE"
+        t6_dir        := 0
+        t6_push_top   := na
+        t6_push_bot   := na
+        t6_zone_count := 0
+    t6_prev_parent := t6_parent_dir
+
+// Track state transitions for debug
+bool t6_changed = t6_state != t6_prev_state
+
 // === PLACEHOLDER (replaced by Tasks 2-7) ===
 plot(close, "placeholder", display=display.none)
