@@ -160,6 +160,7 @@ var float  t6_last_pb_top = na
 var float  t6_last_pb_bot = na
 var int    t6_zone_count  = 0
 var bool   t6_m1_choch    = false
+var int    t6_prev_parent = 0
 ```
 
 - [ ] **Step 2: Add T6 parent direction derivation**
@@ -211,8 +212,8 @@ if m5_fired
         if is_with and inside_parent
             t6_state      := "PUSHING"
             t6_dir        := t6_parent_dir
-            t6_push_top   := m5_zone_matches_dir(1) ? m5_dem.get(0).top : m5_sup.get(0).top
-            t6_push_bot   := m5_zone_matches_dir(1) ? m5_dem.get(0).bottom : m5_sup.get(0).bottom
+            t6_push_top   := t6_parent_dir > 0 ? m5_dem.get(0).top : m5_sup.get(0).top
+            t6_push_bot   := t6_parent_dir > 0 ? m5_dem.get(0).bottom : m5_sup.get(0).bottom
             t6_zone_count := 1
             t6_m1_choch   := false
 
@@ -300,14 +301,16 @@ if m5_fired
             t6_m1_choch   := false
 
 // State reset on M15 direction change
+// Compare against stored previous parent dir (not current-bar t6_parent_dir,
+// which already reflects this bar's m15_swc and would always match)
 if m15_fired
-    int new_parent_dir = (m15_swc == 1 or m15_swc == 4) ? 1 : -1
-    if new_parent_dir != t6_parent_dir and t6_state != "REVERSING"
+    if t6_parent_dir != t6_prev_parent and t6_state != "REVERSING"
         t6_state      := "IDLE"
         t6_dir        := 0
         t6_push_top   := na
         t6_push_bot   := na
         t6_zone_count := 0
+    t6_prev_parent := t6_parent_dir
 
 // Track state transitions for debug
 bool t6_changed = t6_state != t6_prev_state
@@ -351,6 +354,7 @@ var float  t5_last_pb_top = na
 var float  t5_last_pb_bot = na
 var int    t5_zone_count  = 0
 var bool   t5_m5_choch    = false
+var int    t5_prev_parent = 0
 
 // T5 parent direction — derived from H1's last swing classification
 int t5_parent_dir = (h1_swc == 1 or h1_swc == 4) ? 1 : (h1_swc == 2 or h1_swc == 3) ? -1 : 0
@@ -369,23 +373,117 @@ if t5_state == "PULLBACK" and m5_fired
 
 - [ ] **Step 3: Add T5 state transitions**
 
-Same pattern as T6 but using `m15_fired`, `m15_zone_matches_dir`, H1 structural levels, and `h1_fired` for reset. The code follows the same structure as T6 Step 5 with these substitutions:
+Same pattern as T6 one level up: Parent=H1, Child=M15, Grandchild=M5.
 
-| T6 | T5 |
-|---|---|
-| `m5_fired` | `m15_fired` |
-| `m5_zone_matches_dir` | `m15_zone_matches_dir` |
-| `m15_dem`/`m15_sup` (parent zones) | `h1_dem`/`h1_sup` |
-| `m5_dem.get(0)`/`m5_sup.get(0)` (child zones) | `m15_dem.get(0)`/`m15_sup.get(0)` |
-| `m1_fired`, `m1_swc` (grandchild CHoCH) | `m5_fired`, `m5_swc` |
-| `m15_fired` (parent reset) | `h1_fired` |
-| `t6_*` variables | `t5_*` variables |
-| `t6_m1_choch` | `t5_m5_choch` |
-| `is_inside_zone(m15_dem/sup)` | `is_inside_zone(h1_dem/sup)` |
-| `get_zone_by_cls(m15_dem, 4)` | `get_zone_by_cls(h1_dem, 4)` |
-| `get_zone_by_cls(m15_sup, 2)` | `get_zone_by_cls(h1_sup, 2)` |
+```pine
+// T5 structural level — H1 HL demand bottom (bullish) or LH supply top (bearish)
+Zone t5_struct_zone = t5_parent_dir > 0 ? get_zone_by_cls(h1_dem, 4) : get_zone_by_cls(h1_sup, 2)
+float t5_struct_level = t5_parent_dir > 0 ? t5_struct_zone.bottom : t5_struct_zone.top
+bool t5_struct_valid = not na(t5_struct_level)
 
-Write the full T5 state machine following the T6 template with these substitutions. Do NOT abbreviate — write the complete code.
+// T5 state transitions — driven by M15 zone creation events
+string t5_prev_state = t5_state
+
+if m15_fired
+    bool is_with5    = m15_zone_matches_dir(t5_parent_dir)
+    bool is_counter5 = m15_zone_matches_dir(-t5_parent_dir)
+
+    if t5_state == "IDLE"
+        bool inside_parent5 = t5_parent_dir > 0 ? is_inside_zone(h1_dem) : is_inside_zone(h1_sup)
+        if is_with5 and inside_parent5
+            t5_state      := "PUSHING"
+            t5_dir        := t5_parent_dir
+            t5_push_top   := t5_dir > 0 ? m15_dem.get(0).top : m15_sup.get(0).top
+            t5_push_bot   := t5_dir > 0 ? m15_dem.get(0).bottom : m15_sup.get(0).bottom
+            t5_zone_count := 1
+            t5_m5_choch   := false
+
+    else if t5_state == "PUSHING"
+        if is_with5
+            bool extends5 = t5_dir > 0 ? (m15_dem.get(0).bottom > t5_push_top) : (m15_sup.get(0).top < t5_push_bot)
+            if extends5
+                t5_state      := "CONTINUING"
+                t5_zone_count := t5_zone_count + 1
+            else
+                t5_zone_count := t5_zone_count + 1
+        else if is_counter5
+            if t5_struct_valid
+                bool breaks_struct5 = t5_parent_dir > 0 ? (low < t5_struct_level) : (high > t5_struct_level)
+                if breaks_struct5
+                    t5_state      := "REVERSING"
+                    t5_zone_count := 0
+                else
+                    t5_state       := "PULLBACK"
+                    t5_last_pb_top := is_counter5 and t5_parent_dir > 0 ? m15_sup.get(0).top : m15_dem.get(0).top
+                    t5_last_pb_bot := is_counter5 and t5_parent_dir > 0 ? m15_sup.get(0).bottom : m15_dem.get(0).bottom
+                    t5_zone_count  := 1
+                    t5_m5_choch    := false
+            else
+                t5_state      := "REVERSING"
+                t5_zone_count := 0
+
+    else if t5_state == "CONTINUING"
+        if is_with5
+            t5_zone_count := t5_zone_count + 1
+        else if is_counter5
+            if t5_struct_valid
+                bool breaks_struct5b = t5_parent_dir > 0 ? (low < t5_struct_level) : (high > t5_struct_level)
+                if breaks_struct5b
+                    t5_state      := "REVERSING"
+                    t5_zone_count := 0
+                else
+                    t5_state       := "PULLBACK"
+                    t5_last_pb_top := is_counter5 and t5_parent_dir > 0 ? m15_sup.get(0).top : m15_dem.get(0).top
+                    t5_last_pb_bot := is_counter5 and t5_parent_dir > 0 ? m15_sup.get(0).bottom : m15_dem.get(0).bottom
+                    t5_zone_count  := 1
+                    t5_m5_choch    := false
+            else
+                t5_state      := "REVERSING"
+                t5_zone_count := 0
+
+    else if t5_state == "PULLBACK"
+        if is_counter5
+            t5_last_pb_top := t5_parent_dir > 0 ? m15_sup.get(0).top : m15_dem.get(0).top
+            t5_last_pb_bot := t5_parent_dir > 0 ? m15_sup.get(0).bottom : m15_dem.get(0).bottom
+            t5_zone_count  := t5_zone_count + 1
+            if t5_struct_valid
+                bool breaks_struct5c = t5_parent_dir > 0 ? (low < t5_struct_level) : (high > t5_struct_level)
+                if breaks_struct5c
+                    t5_state      := "REVERSING"
+                    t5_zone_count := 0
+        else if is_with5 and t5_m5_choch
+            bool at_push5 = t5_dir > 0 ? (m15_dem.get(0).bottom <= t5_push_top) : (m15_sup.get(0).top >= t5_push_bot)
+            bool pb_broken5 = t5_dir > 0 ? (close > t5_last_pb_top) : (close < t5_last_pb_bot)
+            if at_push5 or pb_broken5
+                t5_state      := "PUSHING"
+                t5_dir        := t5_parent_dir
+                t5_push_top   := t5_dir > 0 ? m15_dem.get(0).top : m15_sup.get(0).top
+                t5_push_bot   := t5_dir > 0 ? m15_dem.get(0).bottom : m15_sup.get(0).bottom
+                t5_zone_count := 1
+                t5_m5_choch   := false
+
+    else if t5_state == "REVERSING"
+        if is_with5 and t5_parent_dir != t5_dir
+            t5_state      := "PUSHING"
+            t5_dir        := t5_parent_dir
+            t5_push_top   := t5_dir > 0 ? m15_dem.get(0).top : m15_sup.get(0).top
+            t5_push_bot   := t5_dir > 0 ? m15_dem.get(0).bottom : m15_sup.get(0).bottom
+            t5_zone_count := 1
+            t5_m5_choch   := false
+
+// State reset on H1 direction change
+if h1_fired
+    if t5_parent_dir != t5_prev_parent and t5_state != "REVERSING"
+        t5_state      := "IDLE"
+        t5_dir        := 0
+        t5_push_top   := na
+        t5_push_bot   := na
+        t5_zone_count := 0
+    t5_prev_parent := t5_parent_dir
+
+// Track T5 state transitions for debug
+bool t5_changed = t5_state != t5_prev_state
+```
 
 - [ ] **Step 4: Add T5 confidence derivation**
 
@@ -439,10 +537,15 @@ bool   i_show_sl_tp    = input.bool(true,            "Show SL/TP lines",        
 // =============================================================================
 
 // Entry triggers — fire on M5 zone creation when T6 state matches
-bool push_fire     = m5_fired and t6_state == "PUSHING"    and m5_zone_matches_dir(t6_dir)
-bool continue_fire = m5_fired and t6_state == "CONTINUING" and m5_zone_matches_dir(t6_dir)
-bool pullback_fire = m5_fired and t6_state == "PULLBACK"   and m5_zone_matches_dir(-t6_dir)
-bool reversal_fire = m5_fired and t6_state == "REVERSING"  and m5_zone_matches_dir(t6_dir)
+// Note: reversal_fire uses t6_prev_state because the REVERSING → PUSHING
+// transition runs before this block (per spec evaluation order). When the
+// first M5 zone in the new direction fires, state transitions to PUSHING,
+// but the signal should fire as a REVERSAL entry (it's the resolution of
+// the reversal state, not the start of a new push).
+bool push_fire     = m5_fired and t6_state == "PUSHING"         and m5_zone_matches_dir(t6_dir) and t6_prev_state != "REVERSING"
+bool continue_fire = m5_fired and t6_state == "CONTINUING"      and m5_zone_matches_dir(t6_dir)
+bool pullback_fire = m5_fired and t6_state == "PULLBACK"        and m5_zone_matches_dir(-t6_dir)
+bool reversal_fire = m5_fired and t6_prev_state == "REVERSING"  and t6_state == "PUSHING" and m5_zone_matches_dir(t6_dir)
 
 // Rising-edge detection — fire once per state entry
 var bool push_prev     = false
