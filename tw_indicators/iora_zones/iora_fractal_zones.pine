@@ -69,3 +69,34 @@ bool h4_new  = ta.change(h4_t)  != 0
 bool d_new   = ta.change(d_t)   != 0
 bool w_new   = ta.change(w_t)   != 0
 bool mn_new  = ta.change(mn_t)  != 0
+
+// =============================================================================
+// === L1: ZONE UDT + ARRAYS
+// =============================================================================
+
+type FractalZone
+    float   top       = na
+    float   bottom    = na
+    int     side      = 0      // +1 demand, -1 supply
+    int     cls       = 0      // 1=HH, 2=LH, 3=LL, 4=HL
+    int     role      = 0      // 0=unassigned, 1=push, 2=cont, 3=pullback, 4=reversal
+    string  tf_str    = ""
+    int     birth_bar = 0
+    int     max_age   = 50
+    bool    is_nested = false  // fully contained inside parent-TF zone
+    bool    is_terminal = false // opposing nest — zone WILL be broken
+    string  nested_in = ""     // parent TF if nested (e.g., "H4")
+    bool    is_rev_target = false // reversal target (Rule 11)
+    box     bx        = na
+    label   lbl       = na
+
+var array<FractalZone> h1_sup  = array.new<FractalZone>(0)
+var array<FractalZone> h1_dem  = array.new<FractalZone>(0)
+var array<FractalZone> h4_sup  = array.new<FractalZone>(0)
+var array<FractalZone> h4_dem  = array.new<FractalZone>(0)
+var array<FractalZone> d_sup   = array.new<FractalZone>(0)
+var array<FractalZone> d_dem   = array.new<FractalZone>(0)
+var array<FractalZone> w_sup   = array.new<FractalZone>(0)
+var array<FractalZone> w_dem   = array.new<FractalZone>(0)
+var array<FractalZone> mn_sup  = array.new<FractalZone>(0)
+var array<FractalZone> mn_dem  = array.new<FractalZone>(0)
