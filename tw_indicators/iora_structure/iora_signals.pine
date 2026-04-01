@@ -1405,5 +1405,145 @@ if m15_fired
 // Track state transitions for debug
 bool t6_changed = t6_state != t6_prev_state
 
+// --- T5: Parent=H1, Child=M15, Grandchild=M5 ---
+
+var string t5_state       = "IDLE"
+var int    t5_dir         = 0
+var float  t5_push_top    = na
+var float  t5_push_bot    = na
+var float  t5_last_pb_top = na
+var float  t5_last_pb_bot = na
+var int    t5_zone_count  = 0
+var bool   t5_m5_choch    = false
+var int    t5_prev_parent = 0
+
+// T5 parent direction — derived from H1's last swing classification
+int t5_parent_dir = (h1_swc == 1 or h1_swc == 4) ? 1 : (h1_swc == 2 or h1_swc == 3) ? -1 : 0
+
+// M5 CHoCH — grandchild confirms pullback exhaustion for T5
+if t5_state == "PULLBACK" and m5_fired
+    if t5_dir > 0 and m5_swc == 4
+        t5_m5_choch := true
+    else if t5_dir < 0 and m5_swc == 2
+        t5_m5_choch := true
+
+// T5 structural level — H1 HL demand bottom (bullish) or LH supply top (bearish)
+Zone t5_struct_zone = t5_parent_dir > 0 ? get_zone_by_cls(h1_dem, 4) : get_zone_by_cls(h1_sup, 2)
+float t5_struct_level = t5_parent_dir > 0 ? t5_struct_zone.bottom : t5_struct_zone.top
+bool t5_struct_valid = not na(t5_struct_level)
+
+// T5 state transitions — driven by M15 zone creation events
+string t5_prev_state = t5_state
+
+if m15_fired
+    bool is_with5    = m15_zone_matches_dir(t5_parent_dir)
+    bool is_counter5 = m15_zone_matches_dir(-t5_parent_dir)
+
+    if t5_state == "IDLE"
+        bool inside_parent5 = t5_parent_dir > 0 ? is_inside_zone(h1_dem) : is_inside_zone(h1_sup)
+        if is_with5 and inside_parent5
+            t5_state      := "PUSHING"
+            t5_dir        := t5_parent_dir
+            t5_push_top   := t5_dir > 0 ? m15_dem.get(0).top : m15_sup.get(0).top
+            t5_push_bot   := t5_dir > 0 ? m15_dem.get(0).bottom : m15_sup.get(0).bottom
+            t5_zone_count := 1
+            t5_m5_choch   := false
+
+    else if t5_state == "PUSHING"
+        if is_with5
+            bool extends5 = t5_dir > 0 ? (m15_dem.get(0).bottom > t5_push_top) : (m15_sup.get(0).top < t5_push_bot)
+            if extends5
+                t5_state      := "CONTINUING"
+                t5_zone_count := t5_zone_count + 1
+            else
+                t5_zone_count := t5_zone_count + 1
+        else if is_counter5
+            if t5_struct_valid
+                bool breaks_struct5 = t5_parent_dir > 0 ? (low < t5_struct_level) : (high > t5_struct_level)
+                if breaks_struct5
+                    t5_state      := "REVERSING"
+                    t5_zone_count := 0
+                else
+                    t5_state       := "PULLBACK"
+                    t5_last_pb_top := is_counter5 and t5_parent_dir > 0 ? m15_sup.get(0).top : m15_dem.get(0).top
+                    t5_last_pb_bot := is_counter5 and t5_parent_dir > 0 ? m15_sup.get(0).bottom : m15_dem.get(0).bottom
+                    t5_zone_count  := 1
+                    t5_m5_choch    := false
+            else
+                t5_state      := "REVERSING"
+                t5_zone_count := 0
+
+    else if t5_state == "CONTINUING"
+        if is_with5
+            t5_zone_count := t5_zone_count + 1
+        else if is_counter5
+            if t5_struct_valid
+                bool breaks_struct5b = t5_parent_dir > 0 ? (low < t5_struct_level) : (high > t5_struct_level)
+                if breaks_struct5b
+                    t5_state      := "REVERSING"
+                    t5_zone_count := 0
+                else
+                    t5_state       := "PULLBACK"
+                    t5_last_pb_top := is_counter5 and t5_parent_dir > 0 ? m15_sup.get(0).top : m15_dem.get(0).top
+                    t5_last_pb_bot := is_counter5 and t5_parent_dir > 0 ? m15_sup.get(0).bottom : m15_dem.get(0).bottom
+                    t5_zone_count  := 1
+                    t5_m5_choch    := false
+            else
+                t5_state      := "REVERSING"
+                t5_zone_count := 0
+
+    else if t5_state == "PULLBACK"
+        if is_counter5
+            t5_last_pb_top := t5_parent_dir > 0 ? m15_sup.get(0).top : m15_dem.get(0).top
+            t5_last_pb_bot := t5_parent_dir > 0 ? m15_sup.get(0).bottom : m15_dem.get(0).bottom
+            t5_zone_count  := t5_zone_count + 1
+            if t5_struct_valid
+                bool breaks_struct5c = t5_parent_dir > 0 ? (low < t5_struct_level) : (high > t5_struct_level)
+                if breaks_struct5c
+                    t5_state      := "REVERSING"
+                    t5_zone_count := 0
+        else if is_with5 and t5_m5_choch
+            bool at_push5 = t5_dir > 0 ? (m15_dem.get(0).bottom <= t5_push_top) : (m15_sup.get(0).top >= t5_push_bot)
+            bool pb_broken5 = t5_dir > 0 ? (close > t5_last_pb_top) : (close < t5_last_pb_bot)
+            if at_push5 or pb_broken5
+                t5_state      := "PUSHING"
+                t5_dir        := t5_parent_dir
+                t5_push_top   := t5_dir > 0 ? m15_dem.get(0).top : m15_sup.get(0).top
+                t5_push_bot   := t5_dir > 0 ? m15_dem.get(0).bottom : m15_sup.get(0).bottom
+                t5_zone_count := 1
+                t5_m5_choch   := false
+
+    else if t5_state == "REVERSING"
+        if is_with5 and t5_parent_dir != t5_dir
+            t5_state      := "PUSHING"
+            t5_dir        := t5_parent_dir
+            t5_push_top   := t5_dir > 0 ? m15_dem.get(0).top : m15_sup.get(0).top
+            t5_push_bot   := t5_dir > 0 ? m15_dem.get(0).bottom : m15_sup.get(0).bottom
+            t5_zone_count := 1
+            t5_m5_choch   := false
+
+// State reset on H1 direction change
+if h1_fired
+    if t5_parent_dir != t5_prev_parent and t5_state != "REVERSING"
+        t5_state      := "IDLE"
+        t5_dir        := 0
+        t5_push_top   := na
+        t5_push_bot   := na
+        t5_zone_count := 0
+    t5_prev_parent := t5_parent_dir
+
+// Track T5 state transitions for debug
+bool t5_changed = t5_state != t5_prev_state
+
+// T5 confidence — alignment between T5 and T6
+string t5_confidence = "MEDIUM"
+if t5_state == "PUSHING" or t5_state == "CONTINUING"
+    if (t5_dir > 0 and t6_dir > 0) or (t5_dir < 0 and t6_dir < 0)
+        t5_confidence := "HIGH"
+    else if (t5_dir > 0 and t6_dir < 0) or (t5_dir < 0 and t6_dir > 0)
+        t5_confidence := "LOW"
+else if t5_state == "REVERSING"
+    t5_confidence := "LOW"
+
 // === PLACEHOLDER (replaced by Tasks 2-7) ===
 plot(close, "placeholder", display=display.none)
