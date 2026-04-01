@@ -95,12 +95,14 @@ Bidirectional — supply and demand counters are fully independent.
 - Parent H4 demand fires → reset H1 `dem_count` to 0, update `dem_reset_time`
 
 **Trigger 2 — Same-TF structural invalidation (from Rule 3):**
-- H1 makes new HH (bullish break) → reset H1 `sup_count` to 0 (bearish structure invalidated)
-- H1 makes new LL (bearish break) → reset H1 `dem_count` to 0 (bullish structure invalidated)
+- H1 makes new HH (bullish break) → reset H1 `sup_count` to 0, update `sup_reset_time` to current `time` (bearish structure invalidated)
+- H1 makes new LL (bearish break) → reset H1 `dem_count` to 0, update `dem_reset_time` to current `time` (bullish structure invalidated)
 
-HH/LL detection uses the existing `hi_txt == "HH"` / `lo_txt == "LL"` from `ha_detect()`, guarded by `is_sup` direction check (same guards as push validation).
+**Guard:** Trigger 2 fires **only on fire bars** — `if fire and is_sup and hi_txt == "HH"` for HH reset, `if fire and not is_sup and lo_txt == "LL"` for LL reset. This uses the same `fire` + `is_sup` direction guards as push validation, preventing stale `var string` values from triggering false resets on non-fire bars.
 
-Reset detection: `process()` receives `parent_fire` (bool) and `parent_is_sup` (bool) parameters for trigger 1. Trigger 2 uses the existing fire + hi_txt/lo_txt already passed to `process()`.
+Both triggers update the corresponding reset time variable (`sup_reset_time` / `dem_reset_time`), which is essential for the unbroken count filter (`origin_time >= reset_time`) to produce correct results.
+
+Reset detection: `process()` receives `parent_fire` (bool) and `parent_is_sup` (bool) parameters for Trigger 1. Trigger 2 uses the existing `fire`, `is_sup`, `hi_txt`, `lo_txt` parameters already passed to `process()`.
 
 ### Count increment
 
@@ -248,6 +250,8 @@ If TradingView doesn't render ▼ ▲ ◆ ⚐ ⚠ ✕, fall back to: `v`, `^`, `
 
 Labels remain `size.tiny`, right-aligned at top of zone box.
 
+**Label format change from v1:** V1 used `PUSH-BOS` / `PUSH-CHoCH` format. V2 drops the "PUSH" keyword and instead shows the swing classification directly: `LL ▼ BOS` / `HH ◆ CHoCH`. The "PUSH" keyword is redundant — push zones are already visually distinguished by color, and showing the swing type (HH/LL) is more informative for understanding the structural move.
+
 ---
 
 ## Visual Styling
@@ -276,8 +280,8 @@ Compact table with **6 columns** (`table.new()` must specify 6), one row per ena
 | TF | Timeframe label | Static |
 | Trend | BULL / BEAR / — | `track_period()` break direction |
 | Push | Active push classification (e.g., `S LL ▼ BOS`) | Push zone state |
-| #S | Supply count (e.g., `3`) | `sup_count` — yellow at 5, red at 8 |
-| #D | Demand count (e.g., `7`) | `dem_count` — yellow at 5, red at 8 |
+| #S | Supply unbroken count (e.g., `3`) | Computed: count zones in array where `is_supply == true` and `origin_time >= sup_reset_time` — yellow at 5, red at 8 |
+| #D | Demand unbroken count (e.g., `7`) | Computed: count zones in array where `is_supply == false` and `origin_time >= dem_reset_time` — yellow at 5, red at 8 |
 | Zones | Supply/demand total (e.g., `2S 1D`) | Zone array sizes |
 
 ---
@@ -383,6 +387,8 @@ Single file: `tw_indicators/iora_zones/iora_push_zones_v2.pine`
 | S10 | Dashboard (with #S, #D columns) |
 
 Estimated ~650-700 lines.
+
+The `indicator()` declaration must include `max_lines_count` (e.g., 500) if nesting lines are enabled, alongside the existing `max_boxes_count`.
 
 ---
 
