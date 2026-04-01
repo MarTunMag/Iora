@@ -100,3 +100,83 @@ var array<FractalZone> w_sup   = array.new<FractalZone>(0)
 var array<FractalZone> w_dem   = array.new<FractalZone>(0)
 var array<FractalZone> mn_sup  = array.new<FractalZone>(0)
 var array<FractalZone> mn_dem  = array.new<FractalZone>(0)
+
+// =============================================================================
+// === L1: ZONE COLORS
+// =============================================================================
+
+color Z_CLR_H1  = #AB47BC
+color Z_CLR_H4  = #FF7043
+color Z_CLR_D   = #FFCA28
+color Z_CLR_W   = #42A5F5
+color Z_CLR_MN  = #78909C
+color Z_CLR_SUP = #ff4444
+color Z_CLR_DEM = #2196f3
+
+// =============================================================================
+// === L1: HA RUN TRACKING (per TF)
+// =============================================================================
+
+// H1
+var int   h1_ha_dir     = 0
+var float h1_run_hi     = na
+var float h1_run_lo     = na
+var float h1_prev_s_top = na
+var float h1_prev_d_bot = na
+
+// H4
+var int   h4_ha_dir     = 0
+var float h4_run_hi     = na
+var float h4_run_lo     = na
+var float h4_prev_s_top = na
+var float h4_prev_d_bot = na
+
+// D
+var int   d_ha_dir      = 0
+var float d_run_hi      = na
+var float d_run_lo      = na
+var float d_prev_s_top  = na
+var float d_prev_d_bot  = na
+
+// W
+var int   w_ha_dir      = 0
+var float w_run_hi      = na
+var float w_run_lo      = na
+var float w_prev_s_top  = na
+var float w_prev_d_bot  = na
+
+// MN
+var int   mn_ha_dir     = 0
+var float mn_run_hi     = na
+var float mn_run_lo     = na
+var float mn_prev_s_top = na
+var float mn_prev_d_bot = na
+
+// =============================================================================
+// === L1: ZONE CREATION FUNCTION
+// =============================================================================
+
+create_zone(array<FractalZone> arr, float ztop, float zbot, int side, int cls, string tf_str, int max_age_bars, bool show, color fill_clr, int max_z) =>
+    if ztop > zbot
+        FractalZone z = FractalZone.new()
+        z.top       := ztop
+        z.bottom    := zbot
+        z.side      := side
+        z.cls       := cls
+        z.tf_str    := tf_str
+        z.birth_bar := bar_index
+        z.max_age   := max_age_bars
+        color border_clr = side < 0 ? Z_CLR_SUP : Z_CLR_DEM
+        if show and i_layer_1
+            z.bx := box.new(bar_index, ztop, bar_index + 50, zbot, border_color=color.new(border_clr, 40), bgcolor=color.new(fill_clr, 88), border_width=1, extend=extend.right)
+            string cls_str = cls == 1 ? "HH" : cls == 2 ? "LH" : cls == 3 ? "LL" : "HL"
+            string side_str = side < 0 ? "S" : "D"
+            string lbl_txt = tf_str + " " + side_str + " " + cls_str
+            z.lbl := label.new(bar_index, side < 0 ? ztop : zbot, lbl_txt, style=(side < 0 ? label.style_label_down : label.style_label_up), color=color.new(fill_clr, 60), textcolor=color.white, size=size.tiny)
+        arr.unshift(z)
+        if arr.size() > max_z
+            FractalZone old = arr.pop()
+            if not na(old.bx)
+                box.delete(old.bx)
+            if not na(old.lbl)
+                label.delete(old.lbl)
