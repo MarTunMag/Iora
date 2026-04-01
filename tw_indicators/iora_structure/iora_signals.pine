@@ -1217,5 +1217,42 @@ if consume.active
         consume.h1_flip := true
         consume.score   := consume.score + 1
 
+// =============================================================================
+// === SECTION 12: TRIPLET HELPERS
+// =============================================================================
+
+// Find the most recent zone with a specific swing classification
+// Returns the zone, or a Zone with na fields if not found
+get_zone_by_cls(array<Zone> zones, int cls) =>
+    Zone result = Zone.new()
+    bool found = false
+    if zones.size() > 0
+        for int i = 0 to math.min(zones.size() - 1, 7)
+            Zone z = zones.get(i)
+            if z.swing_cls == cls and not found
+                result := z
+                found := true
+    result
+
+// Check if the M5 zone just created matches a given direction
+// dir > 0: demand zone (swc 3=LL or 4=HL) = bullish
+// dir < 0: supply zone (swc 1=HH or 2=LH) = bearish
+m5_zone_matches_dir(int dir) =>
+    if dir > 0
+        m5_fired and (m5_swc == 3 or m5_swc == 4)
+    else if dir < 0
+        m5_fired and (m5_swc == 1 or m5_swc == 2)
+    else
+        false
+
+// Same logic for M15 (T5 child)
+m15_zone_matches_dir(int dir) =>
+    if dir > 0
+        m15_fired and (m15_swc == 3 or m15_swc == 4)
+    else if dir < 0
+        m15_fired and (m15_swc == 1 or m15_swc == 2)
+    else
+        false
+
 // === PLACEHOLDER (replaced by Tasks 2-7) ===
 plot(close, "placeholder", display=display.none)
