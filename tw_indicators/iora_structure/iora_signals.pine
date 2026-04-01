@@ -15,6 +15,13 @@ bool   i_zone_h4     = input.bool(true,            "Show H4 zones",             
 bool   i_zone_d      = input.bool(true,            "Show D zones",              group="Zones")
 int    i_max_zones   = input.int(4,                "Max zones per TF per side", group="Zones", options=[2, 4, 6, 8])
 
+// --- Group: Signals ---
+bool   i_show_push     = input.bool(true,            "Show PUSH signals",         group="Signals")
+bool   i_show_continue = input.bool(true,            "Show CONTINUE signals",     group="Signals")
+bool   i_show_pullback = input.bool(true,            "Show PULLBACK signals",     group="Signals")
+bool   i_show_reversal = input.bool(true,            "Show REVERSAL signals",     group="Signals")
+bool   i_show_sl_tp    = input.bool(true,            "Show SL/TP lines",          group="Signals")
+
 // --- Group: Dashboard ---
 bool   i_dash_on     = input.bool(true,            "Show Dashboard",            group="Dashboard")
 string i_dash_pos    = input.string("Bottom Left", "Position",                  group="Dashboard", options=["Top Left", "Top Right", "Bottom Left", "Bottom Right"])
@@ -1545,5 +1552,131 @@ if t5_state == "PUSHING" or t5_state == "CONTINUING"
 else if t5_state == "REVERSING"
     t5_confidence := "LOW"
 
-// === PLACEHOLDER (replaced by Tasks 2-7) ===
-plot(close, "placeholder", display=display.none)
+// =============================================================================
+// === SECTION 14: ENTRY SIGNALS
+// =============================================================================
+
+// Entry triggers — fire on M5 zone creation when T6 state matches
+// Note: reversal_fire uses t6_prev_state because the REVERSING → PUSHING
+// transition runs before this block (per spec evaluation order). When the
+// first M5 zone in the new direction fires, state transitions to PUSHING,
+// but the signal should fire as a REVERSAL entry (it's the resolution of
+// the reversal state, not the start of a new push).
+bool push_fire     = m5_fired and t6_state == "PUSHING"         and m5_zone_matches_dir(t6_dir) and t6_prev_state != "REVERSING"
+bool continue_fire = m5_fired and t6_state == "CONTINUING"      and m5_zone_matches_dir(t6_dir)
+bool pullback_fire = m5_fired and t6_state == "PULLBACK"        and m5_zone_matches_dir(-t6_dir)
+bool reversal_fire = m5_fired and t6_prev_state == "REVERSING"  and t6_state == "PUSHING" and m5_zone_matches_dir(t6_dir)
+
+// Rising-edge detection — fire once per state entry
+var bool push_prev     = false
+var bool continue_prev = false
+var bool pullback_prev = false
+var bool reversal_prev = false
+
+bool push_signal     = push_fire and not push_prev
+bool continue_signal = continue_fire and not continue_prev
+bool pullback_signal = pullback_fire and not pullback_prev
+bool reversal_signal = reversal_fire and not reversal_prev
+
+push_prev     := push_fire
+continue_prev := continue_fire
+pullback_prev := pullback_fire
+reversal_prev := reversal_fire
+
+// =============================================================================
+// === SECTION 15: SL/TP COMPUTATION
+// =============================================================================
+
+var float sig_entry = na
+var float sig_sl    = na
+var float sig_tp    = na
+var int   sig_dir   = 0
+var string sig_type = "—"
+float tick10 = syminfo.mintick * 10
+
+if push_signal
+    sig_type := "PUSH"
+    sig_dir  := t6_dir
+    if t6_dir > 0 and m5_dem.size() > 0
+        sig_entry := m5_dem.get(0).bottom
+        sig_sl    := t6_push_bot - tick10
+        if m15_sup.size() > 0
+            sig_tp := m15_sup.get(0).bottom
+    else if t6_dir < 0 and m5_sup.size() > 0
+        sig_entry := m5_sup.get(0).top
+        sig_sl    := t6_push_top + tick10
+        if m15_dem.size() > 0
+            sig_tp := m15_dem.get(0).top
+
+if continue_signal
+    sig_type := "CONT"
+    sig_dir  := t6_dir
+    if t6_dir > 0 and m5_dem.size() > 0
+        sig_entry := m5_dem.get(0).bottom
+        sig_sl    := m5_dem.get(0).bottom - tick10
+        if m15_sup.size() > 0
+            sig_tp := m15_sup.get(0).bottom
+    else if t6_dir < 0 and m5_sup.size() > 0
+        sig_entry := m5_sup.get(0).top
+        sig_sl    := m5_sup.get(0).top + tick10
+        if m15_dem.size() > 0
+            sig_tp := m15_dem.get(0).top
+
+if pullback_signal
+    sig_type := "PULL"
+    sig_dir  := -t6_dir
+    if sig_dir > 0 and m5_dem.size() > 0
+        sig_entry := m5_dem.get(0).bottom
+        sig_sl    := m5_dem.get(0).bottom - tick10
+        sig_tp    := t6_push_top
+    else if sig_dir < 0 and m5_sup.size() > 0
+        sig_entry := m5_sup.get(0).top
+        sig_sl    := m5_sup.get(0).top + tick10
+        sig_tp    := t6_push_bot
+
+if reversal_signal
+    sig_type := "REV"
+    sig_dir  := t6_dir
+    if t6_dir > 0 and m5_dem.size() > 0
+        sig_entry := m5_dem.get(0).bottom
+        Zone rev_sl = get_zone_by_cls(m15_dem, 4)
+        sig_sl := not na(rev_sl.bottom) ? rev_sl.bottom - tick10 : na
+        if m15_sup.size() > 0
+            sig_tp := m15_sup.get(0).bottom
+    else if t6_dir < 0 and m5_sup.size() > 0
+        sig_entry := m5_sup.get(0).top
+        Zone rev_sl2 = get_zone_by_cls(m15_sup, 2)
+        sig_sl := not na(rev_sl2.top) ? rev_sl2.top + tick10 : na
+        if m15_dem.size() > 0
+            sig_tp := m15_dem.get(0).top
+
+// =============================================================================
+// === SECTION 16: ON-CHART SIGNAL MARKERS
+// =============================================================================
+
+bool any_signal = push_signal or continue_signal or pullback_signal or reversal_signal
+
+plotshape(i_show_push     and push_signal     and sig_dir > 0,  "Push Long",     shape.arrowup,      location.belowbar, #26A69A, size=size.small)
+plotshape(i_show_push     and push_signal     and sig_dir < 0,  "Push Short",    shape.arrowdown,    location.abovebar, #EF5350, size=size.small)
+plotshape(i_show_continue and continue_signal and sig_dir > 0,  "Cont Long",     shape.triangleup,   location.belowbar, #42A5F5, size=size.small)
+plotshape(i_show_continue and continue_signal and sig_dir < 0,  "Cont Short",    shape.triangledown, location.abovebar, #42A5F5, size=size.small)
+plotshape(i_show_pullback and pullback_signal and sig_dir > 0,  "Pull Long",     shape.circle,       location.belowbar, #FFCA28, size=size.small)
+plotshape(i_show_pullback and pullback_signal and sig_dir < 0,  "Pull Short",    shape.circle,       location.abovebar, #FFCA28, size=size.small)
+plotshape(i_show_reversal and reversal_signal and sig_dir > 0,  "Rev Long",      shape.diamond,      location.belowbar, #AB47BC, size=size.small)
+plotshape(i_show_reversal and reversal_signal and sig_dir < 0,  "Rev Short",     shape.diamond,      location.abovebar, #AB47BC, size=size.small)
+
+// =============================================================================
+// === SECTION 17: SL/TP LINES
+// =============================================================================
+
+var line sl_ln = na
+var line tp_ln = na
+if any_signal and i_show_sl_tp
+    if not na(sl_ln)
+        line.delete(sl_ln)
+    if not na(tp_ln)
+        line.delete(tp_ln)
+    if not na(sig_sl)
+        sl_ln := line.new(bar_index, sig_sl, bar_index + 50, sig_sl, color=color.new(#EF5350, 30), style=line.style_dashed, width=1)
+    if not na(sig_tp)
+        tp_ln := line.new(bar_index, sig_tp, bar_index + 50, sig_tp, color=color.new(#26A69A, 30), style=line.style_dashed, width=1)
