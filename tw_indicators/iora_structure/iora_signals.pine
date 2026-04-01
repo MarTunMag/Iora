@@ -1710,3 +1710,61 @@ if i_debug and bar_index % 100 == 0
 string t5_dir_arrow = t5_dir > 0 ? " ▲" : t5_dir < 0 ? " ▼" : ""
 if i_debug and (bar_index + 50) % 100 == 0
     label.new(bar_index, high, "T5:" + t5_state + t5_dir_arrow + " [" + t5_confidence + "]", style=label.style_label_down, color=color.new(color.gray, 70), textcolor=color.white, size=size.tiny)
+
+// =============================================================================
+// === SECTION 19: SIGNAL DASHBOARD
+// =============================================================================
+
+if i_dash_on and barstate.islast
+    string tbl_pos = switch i_dash_pos
+        "Top Left"     => position.top_left
+        "Top Right"    => position.top_right
+        "Bottom Right" => position.bottom_right
+        => position.bottom_left
+
+    var table sig_tbl = table.new(tbl_pos, 2, 7, bgcolor=color.new(#1E1E1E, 10), border_color=color.new(#333333, 0), border_width=1)
+
+    string cell_sz = size.tiny
+    color  cell_bg = color.new(#1E1E1E, 10)
+
+    // Row 0: Header
+    table.cell(sig_tbl, 0, 0, "Signal Engine", text_color=color.new(#E0E0E0, 0), bgcolor=color.new(#2196F3, 20), text_size=cell_sz)
+    table.cell(sig_tbl, 1, 0, "Triplet", text_color=color.new(#E0E0E0, 0), bgcolor=color.new(#2196F3, 20), text_size=cell_sz)
+
+    // Row 1: T5 state
+    string t5_lbl = "T5: " + t5_state + t5_dir_arrow
+    color  t5_clr = t5_state == "IDLE" ? color.new(#546E7A, 0) : t5_dir > 0 ? color.new(#26A69A, 0) : color.new(#EF5350, 0)
+    table.cell(sig_tbl, 0, 1, t5_lbl, text_color=t5_clr, bgcolor=cell_bg, text_size=cell_sz)
+    table.cell(sig_tbl, 1, 1, "z:" + str.tostring(t5_zone_count), text_color=color.new(#78909C, 0), bgcolor=cell_bg, text_size=cell_sz)
+
+    // Row 2: T6 state
+    string t6_lbl = "T6: " + t6_state + t6_dir_arrow
+    color  t6_clr = t6_state == "IDLE" ? color.new(#546E7A, 0) : t6_dir > 0 ? color.new(#26A69A, 0) : color.new(#EF5350, 0)
+    table.cell(sig_tbl, 0, 2, t6_lbl, text_color=t6_clr, bgcolor=cell_bg, text_size=cell_sz)
+    table.cell(sig_tbl, 1, 2, "z:" + str.tostring(t6_zone_count), text_color=color.new(#78909C, 0), bgcolor=cell_bg, text_size=cell_sz)
+
+    // Row 3: Confidence
+    color conf_clr = t5_confidence == "HIGH" ? color.new(#26A69A, 0) : t5_confidence == "LOW" ? color.new(#EF5350, 0) : color.new(#FFCA28, 0)
+    table.cell(sig_tbl, 0, 3, "Conf: " + t5_confidence, text_color=conf_clr, bgcolor=cell_bg, text_size=cell_sz)
+    table.cell(sig_tbl, 1, 3, "Consume: " + str.tostring(consume.score) + "/4", text_color=color.new(#78909C, 0), bgcolor=cell_bg, text_size=cell_sz)
+
+    // Row 4: M1 CHoCH status
+    string choch_str = t6_m1_choch ? "CONFIRMED" : "—"
+    color  choch_clr = t6_m1_choch ? color.new(#26A69A, 0) : color.new(#546E7A, 0)
+    table.cell(sig_tbl, 0, 4, "M1 CHoCH: " + choch_str, text_color=choch_clr, bgcolor=cell_bg, text_size=cell_sz)
+    table.cell(sig_tbl, 1, 4, "H1 Zones: " + str.tostring(h1_zone_cnt), text_color=color.new(#78909C, 0), bgcolor=cell_bg, text_size=cell_sz)
+
+    // Row 5: Active signal
+    string dir_lbl = sig_dir > 0 ? "LONG" : sig_dir < 0 ? "SHORT" : "—"
+    color  dir_clr = sig_dir > 0 ? color.new(#26A69A, 0) : sig_dir < 0 ? color.new(#EF5350, 0) : color.new(#546E7A, 0)
+    float rr_ratio = not na(sig_entry) and not na(sig_sl) and not na(sig_tp) and sig_sl != sig_entry ? math.abs(sig_tp - sig_entry) / math.abs(sig_sl - sig_entry) : na
+    string rr_str = not na(rr_ratio) ? "R:R 1:" + str.tostring(rr_ratio, "#.#") : "—"
+    table.cell(sig_tbl, 0, 5, sig_type + " " + dir_lbl, text_color=dir_clr, bgcolor=cell_bg, text_size=cell_sz)
+    table.cell(sig_tbl, 1, 5, rr_str, text_color=color.new(#B0BEC5, 0), bgcolor=cell_bg, text_size=cell_sz)
+
+    // Row 6: SL/TP values
+    string entry_str = not na(sig_entry) ? str.tostring(sig_entry, format.mintick) : "—"
+    string sl_str    = not na(sig_sl)    ? str.tostring(sig_sl,    format.mintick) : "—"
+    string tp_str    = not na(sig_tp)    ? str.tostring(sig_tp,    format.mintick) : "—"
+    table.cell(sig_tbl, 0, 6, "E:" + entry_str + " SL:" + sl_str, text_color=color.new(#78909C, 0), bgcolor=cell_bg, text_size=cell_sz)
+    table.cell(sig_tbl, 1, 6, "TP:" + tp_str, text_color=color.new(#78909C, 0), bgcolor=cell_bg, text_size=cell_sz)
