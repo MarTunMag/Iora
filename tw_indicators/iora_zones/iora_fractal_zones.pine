@@ -364,3 +364,103 @@ if mn_new and not na(mn_ha_c)
         mn_run_hi := mn_h
         mn_run_lo := mn_l
     mn_ha_dir := mn_ha_dir_now
+
+// =============================================================================
+// === L1: ZONE BREAK DETECTION + EXPIRY
+// =============================================================================
+
+check_zone_breaks(array<FractalZone> zones, bool is_supply) =>
+    int i = zones.size() - 1
+    while i >= 0
+        FractalZone z = zones.get(i)
+        bool brk = is_supply ? close > z.top : close < z.bottom
+        bool expired = bar_index - z.birth_bar > z.max_age
+        if brk or expired
+            if not na(z.bx)
+                box.delete(z.bx)
+            if not na(z.lbl)
+                label.delete(z.lbl)
+            zones.remove(i)
+        i -= 1
+
+// =============================================================================
+// === L1: ZONE NESTING DETECTION (Rule 04)
+// =============================================================================
+
+// Skip filter helper: check if parent zone overlaps an opposing zone at same TF
+parent_zone_overlapped(FractalZone parent_z, array<FractalZone> opposing_arr) =>
+    bool overlapped = false
+    for int i = 0 to math.max(opposing_arr.size() - 1, 0)
+        if i < opposing_arr.size()
+            FractalZone opp = opposing_arr.get(i)
+            if opp.top >= parent_z.bottom and opp.bottom <= parent_z.top
+                overlapped := true
+                break
+    overlapped
+
+check_nesting(FractalZone child, array<FractalZone> parent_sup, array<FractalZone> parent_dem, string parent_tf) =>
+    for int i = 0 to math.max(parent_sup.size() - 1, 0)
+        if i < parent_sup.size()
+            FractalZone p = parent_sup.get(i)
+            if child.top <= p.top and child.bottom >= p.bottom
+                // Skip filter: if parent supply overlapped by a demand zone, signal is weak
+                if not parent_zone_overlapped(p, parent_dem)
+                    child.is_nested := true
+                    child.nested_in := parent_tf
+                    // Opposing: child demand inside parent supply = terminal
+                    child.is_terminal := child.side > 0
+                break
+    if not child.is_nested
+        for int i = 0 to math.max(parent_dem.size() - 1, 0)
+            if i < parent_dem.size()
+                FractalZone p = parent_dem.get(i)
+                if child.top <= p.top and child.bottom >= p.bottom
+                    // Skip filter: if parent demand overlapped by a supply zone, signal is weak
+                    if not parent_zone_overlapped(p, parent_sup)
+                        child.is_nested := true
+                        child.nested_in := parent_tf
+                        // Opposing: child supply inside parent demand = terminal
+                        child.is_terminal := child.side < 0
+                    break
+    // Update label if nested
+    if child.is_nested and not na(child.lbl)
+        string cls_str = child.cls == 1 ? "HH" : child.cls == 2 ? "LH" : child.cls == 3 ? "LL" : "HL"
+        string side_str = child.side < 0 ? "S" : "D"
+        string suffix = child.is_terminal ? " [TERM]" : " @" + parent_tf
+        label.set_text(child.lbl, child.tf_str + " " + side_str + " " + cls_str + suffix)
+        if child.is_terminal and not na(child.bx)
+            box.set_border_style(child.bx, line.style_dotted)
+
+// =============================================================================
+// === L1: NESTING CHECK CALL SITES (after zone creation, before break detection)
+// =============================================================================
+
+// Check nesting: H1→H4, H4→D, D→W, W→MN
+if h1_zone_fired
+    FractalZone newest_h1 = h1_zone_side < 0 ? h1_sup.get(0) : h1_dem.get(0)
+    check_nesting(newest_h1, h4_sup, h4_dem, "H4")
+if h4_zone_fired
+    FractalZone newest_h4 = h4_zone_side < 0 ? h4_sup.get(0) : h4_dem.get(0)
+    check_nesting(newest_h4, d_sup, d_dem, "D")
+if d_zone_fired
+    FractalZone newest_d = d_zone_side < 0 ? d_sup.get(0) : d_dem.get(0)
+    check_nesting(newest_d, w_sup, w_dem, "W")
+if w_zone_fired
+    FractalZone newest_w = w_zone_side < 0 ? w_sup.get(0) : w_dem.get(0)
+    check_nesting(newest_w, mn_sup, mn_dem, "MN")
+
+// =============================================================================
+// === L1: BREAK + EXPIRY CALLS FOR ALL 10 ARRAYS
+// =============================================================================
+
+if i_layer_1
+    check_zone_breaks(h1_sup, true)
+    check_zone_breaks(h1_dem, false)
+    check_zone_breaks(h4_sup, true)
+    check_zone_breaks(h4_dem, false)
+    check_zone_breaks(d_sup, true)
+    check_zone_breaks(d_dem, false)
+    check_zone_breaks(w_sup, true)
+    check_zone_breaks(w_dem, false)
+    check_zone_breaks(mn_sup, true)
+    check_zone_breaks(mn_dem, false)
