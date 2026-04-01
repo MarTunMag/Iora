@@ -450,6 +450,61 @@ if w_zone_fired
     check_nesting(newest_w, mn_sup, mn_dem, "MN")
 
 // =============================================================================
+// === L2: TRIPLET EVENT DISPATCH
+// =============================================================================
+
+if i_layer_2 and i_triplets
+    // --- T1: MN → W → D ---
+    // Parent reset: MN zone fires
+    if mn_zone_fired and mn_sup.size() > 0 and mn_zone_side < 0
+        FractalZone pz = mn_sup.get(0)
+        reset_triplet(t1, pz)
+    if mn_zone_fired and mn_dem.size() > 0 and mn_zone_side > 0
+        FractalZone pz = mn_dem.get(0)
+        reset_triplet(t1, pz)
+    // Child update: W zone fires
+    if w_zone_fired
+        FractalZone cz = w_zone_side < 0 ? w_sup.get(0) : w_dem.get(0)
+        update_child(t1, cz, w_sup, w_dem)
+    // Grandchild update: D zone fires
+    if d_zone_fired
+        FractalZone gz = d_zone_side < 0 ? d_sup.get(0) : d_dem.get(0)
+        update_grandchild(t1, gz)
+
+    // --- T2: W → D → H4 ---
+    if w_zone_fired and w_sup.size() > 0 and w_zone_side < 0
+        FractalZone pz = w_sup.get(0)
+        reset_triplet(t2, pz)
+    if w_zone_fired and w_dem.size() > 0 and w_zone_side > 0
+        FractalZone pz = w_dem.get(0)
+        reset_triplet(t2, pz)
+    if d_zone_fired
+        FractalZone cz = d_zone_side < 0 ? d_sup.get(0) : d_dem.get(0)
+        update_child(t2, cz, d_sup, d_dem)
+    if h4_zone_fired
+        FractalZone gz = h4_zone_side < 0 ? h4_sup.get(0) : h4_dem.get(0)
+        update_grandchild(t2, gz)
+
+    // --- T3: D → H4 → H1 ---
+    if d_zone_fired and d_sup.size() > 0 and d_zone_side < 0
+        FractalZone pz = d_sup.get(0)
+        reset_triplet(t3, pz)
+    if d_zone_fired and d_dem.size() > 0 and d_zone_side > 0
+        FractalZone pz = d_dem.get(0)
+        reset_triplet(t3, pz)
+    if h4_zone_fired
+        FractalZone cz = h4_zone_side < 0 ? h4_sup.get(0) : h4_dem.get(0)
+        update_child(t3, cz, h4_sup, h4_dem)
+    if h1_zone_fired
+        FractalZone gz = h1_zone_side < 0 ? h1_sup.get(0) : h1_dem.get(0)
+        update_grandchild(t3, gz)
+
+    // --- Per-bar pullback resolution ---
+    check_pullback_resolution(t1, w_sup, w_dem)
+    check_pullback_resolution(t2, d_sup, d_dem)
+    check_pullback_resolution(t3, h4_sup, h4_dem)
+
+// =============================================================================
 // === L1: BREAK + EXPIRY CALLS FOR ALL 10 ARRAYS
 // =============================================================================
 
@@ -630,3 +685,89 @@ check_pullback_resolution(TripletState ts, array<FractalZone> child_sup, array<F
                                 ts.cont_bars.clear()
                             if not na(ts.pb_bars)
                                 ts.pb_bars.clear()
+
+// =============================================================================
+// === L2: REVERSAL TARGET MARKING (Rule 11)
+// =============================================================================
+
+mark_reversal_target(TripletState ts, array<FractalZone> child_sup, array<FractalZone> child_dem) =>
+    if ts.state == 3  // PULLING_BACK
+        // Last zone in push direction before pullback = reversal target
+        array<FractalZone> push_arr = ts.direction > 0 ? child_dem : child_sup
+        if push_arr.size() > 0
+            // Find latest zone that is NOT a pullback zone
+            for int i = 0 to math.max(push_arr.size() - 1, 0)
+                if i < push_arr.size()
+                    FractalZone z = push_arr.get(i)
+                    if z.role == 1 or z.role == 2  // push or continuation
+                        if not z.is_rev_target
+                            z.is_rev_target := true
+                            if not na(z.bx)
+                                box.set_border_style(z.bx, line.style_dotted)
+                            if not na(z.lbl)
+                                string cls_str = z.cls == 1 ? "HH" : z.cls == 2 ? "LH" : z.cls == 3 ? "LL" : "HL"
+                                string side_str = z.side < 0 ? "S" : "D"
+                                string role_str = z.role == 1 ? "PUSH" : "CONT"
+                                label.set_text(z.lbl, "★ " + z.tf_str + " " + side_str + " " + cls_str + " [" + role_str + "]")
+                        break
+
+if i_layer_2 and i_triplets
+    mark_reversal_target(t1, w_sup, w_dem)
+    mark_reversal_target(t2, d_sup, d_dem)
+    mark_reversal_target(t3, h4_sup, h4_dem)
+
+// =============================================================================
+// === L2: ROLE RECOLORING + REVERSAL TARGET VISUAL
+// =============================================================================
+
+color ROLE_PUSH = #4CAF50
+color ROLE_CONT = #FF9800
+color ROLE_PULL = #9C27B0
+color ROLE_REV  = #E91E63
+
+recolor_zone(FractalZone z) =>
+    if not na(z.bx) and z.role > 0
+        color rc = z.role == 1 ? ROLE_PUSH : z.role == 2 ? ROLE_CONT : z.role == 3 ? ROLE_PULL : ROLE_REV
+        box.set_bgcolor(z.bx, color.new(rc, 80))
+        box.set_border_color(z.bx, color.new(rc, 30))
+        if not na(z.lbl)
+            string cls_str = z.cls == 1 ? "HH" : z.cls == 2 ? "LH" : z.cls == 3 ? "LL" : "HL"
+            string side_str = z.side < 0 ? "S" : "D"
+            string role_str = z.role == 1 ? "PUSH" : z.role == 2 ? "CONT" : z.role == 3 ? "PULL" : "REV"
+            label.set_text(z.lbl, z.tf_str + " " + side_str + " " + cls_str + " [" + role_str + "]")
+            label.set_color(z.lbl, color.new(rc, 50))
+
+// Recolor zones that received roles
+if i_layer_2 and i_triplets
+    for int i = 0 to math.max(w_sup.size() - 1, 0)
+        if i < w_sup.size()
+            FractalZone z = w_sup.get(i)
+            recolor_zone(z)
+    for int i = 0 to math.max(w_dem.size() - 1, 0)
+        if i < w_dem.size()
+            FractalZone z = w_dem.get(i)
+            recolor_zone(z)
+    for int i = 0 to math.max(d_sup.size() - 1, 0)
+        if i < d_sup.size()
+            FractalZone z = d_sup.get(i)
+            recolor_zone(z)
+    for int i = 0 to math.max(d_dem.size() - 1, 0)
+        if i < d_dem.size()
+            FractalZone z = d_dem.get(i)
+            recolor_zone(z)
+    for int i = 0 to math.max(h4_sup.size() - 1, 0)
+        if i < h4_sup.size()
+            FractalZone z = h4_sup.get(i)
+            recolor_zone(z)
+    for int i = 0 to math.max(h4_dem.size() - 1, 0)
+        if i < h4_dem.size()
+            FractalZone z = h4_dem.get(i)
+            recolor_zone(z)
+    for int i = 0 to math.max(h1_sup.size() - 1, 0)
+        if i < h1_sup.size()
+            FractalZone z = h1_sup.get(i)
+            recolor_zone(z)
+    for int i = 0 to math.max(h1_dem.size() - 1, 0)
+        if i < h1_dem.size()
+            FractalZone z = h1_dem.get(i)
+            recolor_zone(z)
