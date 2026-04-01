@@ -905,3 +905,155 @@ if i_layer_3
     t1_rev := update_rev_target_line(t1, t1_rev, w_sup, w_dem)
     t2_rev := update_rev_target_line(t2, t2_rev, d_sup, d_dem)
     t3_rev := update_rev_target_line(t3, t3_rev, h4_sup, h4_dem)
+
+// =============================================================================
+// === L4: DASHBOARD
+// =============================================================================
+
+state_str(int s) =>
+    string r = switch s
+        1 => "PUSHING"
+        2 => "CONTINUING"
+        3 => "PULLING BACK"
+        4 => "REVERSING"
+        => "INIT"
+    r
+
+state_clr(int s) =>
+    color r = switch s
+        1 => #4CAF50
+        2 => #66BB6A
+        3 => #FF9800
+        4 => #E91E63
+        => #546E7A
+    r
+
+dir_arrow(int d) =>
+    string r = d > 0 ? " ↑" : d < 0 ? " ↓" : ""
+    r
+
+var table dash = na
+if i_layer_4 and i_dash and barstate.islast
+    string tbl_pos = switch i_dash_pos
+        "Top Left"     => position.top_left
+        "Top Right"    => position.top_right
+        "Bottom Left"  => position.bottom_left
+        =>                position.bottom_right
+
+    int rows = 12
+    if na(dash)
+        dash := table.new(tbl_pos, 2, rows, bgcolor=color.new(#0D1117, 10), border_width=1, border_color=color.new(#3A3A5A, 50), frame_width=1, frame_color=color.new(#3A3A5A, 30))
+
+    color hdr_bg  = color.new(#0D1117, 0)
+    color hdr_txt = color.new(#58A6FF, 0)
+    color cell_bg = color.new(#161B22, 0)
+    string sz     = size.tiny
+
+    // Row 0: Header
+    table.cell(dash, 0, 0, "Fractal Push/Pull v0.1", text_color=hdr_txt, bgcolor=hdr_bg, text_size=sz)
+    table.cell(dash, 1, 0, "", bgcolor=hdr_bg, text_size=sz)
+
+    // Row 1: T1
+    table.cell(dash, 0, 1, "T1: MN→W→D", text_color=color.new(#B0BEC5, 0), bgcolor=cell_bg, text_size=sz)
+    color t1_clr = t1.compression ? #FFEB3B : state_clr(t1.state)
+    string t1_str = (t1.compression ? "COMPRESS" : state_str(t1.state)) + dir_arrow(t1.direction)
+    table.cell(dash, 1, 1, t1_str, text_color=t1_clr, bgcolor=cell_bg, text_size=sz)
+
+    // Row 2: T2
+    table.cell(dash, 0, 2, "T2: W→D→H4", text_color=color.new(#B0BEC5, 0), bgcolor=cell_bg, text_size=sz)
+    color t2_clr = t2.compression ? #FFEB3B : state_clr(t2.state)
+    string t2_str = (t2.compression ? "COMPRESS" : state_str(t2.state)) + dir_arrow(t2.direction)
+    table.cell(dash, 1, 2, t2_str, text_color=t2_clr, bgcolor=cell_bg, text_size=sz)
+
+    // Row 3: T3
+    table.cell(dash, 0, 3, "T3: D→H4→H1", text_color=color.new(#B0BEC5, 0), bgcolor=cell_bg, text_size=sz)
+    color t3_clr = t3.compression ? #FFEB3B : state_clr(t3.state)
+    string t3_str = (t3.compression ? "COMPRESS" : state_str(t3.state)) + dir_arrow(t3.direction)
+    table.cell(dash, 1, 3, t3_str, text_color=t3_clr, bgcolor=cell_bg, text_size=sz)
+
+    // Row 4: Separator
+    table.cell(dash, 0, 4, "", bgcolor=hdr_bg, text_size=sz)
+    table.cell(dash, 1, 4, "", bgcolor=hdr_bg, text_size=sz)
+
+    // Row 5: Composite bias
+    bool all_same = t1.direction == t2.direction and t2.direction == t3.direction and t1.direction != 0
+    bool all_push = (t1.state == 1 or t1.state == 2) and (t2.state == 1 or t2.state == 2) and (t3.state == 1 or t3.state == 2)
+    bool higher_aligned = t1.direction == t2.direction and t1.direction != 0 and (t1.state == 1 or t1.state == 2) and (t2.state == 1 or t2.state == 2)
+    string comp_str = all_same and all_push ? "FULL ALIGN" + dir_arrow(t1.direction) : higher_aligned ? "PARTIAL" + dir_arrow(t1.direction) : "CONFLICT"
+    color comp_clr = all_same and all_push ? (t1.direction > 0 ? #4CAF50 : #EF5350) : higher_aligned ? #FF9800 : #546E7A
+    table.cell(dash, 0, 5, "Composite", text_color=color.new(#B0BEC5, 0), bgcolor=cell_bg, text_size=sz)
+    table.cell(dash, 1, 5, comp_str, text_color=color.new(comp_clr, 0), bgcolor=cell_bg, text_size=sz)
+
+    // Row 6: Target (nearest magnet)
+    float target = na
+    string target_lbl = "—"
+    if t3.state == 3 and not na(t3.pb_target)
+        target := t3.pb_target
+        target_lbl := "D push @ " + str.tostring(t3.pb_target, format.mintick)
+    else if t2.state == 3 and not na(t2.pb_target)
+        target := t2.pb_target
+        target_lbl := "W push @ " + str.tostring(t2.pb_target, format.mintick)
+    table.cell(dash, 0, 6, "Target", text_color=color.new(#B0BEC5, 0), bgcolor=cell_bg, text_size=sz)
+    table.cell(dash, 1, 6, target_lbl, text_color=color.new(#B0BEC5, 0), bgcolor=cell_bg, text_size=sz)
+
+    // Row 7: Pullback depth
+    string pb_str = "—"
+    if t3.state == 3 and not na(t3.pb_target) and not na(t3.push_target)
+        float total_range = math.abs(t3.push_target - t3.pb_target)
+        float current_depth = t3.direction > 0 ? math.abs(t3.push_target - close) : math.abs(close - t3.push_target)
+        float pct = total_range > 0 ? current_depth / total_range * 100 : 0
+        pb_str := "PB: " + str.tostring(pct, "#") + "%"
+    table.cell(dash, 0, 7, "Depth", text_color=color.new(#B0BEC5, 0), bgcolor=cell_bg, text_size=sz)
+    table.cell(dash, 1, 7, pb_str, text_color=color.new(#B0BEC5, 0), bgcolor=cell_bg, text_size=sz)
+
+    // Row 8: Signal (TL/zone status for T3)
+    string sig_str = "—"
+    if t3_tl_brk
+        sig_str := "WARNING (TL broken)"
+    else if t3.state == 4
+        sig_str := "REVERSED"
+    else if t3.state == 1 or t3.state == 2
+        sig_str := "HOLDING"
+    table.cell(dash, 0, 8, "Signal", text_color=color.new(#B0BEC5, 0), bgcolor=cell_bg, text_size=sz)
+    color sig_clr = t3_tl_brk ? #FF9800 : t3.state == 4 ? #EF5350 : #4CAF50
+    table.cell(dash, 1, 8, sig_str, text_color=color.new(sig_clr, 0), bgcolor=cell_bg, text_size=sz)
+
+    // Row 9: Separator
+    table.cell(dash, 0, 9, "", bgcolor=hdr_bg, text_size=sz)
+    table.cell(dash, 1, 9, "", bgcolor=hdr_bg, text_size=sz)
+
+    // Row 10: Alignment grid (momentum consumption concept)
+    // Direction per TF derived from triplet where each TF is child
+    int h1_dir = t3.direction
+    int h4_dir = t3.direction  // H4 is grandchild of T2, child influence from T3
+    int d_dir  = t2.direction
+    int w_dir  = t1.direction
+    int mn_dir = t1.direction  // MN bias = T1 parent direction (derived from MN zone type)
+    string align_str = "H1:" + dir_arrow(h1_dir) + " H4:" + dir_arrow(h4_dir) + " D:" + dir_arrow(d_dir) + " W:" + dir_arrow(w_dir)
+    table.cell(dash, 0, 10, "Alignment", text_color=color.new(#B0BEC5, 0), bgcolor=cell_bg, text_size=sz)
+    table.cell(dash, 1, 10, align_str, text_color=color.new(#B0BEC5, 0), bgcolor=cell_bg, text_size=sz)
+
+    // Row 11: Reversal target (Rule 11)
+    string rev_str = "—"
+    if t3.state == 3
+        array<FractalZone> rev_arr = t3.direction > 0 ? h4_dem : h4_sup
+        for int i = 0 to math.max(rev_arr.size() - 1, 0)
+            if i < rev_arr.size()
+                FractalZone rz = rev_arr.get(i)
+                if rz.is_rev_target
+                    string r_side = rz.side < 0 ? "S" : "D"
+                    string r_cls = rz.cls == 1 ? "HH" : rz.cls == 2 ? "LH" : rz.cls == 3 ? "LL" : "HL"
+                    rev_str := "H4 " + r_side + " " + r_cls + " @ " + str.tostring(rz.top, format.mintick) + "-" + str.tostring(rz.bottom, format.mintick)
+                    break
+    else if t2.state == 3
+        array<FractalZone> rev_arr = t2.direction > 0 ? d_dem : d_sup
+        for int i = 0 to math.max(rev_arr.size() - 1, 0)
+            if i < rev_arr.size()
+                FractalZone rz = rev_arr.get(i)
+                if rz.is_rev_target
+                    string r_side = rz.side < 0 ? "S" : "D"
+                    string r_cls = rz.cls == 1 ? "HH" : rz.cls == 2 ? "LH" : rz.cls == 3 ? "LL" : "HL"
+                    rev_str := "D " + r_side + " " + r_cls + " @ " + str.tostring(rz.top, format.mintick) + "-" + str.tostring(rz.bottom, format.mintick)
+                    break
+    table.cell(dash, 0, 11, "Rev Target", text_color=color.new(#B0BEC5, 0), bgcolor=cell_bg, text_size=sz)
+    table.cell(dash, 1, 11, rev_str, text_color=color.new(REV_CLR, 0), bgcolor=cell_bg, text_size=sz)
