@@ -464,3 +464,48 @@ if i_layer_1
     check_zone_breaks(w_dem, false)
     check_zone_breaks(mn_sup, true)
     check_zone_breaks(mn_dem, false)
+
+// =============================================================================
+// === L2: TRIPLET STATE UDT + INSTANCES
+// =============================================================================
+
+type TripletState
+    string     id              = ""
+    int        state           = 0      // 0=INIT, 1=PUSHING, 2=CONTINUING, 3=PULLING_BACK, 4=REVERSING
+    int        direction       = 0      // +1 bullish, -1 bearish
+    int        push_bar        = -1     // birth_bar of push zone
+    int        push_side       = 0      // +1 demand, -1 supply
+    float      push_target     = na     // parent zone boundary
+    float      pb_target       = na     // push zone edge (magnet)
+    float      parent_zone_top = na
+    float      parent_zone_bot = na
+    float      parent_lh_top   = na     // for reversal detection
+    float      parent_hl_bot   = na     // for reversal detection
+    bool       grand_choch     = false
+    bool       grand_break     = false
+    bool       compression     = false
+    bool       failed_reversal = false
+    int        push_fail_cnt   = 0
+    int        tl_hold_cnt     = 0
+    array<int> cont_bars       = na
+    array<int> pb_bars         = na
+    int        reversal_bar    = -1
+
+var TripletState t1 = TripletState.new()
+var TripletState t2 = TripletState.new()
+var TripletState t3 = TripletState.new()
+var TripletState t4 = TripletState.new()  // stub for future M15 expansion, not wired in v0.1
+
+if barstate.isfirst
+    t1.id        := "T1"
+    t1.cont_bars := array.new<int>(0)
+    t1.pb_bars   := array.new<int>(0)
+    t2.id        := "T2"
+    t2.cont_bars := array.new<int>(0)
+    t2.pb_bars   := array.new<int>(0)
+    t3.id        := "T3"
+    t3.cont_bars := array.new<int>(0)
+    t3.pb_bars   := array.new<int>(0)
+    t4.id        := "T4"
+    t4.cont_bars := array.new<int>(0)
+    t4.pb_bars   := array.new<int>(0)
