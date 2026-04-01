@@ -771,3 +771,137 @@ if i_layer_2 and i_triplets
         if i < h1_dem.size()
             FractalZone z = h1_dem.get(i)
             recolor_zone(z)
+
+// =============================================================================
+// === L3: TRENDLINES + MAGNET LINES
+// =============================================================================
+
+// T1 trendline
+var line  t1_tl      = na
+var bool  t1_tl_brk  = false
+var float t1_tl_prev = na   // previous bar's projected TL value (avoids [1] on local)
+
+// T2 trendline
+var line  t2_tl      = na
+var bool  t2_tl_brk  = false
+var float t2_tl_prev = na
+
+// T3 trendline
+var line  t3_tl      = na
+var bool  t3_tl_brk  = false
+var float t3_tl_prev = na
+
+// Magnet lines
+var line t1_mag = na
+var line t2_mag = na
+var line t3_mag = na
+
+// Reversal target lines (Rule 11)
+var line t1_rev = na
+var line t2_rev = na
+var line t3_rev = na
+
+color TL_CLR     = #FFEB3B
+color MAG_CLR    = color.white
+color REV_CLR    = #E040FB   // magenta for reversal targets
+
+update_trendline(TripletState ts, line tl_ref, float prev_proj, array<FractalZone> child_sup, array<FractalZone> child_dem) =>
+    line new_tl = tl_ref
+    bool broken = false
+    float curr_proj = na
+    if i_layer_3 and i_trendlines and ts.push_bar >= 0 and not na(ts.cont_bars) and ts.cont_bars.size() > 0
+        // Find push zone
+        array<FractalZone> push_arr = ts.push_side > 0 ? child_dem : child_sup
+        FractalZone push_z = find_zone_by_bar(push_arr, ts.push_bar)
+        // Find latest continuation zone
+        int last_cont_bar = ts.cont_bars.last()
+        FractalZone cont_z = find_zone_by_bar(push_arr, last_cont_bar)
+        if not na(push_z.top) and not na(cont_z.top) and cont_z.birth_bar > push_z.birth_bar
+            float y1 = ts.direction > 0 ? push_z.bottom : push_z.top
+            float y2 = ts.direction > 0 ? cont_z.bottom : cont_z.top
+            int x1 = push_z.birth_bar
+            int x2 = cont_z.birth_bar
+            // Delete old line
+            if not na(new_tl)
+                line.delete(new_tl)
+            new_tl := line.new(x1, y1, x2, y2, color=color.new(TL_CLR, 20), width=2, extend=extend.right)
+            // Check break using prev_proj (avoids [1] on local variable)
+            if x2 > x1
+                float slope = (y2 - y1) / (x2 - x1)
+                curr_proj := y2 + slope * (bar_index - x2)
+                bool brk = ts.direction > 0 ? (close < curr_proj and not na(prev_proj) and close[1] >= prev_proj) : (close > curr_proj and not na(prev_proj) and close[1] <= prev_proj)
+                if brk
+                    broken := true
+                    line.set_style(new_tl, line.style_dotted)
+                    line.set_color(new_tl, color.new(TL_CLR, 60))
+    else
+        if not na(new_tl)
+            line.delete(new_tl)
+            new_tl := na
+    [new_tl, broken, curr_proj]
+
+update_magnet(TripletState ts, line mag_ref) =>
+    line new_mag = mag_ref
+    if i_layer_3 and i_magnets and ts.state == 3 and not na(ts.pb_target)
+        if na(new_mag)
+            new_mag := line.new(bar_index - 1, ts.pb_target, bar_index, ts.pb_target, color=color.new(MAG_CLR, 50), style=line.style_dashed, width=1, extend=extend.right)
+        else
+            line.set_y1(new_mag, ts.pb_target)
+            line.set_y2(new_mag, ts.pb_target)
+    else
+        if not na(new_mag)
+            line.delete(new_mag)
+            new_mag := na
+    new_mag
+
+update_rev_target_line(TripletState ts, line rev_ref, array<FractalZone> child_sup, array<FractalZone> child_dem) =>
+    line new_rev = rev_ref
+    if i_layer_3 and ts.state == 3
+        // Find the is_rev_target zone
+        array<FractalZone> push_arr = ts.direction > 0 ? child_dem : child_sup
+        float rev_price = na
+        for int i = 0 to math.max(push_arr.size() - 1, 0)
+            if i < push_arr.size()
+                FractalZone z = push_arr.get(i)
+                if z.is_rev_target
+                    rev_price := ts.direction > 0 ? z.top : z.bottom
+                    break
+        if not na(rev_price)
+            if na(new_rev)
+                new_rev := line.new(bar_index - 1, rev_price, bar_index, rev_price, color=color.new(REV_CLR, 40), style=line.style_dashed, width=2, extend=extend.right)
+            else
+                line.set_y1(new_rev, rev_price)
+                line.set_y2(new_rev, rev_price)
+        else
+            if not na(new_rev)
+                line.delete(new_rev)
+                new_rev := na
+    else
+        if not na(new_rev)
+            line.delete(new_rev)
+            new_rev := na
+    new_rev
+
+if i_layer_3
+    [t1_tl_new, t1_tl_b, t1_proj] = update_trendline(t1, t1_tl, t1_tl_prev, w_sup, w_dem)
+    t1_tl      := t1_tl_new
+    t1_tl_brk  := t1_tl_b
+    t1_tl_prev := t1_proj
+
+    [t2_tl_new, t2_tl_b, t2_proj] = update_trendline(t2, t2_tl, t2_tl_prev, d_sup, d_dem)
+    t2_tl      := t2_tl_new
+    t2_tl_brk  := t2_tl_b
+    t2_tl_prev := t2_proj
+
+    [t3_tl_new, t3_tl_b, t3_proj] = update_trendline(t3, t3_tl, t3_tl_prev, h4_sup, h4_dem)
+    t3_tl      := t3_tl_new
+    t3_tl_brk  := t3_tl_b
+    t3_tl_prev := t3_proj
+
+    t1_mag := update_magnet(t1, t1_mag)
+    t2_mag := update_magnet(t2, t2_mag)
+    t3_mag := update_magnet(t3, t3_mag)
+
+    t1_rev := update_rev_target_line(t1, t1_rev, w_sup, w_dem)
+    t2_rev := update_rev_target_line(t2, t2_rev, d_sup, d_dem)
+    t3_rev := update_rev_target_line(t3, t3_rev, h4_sup, h4_dem)
