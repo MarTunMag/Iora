@@ -180,3 +180,187 @@ create_zone(array<FractalZone> arr, float ztop, float zbot, int side, int cls, s
                 box.delete(old.bx)
             if not na(old.lbl)
                 label.delete(old.lbl)
+
+// =============================================================================
+// === L1: HA TRANSITION PROCESSING
+// =============================================================================
+
+// Process one TF's HA data. Returns [fired, side, cls, ztop, zbot]
+// fired: true if a zone was created this bar
+// Must be called with the TF's HA + OHLC data and run-tracking vars.
+// Note: Pine v6 cannot pass var references, so we inline per TF below.
+
+// =============================================================================
+// === L1: ZONE CREATION — H1
+// =============================================================================
+
+bool h1_zone_fired = false
+int  h1_zone_side  = 0
+int  h1_zone_cls   = 0
+
+if h1_new and not na(h1_ha_c)
+    int h1_ha_dir_now = h1_ha_c >= h1_ha_o ? 1 : -1
+    h1_run_hi := na(h1_run_hi) ? h1_h : math.max(h1_run_hi, h1_h)
+    h1_run_lo := na(h1_run_lo) ? h1_l : math.min(h1_run_lo, h1_l)
+    if h1_ha_dir != 0 and h1_ha_dir_now != h1_ha_dir
+        if h1_ha_dir > 0 and h1_ha_dir_now < 0
+            float s_top = h1_run_hi
+            float s_bot = h1_ha_l
+            int s_cls = not na(h1_prev_s_top) ? (s_top > h1_prev_s_top ? 1 : 2) : 1
+            h1_prev_s_top := s_top
+            create_zone(h1_sup, s_top, s_bot, -1, s_cls, "H1", 50, i_zone_h1, Z_CLR_H1, i_max_zones)
+            h1_zone_fired := true
+            h1_zone_side  := -1
+            h1_zone_cls   := s_cls
+        else if h1_ha_dir < 0 and h1_ha_dir_now > 0
+            float d_bot = h1_run_lo
+            float d_top = h1_ha_h
+            int d_cls = not na(h1_prev_d_bot) ? (d_bot < h1_prev_d_bot ? 3 : 4) : 4
+            h1_prev_d_bot := d_bot
+            create_zone(h1_dem, d_top, d_bot, 1, d_cls, "H1", 50, i_zone_h1, Z_CLR_H1, i_max_zones)
+            h1_zone_fired := true
+            h1_zone_side  := 1
+            h1_zone_cls   := d_cls
+        h1_run_hi := h1_h
+        h1_run_lo := h1_l
+    h1_ha_dir := h1_ha_dir_now
+
+// =============================================================================
+// === L1: ZONE CREATION — H4
+// =============================================================================
+
+bool h4_zone_fired = false
+int  h4_zone_side  = 0
+int  h4_zone_cls   = 0
+
+if h4_new and not na(h4_ha_c)
+    int h4_ha_dir_now = h4_ha_c >= h4_ha_o ? 1 : -1
+    h4_run_hi := na(h4_run_hi) ? h4_h : math.max(h4_run_hi, h4_h)
+    h4_run_lo := na(h4_run_lo) ? h4_l : math.min(h4_run_lo, h4_l)
+    if h4_ha_dir != 0 and h4_ha_dir_now != h4_ha_dir
+        if h4_ha_dir > 0 and h4_ha_dir_now < 0
+            float s_top = h4_run_hi
+            float s_bot = h4_ha_l
+            int s_cls = not na(h4_prev_s_top) ? (s_top > h4_prev_s_top ? 1 : 2) : 1
+            h4_prev_s_top := s_top
+            create_zone(h4_sup, s_top, s_bot, -1, s_cls, "H4", 50, i_zone_h4, Z_CLR_H4, i_max_zones)
+            h4_zone_fired := true
+            h4_zone_side  := -1
+            h4_zone_cls   := s_cls
+        else if h4_ha_dir < 0 and h4_ha_dir_now > 0
+            float d_bot = h4_run_lo
+            float d_top = h4_ha_h
+            int d_cls = not na(h4_prev_d_bot) ? (d_bot < h4_prev_d_bot ? 3 : 4) : 4
+            h4_prev_d_bot := d_bot
+            create_zone(h4_dem, d_top, d_bot, 1, d_cls, "H4", 50, i_zone_h4, Z_CLR_H4, i_max_zones)
+            h4_zone_fired := true
+            h4_zone_side  := 1
+            h4_zone_cls   := d_cls
+        h4_run_hi := h4_h
+        h4_run_lo := h4_l
+    h4_ha_dir := h4_ha_dir_now
+
+// =============================================================================
+// === L1: ZONE CREATION — D
+// =============================================================================
+
+bool d_zone_fired = false
+int  d_zone_side  = 0
+int  d_zone_cls   = 0
+
+if d_new and not na(d_ha_c)
+    int d_ha_dir_now = d_ha_c >= d_ha_o ? 1 : -1
+    d_run_hi := na(d_run_hi) ? d_h : math.max(d_run_hi, d_h)
+    d_run_lo := na(d_run_lo) ? d_l : math.min(d_run_lo, d_l)
+    if d_ha_dir != 0 and d_ha_dir_now != d_ha_dir
+        if d_ha_dir > 0 and d_ha_dir_now < 0
+            float s_top = d_run_hi
+            float s_bot = d_ha_l
+            int s_cls = not na(d_prev_s_top) ? (s_top > d_prev_s_top ? 1 : 2) : 1
+            d_prev_s_top := s_top
+            create_zone(d_sup, s_top, s_bot, -1, s_cls, "D", 50, i_zone_d, Z_CLR_D, i_max_zones)
+            d_zone_fired := true
+            d_zone_side  := -1
+            d_zone_cls   := s_cls
+        else if d_ha_dir < 0 and d_ha_dir_now > 0
+            float d_bot = d_run_lo
+            float d_top = d_ha_h
+            int d_cls = not na(d_prev_d_bot) ? (d_bot < d_prev_d_bot ? 3 : 4) : 4
+            d_prev_d_bot := d_bot
+            create_zone(d_dem, d_top, d_bot, 1, d_cls, "D", 50, i_zone_d, Z_CLR_D, i_max_zones)
+            d_zone_fired := true
+            d_zone_side  := 1
+            d_zone_cls   := d_cls
+        d_run_hi := d_h
+        d_run_lo := d_l
+    d_ha_dir := d_ha_dir_now
+
+// =============================================================================
+// === L1: ZONE CREATION — W
+// =============================================================================
+
+bool w_zone_fired = false
+int  w_zone_side  = 0
+int  w_zone_cls   = 0
+
+if w_new and not na(w_ha_c)
+    int w_ha_dir_now = w_ha_c >= w_ha_o ? 1 : -1
+    w_run_hi := na(w_run_hi) ? w_h : math.max(w_run_hi, w_h)
+    w_run_lo := na(w_run_lo) ? w_l : math.min(w_run_lo, w_l)
+    if w_ha_dir != 0 and w_ha_dir_now != w_ha_dir
+        if w_ha_dir > 0 and w_ha_dir_now < 0
+            float s_top = w_run_hi
+            float s_bot = w_ha_l
+            int s_cls = not na(w_prev_s_top) ? (s_top > w_prev_s_top ? 1 : 2) : 1
+            w_prev_s_top := s_top
+            create_zone(w_sup, s_top, s_bot, -1, s_cls, "W", 30, i_zone_w, Z_CLR_W, i_max_zones)
+            w_zone_fired := true
+            w_zone_side  := -1
+            w_zone_cls   := s_cls
+        else if w_ha_dir < 0 and w_ha_dir_now > 0
+            float d_bot = w_run_lo
+            float d_top = w_ha_h
+            int d_cls = not na(w_prev_d_bot) ? (d_bot < w_prev_d_bot ? 3 : 4) : 4
+            w_prev_d_bot := d_bot
+            create_zone(w_dem, d_top, d_bot, 1, d_cls, "W", 30, i_zone_w, Z_CLR_W, i_max_zones)
+            w_zone_fired := true
+            w_zone_side  := 1
+            w_zone_cls   := d_cls
+        w_run_hi := w_h
+        w_run_lo := w_l
+    w_ha_dir := w_ha_dir_now
+
+// =============================================================================
+// === L1: ZONE CREATION — MN
+// =============================================================================
+
+bool mn_zone_fired = false
+int  mn_zone_side  = 0
+int  mn_zone_cls   = 0
+
+if mn_new and not na(mn_ha_c)
+    int mn_ha_dir_now = mn_ha_c >= mn_ha_o ? 1 : -1
+    mn_run_hi := na(mn_run_hi) ? mn_h : math.max(mn_run_hi, mn_h)
+    mn_run_lo := na(mn_run_lo) ? mn_l : math.min(mn_run_lo, mn_l)
+    if mn_ha_dir != 0 and mn_ha_dir_now != mn_ha_dir
+        if mn_ha_dir > 0 and mn_ha_dir_now < 0
+            float s_top = mn_run_hi
+            float s_bot = mn_ha_l
+            int s_cls = not na(mn_prev_s_top) ? (s_top > mn_prev_s_top ? 1 : 2) : 1
+            mn_prev_s_top := s_top
+            create_zone(mn_sup, s_top, s_bot, -1, s_cls, "MN", 20, i_zone_mn, Z_CLR_MN, i_max_zones)
+            mn_zone_fired := true
+            mn_zone_side  := -1
+            mn_zone_cls   := s_cls
+        else if mn_ha_dir < 0 and mn_ha_dir_now > 0
+            float d_bot = mn_run_lo
+            float d_top = mn_ha_h
+            int d_cls = not na(mn_prev_d_bot) ? (d_bot < mn_prev_d_bot ? 3 : 4) : 4
+            mn_prev_d_bot := d_bot
+            create_zone(mn_dem, d_top, d_bot, 1, d_cls, "MN", 20, i_zone_mn, Z_CLR_MN, i_max_zones)
+            mn_zone_fired := true
+            mn_zone_side  := 1
+            mn_zone_cls   := d_cls
+        mn_run_hi := mn_h
+        mn_run_lo := mn_l
+    mn_ha_dir := mn_ha_dir_now
