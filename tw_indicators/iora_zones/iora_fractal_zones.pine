@@ -509,3 +509,124 @@ if barstate.isfirst
     t4.id        := "T4"
     t4.cont_bars := array.new<int>(0)
     t4.pb_bars   := array.new<int>(0)
+
+// =============================================================================
+// === L2: TRIPLET ENGINE FUNCTIONS
+// =============================================================================
+
+// Find a zone in an array by its birth_bar. Returns the zone or na-filled zone.
+find_zone_by_bar(array<FractalZone> arr, int target_bar) =>
+    FractalZone result = FractalZone.new()
+    bool found = false
+    for int i = 0 to math.max(arr.size() - 1, 0)
+        if i < arr.size()
+            FractalZone z = arr.get(i)
+            if z.birth_bar == target_bar
+                result := z
+                break
+    result
+
+reset_triplet(TripletState ts, FractalZone parent_zone) =>
+    ts.direction       := parent_zone.side > 0 ? 1 : -1
+    ts.parent_zone_top := parent_zone.top
+    ts.parent_zone_bot := parent_zone.bottom
+    if parent_zone.cls == 2
+        ts.parent_lh_top := parent_zone.top
+    if parent_zone.cls == 4
+        ts.parent_hl_bot := parent_zone.bottom
+    ts.state           := 0
+    ts.push_bar        := -1
+    ts.push_side       := 0
+    ts.grand_choch     := false
+    ts.grand_break     := false
+    ts.compression     := false
+    ts.failed_reversal := false
+    ts.push_fail_cnt   := 0
+    ts.tl_hold_cnt     := 0
+    ts.reversal_bar    := -1
+    ts.push_target     := ts.direction > 0 ? parent_zone.top : parent_zone.bottom
+    ts.pb_target       := na
+    if not na(ts.cont_bars)
+        ts.cont_bars.clear()
+    if not na(ts.pb_bars)
+        ts.pb_bars.clear()
+
+update_child(TripletState ts, FractalZone child_zone, array<FractalZone> child_sup, array<FractalZone> child_dem) =>
+    bool inside_parent = child_zone.top >= ts.parent_zone_bot and child_zone.bottom <= ts.parent_zone_top
+    bool same_dir = (ts.direction > 0 and child_zone.side > 0) or (ts.direction < 0 and child_zone.side < 0)
+    bool counter = not same_dir and child_zone.side != 0
+    if ts.state == 0 and inside_parent and same_dir
+        ts.state     := 1
+        ts.push_bar  := child_zone.birth_bar
+        ts.push_side := child_zone.side
+        ts.pb_target := ts.direction > 0 ? child_zone.bottom : child_zone.top
+        child_zone.role := 1
+    else if (ts.state == 1 or ts.state == 2) and same_dir
+        // Check extends structure: new HH (cls==1) or new LL (cls==3)
+        bool extends = (ts.direction > 0 and child_zone.cls == 1) or (ts.direction < 0 and child_zone.cls == 3)
+        if extends
+            ts.state := 2
+            if not na(ts.cont_bars)
+                ts.cont_bars.push(child_zone.birth_bar)
+            child_zone.role := 2
+    else if (ts.state == 1 or ts.state == 2) and counter
+        ts.state := 3
+        if not na(ts.pb_bars)
+            ts.pb_bars.push(child_zone.birth_bar)
+        child_zone.role := 3
+    else if ts.state == 3 and counter
+        if not na(ts.pb_bars)
+            ts.pb_bars.push(child_zone.birth_bar)
+        child_zone.role := 3
+
+update_grandchild(TripletState ts, FractalZone grand_zone) =>
+    if ts.state == 1 or ts.state == 2
+        bool choch = (ts.direction > 0 and grand_zone.cls == 2) or (ts.direction < 0 and grand_zone.cls == 4)
+        if choch
+            ts.grand_choch := true
+    if ts.state == 3
+        // Grand CHoCH against pullback = pullback exhaustion signal
+        bool pb_exhaust = (ts.direction > 0 and grand_zone.cls == 4) or (ts.direction < 0 and grand_zone.cls == 2)
+        if pb_exhaust
+            ts.grand_choch := true
+    // Reversal: grand breaks parent structure
+    if ts.direction > 0 and grand_zone.side < 0 and not na(ts.parent_hl_bot)
+        if close < ts.parent_hl_bot
+            ts.state      := 4
+            ts.grand_break := true
+    if ts.direction < 0 and grand_zone.side > 0 and not na(ts.parent_lh_top)
+        if close > ts.parent_lh_top
+            ts.state      := 4
+            ts.grand_break := true
+
+check_pullback_resolution(TripletState ts, array<FractalZone> child_sup, array<FractalZone> child_dem) =>
+    if ts.state == 3 and not na(ts.pb_target)
+        // Resolution A: price reaches push zone
+        bool reached = (ts.direction > 0 and close <= ts.pb_target) or (ts.direction < 0 and close >= ts.pb_target)
+        if reached and ts.grand_choch
+            // Reset to INIT so next same-direction zone becomes the new push zone
+            ts.state      := 0
+            ts.push_bar   := -1
+            ts.grand_choch := false
+            if not na(ts.cont_bars)
+                ts.cont_bars.clear()
+            if not na(ts.pb_bars)
+                ts.pb_bars.clear()
+        // Resolution B: last pullback zone broken
+        if not reached and not na(ts.pb_bars) and ts.pb_bars.size() > 0
+            int last_pb_bar = ts.pb_bars.last()
+            array<FractalZone> pb_arr = ts.direction > 0 ? child_sup : child_dem
+            for int i = 0 to math.max(pb_arr.size() - 1, 0)
+                if i < pb_arr.size()
+                    FractalZone pz = pb_arr.get(i)
+                    if pz.birth_bar == last_pb_bar
+                        bool broken = (ts.direction > 0 and close > pz.top) or (ts.direction < 0 and close < pz.bottom)
+                        if broken and ts.grand_choch
+                            // Reset to INIT so next same-direction zone becomes the new push zone
+                            ts.state      := 0
+                            ts.push_bar   := -1
+                            ts.grand_choch := false
+                            if not na(ts.cont_bars)
+                                ts.cont_bars.clear()
+                            if not na(ts.pb_bars)
+                                ts.pb_bars.clear()
