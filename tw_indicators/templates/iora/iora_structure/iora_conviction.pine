@@ -1,0 +1,524 @@
+//@version=6
+indicator("Iora Conviction Classifier", overlay=true)
+
+// =============================================================================
+// Module 2: Conviction Classifier
+// Assesses conviction (STRONG/WEAK/PRE/NONE) from the three-source envelope.
+// STRONG = external event (leg transition, parent TF structure).
+// WEAK   = internal event (sub-wave, liquidity grab).
+// PRE    = internal warning (momentum fading).
+// Tracks internal health to predict external events.
+// Designed for M1 chart. Computes envelope internally (same as Module 1).
+// =============================================================================
+
+// =============================================================================
+// INPUTS
+// =============================================================================
+
+string GRP_MRK = "Conviction Markers"
+string i_mark_tf = input.string("H1", "Show markers for", options=["M5", "M15", "H1", "H4", "D", "W", "MN", "None"], group=GRP_MRK)
+
+string GRP_DASH = "Dashboard"
+bool   i_dash_on  = input.bool(true, "Show Dashboard", group=GRP_DASH)
+string i_dash_pos = input.string("Bottom Right", "Position", options=["Top Left", "Top Right", "Bottom Left", "Bottom Right"], group=GRP_DASH)
+
+// =============================================================================
+// REQUEST.SECURITY — Live building candle OHLC per child TF
+// =============================================================================
+
+[m5o,  m5h,  m5l,  m5c,  m5t,  m5tc]  = request.security(syminfo.tickerid, "5",   [open, high, low, close, time, time_close], lookahead=barmerge.lookahead_on)
+[m15o, m15h, m15l, m15c, m15t, m15tc] = request.security(syminfo.tickerid, "15",  [open, high, low, close, time, time_close], lookahead=barmerge.lookahead_on)
+[h1o,  h1h,  h1l,  h1c,  h1t,  h1tc]  = request.security(syminfo.tickerid, "60",  [open, high, low, close, time, time_close], lookahead=barmerge.lookahead_on)
+[h4o,  h4h,  h4l,  h4c,  h4t,  h4tc]  = request.security(syminfo.tickerid, "240", [open, high, low, close, time, time_close], lookahead=barmerge.lookahead_on)
+[d_o,  d_h,  d_l,  d_c,  d_t,  d_tc]  = request.security(syminfo.tickerid, "1D",  [open, high, low, close, time, time_close], lookahead=barmerge.lookahead_on)
+[w_o,  w_h,  w_l,  w_c,  w_t,  w_tc]  = request.security(syminfo.tickerid, "1W",  [open, high, low, close, time, time_close], lookahead=barmerge.lookahead_on)
+
+bool m5_new  = ta.change(m5t)  != 0
+bool m15_new = ta.change(m15t) != 0
+bool h1_new  = ta.change(h1t)  != 0
+bool h4_new  = ta.change(h4t)  != 0
+bool d_new   = ta.change(d_t)  != 0
+bool w_new   = ta.change(w_t)  != 0
+
+// =============================================================================
+// ENVELOPE COMPUTATION (same logic as Module 1, no plots)
+// =============================================================================
+
+// M5 envelope: child = M1, N=5
+float m5_env_ceil  = ta.sma(high, 5)
+float m5_env_floor = ta.sma(low, 5)
+float m5_env_mid   = ta.sma(close, 5)
+
+// M15 envelope: child = M5, N=3
+var array<float> m5_ch_hi = array.new_float(0)
+var array<float> m5_ch_lo = array.new_float(0)
+var array<float> m5_ch_cl = array.new_float(0)
+var int m5_ch_cnt = 0
+if m5_new and not na(m5h[1])
+    m5_ch_hi.unshift(m5h[1])
+    m5_ch_lo.unshift(m5l[1])
+    m5_ch_cl.unshift(m5c[1])
+    m5_ch_cnt += 1
+    if m5_ch_hi.size() > 2
+        m5_ch_hi.pop()
+        m5_ch_lo.pop()
+        m5_ch_cl.pop()
+float m15_env_ceil  = m5_ch_cnt >= 2 ? (m5_ch_hi.sum() + m5h) / 3 : na
+float m15_env_floor = m5_ch_cnt >= 2 ? (m5_ch_lo.sum() + m5l) / 3 : na
+float m15_env_mid   = m5_ch_cnt >= 2 ? (m5_ch_cl.sum() + m5c) / 3 : na
+
+// H1 envelope: child = M15, N=4
+var array<float> m15_ch_hi = array.new_float(0)
+var array<float> m15_ch_lo = array.new_float(0)
+var array<float> m15_ch_cl = array.new_float(0)
+var int m15_ch_cnt = 0
+if m15_new and not na(m15h[1])
+    m15_ch_hi.unshift(m15h[1])
+    m15_ch_lo.unshift(m15l[1])
+    m15_ch_cl.unshift(m15c[1])
+    m15_ch_cnt += 1
+    if m15_ch_hi.size() > 3
+        m15_ch_hi.pop()
+        m15_ch_lo.pop()
+        m15_ch_cl.pop()
+float h1_env_ceil  = m15_ch_cnt >= 3 ? (m15_ch_hi.sum() + m15h) / 4 : na
+float h1_env_floor = m15_ch_cnt >= 3 ? (m15_ch_lo.sum() + m15l) / 4 : na
+float h1_env_mid   = m15_ch_cnt >= 3 ? (m15_ch_cl.sum() + m15c) / 4 : na
+
+// H4 envelope: child = H1, N=4
+var array<float> h1_ch_hi = array.new_float(0)
+var array<float> h1_ch_lo = array.new_float(0)
+var array<float> h1_ch_cl = array.new_float(0)
+var int h1_ch_cnt = 0
+if h1_new and not na(h1h[1])
+    h1_ch_hi.unshift(h1h[1])
+    h1_ch_lo.unshift(h1l[1])
+    h1_ch_cl.unshift(h1c[1])
+    h1_ch_cnt += 1
+    if h1_ch_hi.size() > 3
+        h1_ch_hi.pop()
+        h1_ch_lo.pop()
+        h1_ch_cl.pop()
+float h4_env_ceil  = h1_ch_cnt >= 3 ? (h1_ch_hi.sum() + h1h) / 4 : na
+float h4_env_floor = h1_ch_cnt >= 3 ? (h1_ch_lo.sum() + h1l) / 4 : na
+float h4_env_mid   = h1_ch_cnt >= 3 ? (h1_ch_cl.sum() + h1c) / 4 : na
+
+// D envelope: child = H4, N=6
+var array<float> h4_ch_hi = array.new_float(0)
+var array<float> h4_ch_lo = array.new_float(0)
+var array<float> h4_ch_cl = array.new_float(0)
+var int h4_ch_cnt = 0
+if h4_new and not na(h4h[1])
+    h4_ch_hi.unshift(h4h[1])
+    h4_ch_lo.unshift(h4l[1])
+    h4_ch_cl.unshift(h4c[1])
+    h4_ch_cnt += 1
+    if h4_ch_hi.size() > 5
+        h4_ch_hi.pop()
+        h4_ch_lo.pop()
+        h4_ch_cl.pop()
+float d_env_ceil  = h4_ch_cnt >= 5 ? (h4_ch_hi.sum() + h4h) / 6 : na
+float d_env_floor = h4_ch_cnt >= 5 ? (h4_ch_lo.sum() + h4l) / 6 : na
+float d_env_mid   = h4_ch_cnt >= 5 ? (h4_ch_cl.sum() + h4c) / 6 : na
+
+// W envelope: child = D, N=5
+var array<float> d_ch_hi = array.new_float(0)
+var array<float> d_ch_lo = array.new_float(0)
+var array<float> d_ch_cl = array.new_float(0)
+var int d_ch_cnt = 0
+if d_new and not na(d_h[1])
+    d_ch_hi.unshift(d_h[1])
+    d_ch_lo.unshift(d_l[1])
+    d_ch_cl.unshift(d_c[1])
+    d_ch_cnt += 1
+    if d_ch_hi.size() > 4
+        d_ch_hi.pop()
+        d_ch_lo.pop()
+        d_ch_cl.pop()
+float w_env_ceil  = d_ch_cnt >= 4 ? (d_ch_hi.sum() + d_h) / 5 : na
+float w_env_floor = d_ch_cnt >= 4 ? (d_ch_lo.sum() + d_l) / 5 : na
+float w_env_mid   = d_ch_cnt >= 4 ? (d_ch_cl.sum() + d_c) / 5 : na
+
+// MN envelope: child = W, N=4
+var array<float> w_ch_hi = array.new_float(0)
+var array<float> w_ch_lo = array.new_float(0)
+var array<float> w_ch_cl = array.new_float(0)
+var int w_ch_cnt = 0
+if w_new and not na(w_h[1])
+    w_ch_hi.unshift(w_h[1])
+    w_ch_lo.unshift(w_l[1])
+    w_ch_cl.unshift(w_c[1])
+    w_ch_cnt += 1
+    if w_ch_hi.size() > 3
+        w_ch_hi.pop()
+        w_ch_lo.pop()
+        w_ch_cl.pop()
+float mn_env_ceil  = w_ch_cnt >= 3 ? (w_ch_hi.sum() + w_h) / 4 : na
+float mn_env_floor = w_ch_cnt >= 3 ? (w_ch_lo.sum() + w_l) / 4 : na
+float mn_env_mid   = w_ch_cnt >= 3 ? (w_ch_cl.sum() + w_c) / 4 : na
+
+// =============================================================================
+// GRADIENTS
+// =============================================================================
+
+float m5_ceil_d  = ta.change(m5_env_ceil)
+float m5_floor_d = ta.change(m5_env_floor)
+float m5_mid_d   = ta.change(m5_env_mid)
+
+float m15_ceil_d  = ta.change(m15_env_ceil)
+float m15_floor_d = ta.change(m15_env_floor)
+float m15_mid_d   = ta.change(m15_env_mid)
+
+float h1_ceil_d  = ta.change(h1_env_ceil)
+float h1_floor_d = ta.change(h1_env_floor)
+float h1_mid_d   = ta.change(h1_env_mid)
+
+float h4_ceil_d  = ta.change(h4_env_ceil)
+float h4_floor_d = ta.change(h4_env_floor)
+float h4_mid_d   = ta.change(h4_env_mid)
+
+float d_ceil_d  = ta.change(d_env_ceil)
+float d_floor_d = ta.change(d_env_floor)
+float d_mid_d   = ta.change(d_env_mid)
+
+float w_ceil_d  = ta.change(w_env_ceil)
+float w_floor_d = ta.change(w_env_floor)
+float w_mid_d   = ta.change(w_env_mid)
+
+float mn_ceil_d  = ta.change(mn_env_ceil)
+float mn_floor_d = ta.change(mn_env_floor)
+float mn_mid_d   = ta.change(mn_env_mid)
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+// Gradient score per source: +2 accelerating, +1 steady, -1 falling, -2 reversing
+src_grad(float delta, float prev_delta) =>
+    float d = nz(delta)
+    float pd = nz(prev_delta)
+    if d == 0.0
+        0
+    else if d > 0.0
+        pd > 0.0 and d > pd ? 2 : 1
+    else
+        pd < 0.0 and d < pd ? -2 : -1
+
+// Conviction assessment: returns [level, side]
+// level: 0=NONE, 1=PRE, 2=WEAK, 3=STRONG
+// side:  +1=BULL, -1=BEAR, 0=NONE
+assess_conv(bool floor_brk, bool ceil_brk, bool mid_against, bool mid_stall, float floor_d, float ceil_d, int leg) =>
+    int cv = 0
+    int sd = 0
+    if leg > 0
+        if floor_brk and mid_against and ceil_d <= 0.0
+            cv := 3
+            sd := -1
+        else if floor_brk
+            cv := 2
+            sd := -1
+        else if mid_stall and ceil_d <= 0.0
+            cv := 1
+            sd := -1
+    else if leg < 0
+        if ceil_brk and mid_against and floor_d >= 0.0
+            cv := 3
+            sd := 1
+        else if ceil_brk
+            cv := 2
+            sd := 1
+        else if mid_stall and floor_d >= 0.0
+            cv := 1
+            sd := 1
+    [cv, sd]
+
+// =============================================================================
+// PER-TF CONVICTION STATE
+// For each TF: assess conviction, track internal health, manage leg direction.
+// Leg direction inferred from mid trend, flips on STRONG events.
+// =============================================================================
+
+// --- M5 conviction (child = M1: low/high) ---
+var int   m5_leg = 0
+var int   m5_health = 0
+var float m5_last_int = na
+if m5_leg == 0 and nz(m5_mid_d) != 0.0
+    m5_leg := nz(m5_mid_d) > 0.0 ? 1 : -1
+bool m5_fbrk = low < m5_env_floor
+bool m5_cbrk = high > m5_env_ceil
+bool m5_mag  = (m5_leg > 0 and nz(m5_mid_d) < 0.0) or (m5_leg < 0 and nz(m5_mid_d) > 0.0)
+bool m5_mst  = math.abs(nz(m5_mid_d)) < math.abs(nz(m5_mid_d[1])) * 0.3
+[m5_cv, m5_sd] = assess_conv(m5_fbrk, m5_cbrk, m5_mag, m5_mst, nz(m5_floor_d), nz(m5_ceil_d), m5_leg)
+int m5_gs = src_grad(m5_floor_d, m5_floor_d[1]) + src_grad(m5_mid_d, m5_mid_d[1]) + src_grad(m5_ceil_d, m5_ceil_d[1])
+if m5_cv == 2
+    float ext = m5_sd == -1 ? low : high
+    if not na(m5_last_int)
+        bool ctr = (m5_leg > 0 and ext < m5_last_int) or (m5_leg < 0 and ext > m5_last_int)
+        m5_health := ctr ? math.min(m5_health + 1, 3) : math.max(m5_health - 1, 0)
+    m5_last_int := ext
+if m5_cv == 3
+    m5_leg := m5_sd
+    m5_health := 0
+    m5_last_int := na
+
+// --- M15 conviction (child = M5: m5l/m5h) ---
+var int   m15_leg = 0
+var int   m15_health = 0
+var float m15_last_int = na
+if m15_leg == 0 and nz(m15_mid_d) != 0.0
+    m15_leg := nz(m15_mid_d) > 0.0 ? 1 : -1
+bool m15_fbrk = m5l < m15_env_floor
+bool m15_cbrk = m5h > m15_env_ceil
+bool m15_mag  = (m15_leg > 0 and nz(m15_mid_d) < 0.0) or (m15_leg < 0 and nz(m15_mid_d) > 0.0)
+bool m15_mst  = math.abs(nz(m15_mid_d)) < math.abs(nz(m15_mid_d[1])) * 0.3
+[m15_cv, m15_sd] = assess_conv(m15_fbrk, m15_cbrk, m15_mag, m15_mst, nz(m15_floor_d), nz(m15_ceil_d), m15_leg)
+int m15_gs = src_grad(m15_floor_d, m15_floor_d[1]) + src_grad(m15_mid_d, m15_mid_d[1]) + src_grad(m15_ceil_d, m15_ceil_d[1])
+if m15_cv == 2
+    float ext = m15_sd == -1 ? m5l : m5h
+    if not na(m15_last_int)
+        bool ctr = (m15_leg > 0 and ext < m15_last_int) or (m15_leg < 0 and ext > m15_last_int)
+        m15_health := ctr ? math.min(m15_health + 1, 3) : math.max(m15_health - 1, 0)
+    m15_last_int := ext
+if m15_cv == 3
+    m15_leg := m15_sd
+    m15_health := 0
+    m15_last_int := na
+
+// --- H1 conviction (child = M15: m15l/m15h) ---
+var int   h1_leg = 0
+var int   h1_health = 0
+var float h1_last_int = na
+if h1_leg == 0 and nz(h1_mid_d) != 0.0
+    h1_leg := nz(h1_mid_d) > 0.0 ? 1 : -1
+bool h1_fbrk = m15l < h1_env_floor
+bool h1_cbrk = m15h > h1_env_ceil
+bool h1_mag  = (h1_leg > 0 and nz(h1_mid_d) < 0.0) or (h1_leg < 0 and nz(h1_mid_d) > 0.0)
+bool h1_mst  = math.abs(nz(h1_mid_d)) < math.abs(nz(h1_mid_d[1])) * 0.3
+[h1_cv, h1_sd] = assess_conv(h1_fbrk, h1_cbrk, h1_mag, h1_mst, nz(h1_floor_d), nz(h1_ceil_d), h1_leg)
+int h1_gs = src_grad(h1_floor_d, h1_floor_d[1]) + src_grad(h1_mid_d, h1_mid_d[1]) + src_grad(h1_ceil_d, h1_ceil_d[1])
+if h1_cv == 2
+    float ext = h1_sd == -1 ? m15l : m15h
+    if not na(h1_last_int)
+        bool ctr = (h1_leg > 0 and ext < h1_last_int) or (h1_leg < 0 and ext > h1_last_int)
+        h1_health := ctr ? math.min(h1_health + 1, 3) : math.max(h1_health - 1, 0)
+    h1_last_int := ext
+if h1_cv == 3
+    h1_leg := h1_sd
+    h1_health := 0
+    h1_last_int := na
+
+// --- H4 conviction (child = H1: h1l/h1h) ---
+var int   h4_leg = 0
+var int   h4_health = 0
+var float h4_last_int = na
+if h4_leg == 0 and nz(h4_mid_d) != 0.0
+    h4_leg := nz(h4_mid_d) > 0.0 ? 1 : -1
+bool h4_fbrk = h1l < h4_env_floor
+bool h4_cbrk = h1h > h4_env_ceil
+bool h4_mag  = (h4_leg > 0 and nz(h4_mid_d) < 0.0) or (h4_leg < 0 and nz(h4_mid_d) > 0.0)
+bool h4_mst  = math.abs(nz(h4_mid_d)) < math.abs(nz(h4_mid_d[1])) * 0.3
+[h4_cv, h4_sd] = assess_conv(h4_fbrk, h4_cbrk, h4_mag, h4_mst, nz(h4_floor_d), nz(h4_ceil_d), h4_leg)
+int h4_gs = src_grad(h4_floor_d, h4_floor_d[1]) + src_grad(h4_mid_d, h4_mid_d[1]) + src_grad(h4_ceil_d, h4_ceil_d[1])
+if h4_cv == 2
+    float ext = h4_sd == -1 ? h1l : h1h
+    if not na(h4_last_int)
+        bool ctr = (h4_leg > 0 and ext < h4_last_int) or (h4_leg < 0 and ext > h4_last_int)
+        h4_health := ctr ? math.min(h4_health + 1, 3) : math.max(h4_health - 1, 0)
+    h4_last_int := ext
+if h4_cv == 3
+    h4_leg := h4_sd
+    h4_health := 0
+    h4_last_int := na
+
+// --- D conviction (child = H4: h4l/h4h) ---
+var int   d_leg = 0
+var int   d_health = 0
+var float d_last_int = na
+if d_leg == 0 and nz(d_mid_d) != 0.0
+    d_leg := nz(d_mid_d) > 0.0 ? 1 : -1
+bool d_fbrk = h4l < d_env_floor
+bool d_cbrk = h4h > d_env_ceil
+bool d_mag  = (d_leg > 0 and nz(d_mid_d) < 0.0) or (d_leg < 0 and nz(d_mid_d) > 0.0)
+bool d_mst  = math.abs(nz(d_mid_d)) < math.abs(nz(d_mid_d[1])) * 0.3
+[d_cv, d_sd] = assess_conv(d_fbrk, d_cbrk, d_mag, d_mst, nz(d_floor_d), nz(d_ceil_d), d_leg)
+int d_gs = src_grad(d_floor_d, d_floor_d[1]) + src_grad(d_mid_d, d_mid_d[1]) + src_grad(d_ceil_d, d_ceil_d[1])
+if d_cv == 2
+    float ext = d_sd == -1 ? h4l : h4h
+    if not na(d_last_int)
+        bool ctr = (d_leg > 0 and ext < d_last_int) or (d_leg < 0 and ext > d_last_int)
+        d_health := ctr ? math.min(d_health + 1, 3) : math.max(d_health - 1, 0)
+    d_last_int := ext
+if d_cv == 3
+    d_leg := d_sd
+    d_health := 0
+    d_last_int := na
+
+// --- W conviction (child = D: d_l/d_h) ---
+var int   w_leg = 0
+var int   w_health = 0
+var float w_last_int = na
+if w_leg == 0 and nz(w_mid_d) != 0.0
+    w_leg := nz(w_mid_d) > 0.0 ? 1 : -1
+bool w_fbrk = d_l < w_env_floor
+bool w_cbrk = d_h > w_env_ceil
+bool w_mag  = (w_leg > 0 and nz(w_mid_d) < 0.0) or (w_leg < 0 and nz(w_mid_d) > 0.0)
+bool w_mst  = math.abs(nz(w_mid_d)) < math.abs(nz(w_mid_d[1])) * 0.3
+[w_cv, w_sd] = assess_conv(w_fbrk, w_cbrk, w_mag, w_mst, nz(w_floor_d), nz(w_ceil_d), w_leg)
+int w_gs = src_grad(w_floor_d, w_floor_d[1]) + src_grad(w_mid_d, w_mid_d[1]) + src_grad(w_ceil_d, w_ceil_d[1])
+if w_cv == 2
+    float ext = w_sd == -1 ? d_l : d_h
+    if not na(w_last_int)
+        bool ctr = (w_leg > 0 and ext < w_last_int) or (w_leg < 0 and ext > w_last_int)
+        w_health := ctr ? math.min(w_health + 1, 3) : math.max(w_health - 1, 0)
+    w_last_int := ext
+if w_cv == 3
+    w_leg := w_sd
+    w_health := 0
+    w_last_int := na
+
+// --- MN conviction (child = W: w_l/w_h) ---
+var int   mn_leg = 0
+var int   mn_health = 0
+var float mn_last_int = na
+if mn_leg == 0 and nz(mn_mid_d) != 0.0
+    mn_leg := nz(mn_mid_d) > 0.0 ? 1 : -1
+bool mn_fbrk = w_l < mn_env_floor
+bool mn_cbrk = w_h > mn_env_ceil
+bool mn_mag  = (mn_leg > 0 and nz(mn_mid_d) < 0.0) or (mn_leg < 0 and nz(mn_mid_d) > 0.0)
+bool mn_mst  = math.abs(nz(mn_mid_d)) < math.abs(nz(mn_mid_d[1])) * 0.3
+[mn_cv, mn_sd] = assess_conv(mn_fbrk, mn_cbrk, mn_mag, mn_mst, nz(mn_floor_d), nz(mn_ceil_d), mn_leg)
+int mn_gs = src_grad(mn_floor_d, mn_floor_d[1]) + src_grad(mn_mid_d, mn_mid_d[1]) + src_grad(mn_ceil_d, mn_ceil_d[1])
+if mn_cv == 2
+    float ext = mn_sd == -1 ? w_l : w_h
+    if not na(mn_last_int)
+        bool ctr = (mn_leg > 0 and ext < mn_last_int) or (mn_leg < 0 and ext > mn_last_int)
+        mn_health := ctr ? math.min(mn_health + 1, 3) : math.max(mn_health - 1, 0)
+    mn_last_int := ext
+if mn_cv == 3
+    mn_leg := mn_sd
+    mn_health := 0
+    mn_last_int := na
+
+// =============================================================================
+// CONVICTION MARKERS — plotshape for the user-selected TF
+// Edge-detected: only on the bar where conviction first fires.
+// =============================================================================
+
+int sel_cv = 0
+int sel_sd = 0
+if i_mark_tf == "M5"
+    sel_cv := m5_cv
+    sel_sd := m5_sd
+else if i_mark_tf == "M15"
+    sel_cv := m15_cv
+    sel_sd := m15_sd
+else if i_mark_tf == "H1"
+    sel_cv := h1_cv
+    sel_sd := h1_sd
+else if i_mark_tf == "H4"
+    sel_cv := h4_cv
+    sel_sd := h4_sd
+else if i_mark_tf == "D"
+    sel_cv := d_cv
+    sel_sd := d_sd
+else if i_mark_tf == "W"
+    sel_cv := w_cv
+    sel_sd := w_sd
+else if i_mark_tf == "MN"
+    sel_cv := mn_cv
+    sel_sd := mn_sd
+
+var int prev_cv = 0
+var int prev_sd = 0
+bool cv_edge = (sel_cv != prev_cv or sel_sd != prev_sd) and sel_cv > 0
+prev_cv := sel_cv
+prev_sd := sel_sd
+
+plotshape(cv_edge and sel_cv == 3 and sel_sd == -1, "Strong CHoCH Bear", shape.triangledown, location.abovebar, color.new(#EF5350, 0),  size=size.normal)
+plotshape(cv_edge and sel_cv == 3 and sel_sd == 1,  "Strong CHoCH Bull", shape.triangleup,   location.belowbar, color.new(#26A69A, 0),  size=size.normal)
+plotshape(cv_edge and sel_cv == 2 and sel_sd == -1, "Weak CHoCH Bear",   shape.triangledown, location.abovebar, color.new(#EF5350, 50), size=size.tiny)
+plotshape(cv_edge and sel_cv == 2 and sel_sd == 1,  "Weak CHoCH Bull",   shape.triangleup,   location.belowbar, color.new(#26A69A, 50), size=size.tiny)
+plotshape(cv_edge and sel_cv == 1 and sel_sd == -1, "Pre-CHoCH Bear",    shape.diamond,       location.abovebar, color.new(#FF9800, 30), size=size.tiny)
+plotshape(cv_edge and sel_cv == 1 and sel_sd == 1,  "Pre-CHoCH Bull",    shape.diamond,       location.belowbar, color.new(#FF9800, 30), size=size.tiny)
+
+// =============================================================================
+// DASHBOARD TABLE
+// =============================================================================
+
+string tbl_pos = switch i_dash_pos
+    "Top Left"     => position.top_left
+    "Top Right"    => position.top_right
+    "Bottom Left"  => position.bottom_left
+    "Bottom Right" => position.bottom_right
+    => position.bottom_right
+
+var table dash = table.new(tbl_pos, 6, 8, border_width=1, border_color=#363636, bgcolor=#1A1A2E)
+
+// Conviction label
+conv_str(int cv) =>
+    switch cv
+        0 => "—"
+        1 => "PRE"
+        2 => "WEAK"
+        3 => "STRG"
+        => "—"
+
+conv_clr(int cv, int sd) =>
+    if cv == 3
+        sd > 0 ? #26A69A : #EF5350
+    else if cv == 2
+        sd > 0 ? color.new(#26A69A, 40) : color.new(#EF5350, 40)
+    else if cv == 1
+        color.new(#FF9800, 20)
+    else
+        #808080
+
+// Health label
+hlth_str(int h) =>
+    switch h
+        0 => "OK"
+        1 => "1st"
+        2 => "DEG"
+        3 => "BRK"
+        => "—"
+
+hlth_clr(int h) =>
+    switch h
+        0 => #26A69A
+        1 => #FFCA28
+        2 => #FF9800
+        3 => #EF5350
+        => #808080
+
+// Leg arrow
+leg_str(int d) =>
+    d > 0 ? "▲" : d < 0 ? "▼" : "—"
+
+leg_clr(int d) =>
+    d > 0 ? #26A69A : d < 0 ? #EF5350 : #808080
+
+// Dashboard row
+dash_row(int row, string tf, int leg, int cv, int sd, int health, int gscore) =>
+    table.cell(dash, 0, row, tf,                text_color=#AAAAAA, text_size=size.small, text_halign=text.align_center)
+    table.cell(dash, 1, row, leg_str(leg),      text_color=leg_clr(leg), text_size=size.small, text_halign=text.align_center)
+    string cv_txt = conv_str(cv) + (sd > 0 ? " ↑" : sd < 0 ? " ↓" : "")
+    table.cell(dash, 2, row, cv_txt,            text_color=conv_clr(cv, sd), text_size=size.small, text_halign=text.align_center)
+    table.cell(dash, 3, row, hlth_str(health),  text_color=hlth_clr(health), text_size=size.small, text_halign=text.align_center)
+    string gs_txt = (gscore > 0 ? "+" : "") + str.tostring(gscore)
+    color gs_clr = gscore > 2 ? #26A69A : gscore < -2 ? #EF5350 : gscore > 0 ? color.new(#26A69A, 40) : gscore < 0 ? color.new(#EF5350, 40) : #808080
+    table.cell(dash, 4, row, gs_txt,            text_color=gs_clr, text_size=size.small, text_halign=text.align_center)
+
+if i_dash_on and barstate.islast
+    table.cell(dash, 0, 0, "TF",    text_color=#AAAAAA, text_size=size.small, bgcolor=#252540, text_halign=text.align_center)
+    table.cell(dash, 1, 0, "Leg",   text_color=#AAAAAA, text_size=size.small, bgcolor=#252540, text_halign=text.align_center)
+    table.cell(dash, 2, 0, "Conv",  text_color=#AAAAAA, text_size=size.small, bgcolor=#252540, text_halign=text.align_center)
+    table.cell(dash, 3, 0, "Hlth",  text_color=#AAAAAA, text_size=size.small, bgcolor=#252540, text_halign=text.align_center)
+    table.cell(dash, 4, 0, "Grad",  text_color=#AAAAAA, text_size=size.small, bgcolor=#252540, text_halign=text.align_center)
+
+    dash_row(1, "M5",  m5_leg,  m5_cv,  m5_sd,  m5_health,  m5_gs)
+    dash_row(2, "M15", m15_leg, m15_cv, m15_sd, m15_health, m15_gs)
+    dash_row(3, "H1",  h1_leg,  h1_cv,  h1_sd,  h1_health,  h1_gs)
+    dash_row(4, "H4",  h4_leg,  h4_cv,  h4_sd,  h4_health,  h4_gs)
+    dash_row(5, "D",   d_leg,   d_cv,   d_sd,   d_health,   d_gs)
+    dash_row(6, "W",   w_leg,   w_cv,   w_sd,   w_health,   w_gs)
+    dash_row(7, "MN",  mn_leg,  mn_cv,  mn_sd,  mn_health,  mn_gs)

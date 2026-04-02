@@ -1,0 +1,311 @@
+//@version=6
+indicator("Iora BOS/CHoCH v2", overlay=true, max_lines_count=50, max_labels_count=500)
+
+// =============================================================================
+// Module 3: Period-Level Breaks with Swing State Machine
+// Extends iora_bos_choch template with:
+//   - Swing state: HH/HL/LH/LL classification per TF
+//   - BOS/CHoCH labeling at break points
+//   - Parent propagation: eBOS+/eCHoCH+ when break exceeds parent level
+//   - Dashboard: per-TF trend + last structural event
+// Designed for M1 chart. Covers M5, M15, H1, H4, D, W, MN.
+// Uses track_period (no request.security) — period detection via time(tf).
+// =============================================================================
+
+// =============================================================================
+// INPUTS
+// =============================================================================
+
+string GRP = "Timeframes"
+bool   i_m5_on   = input.bool(false, "M5",  group=GRP, inline="m5")
+color  i_m5_clr  = input.color(#78909C, "",  group=GRP, inline="m5")
+bool   i_m15_on  = input.bool(false, "M15", group=GRP, inline="m15")
+color  i_m15_clr = input.color(#26A69A, "",  group=GRP, inline="m15")
+bool   i_h1_on   = input.bool(true,  "H1",  group=GRP, inline="h1")
+color  i_h1_clr  = input.color(#42A5F5, "",  group=GRP, inline="h1")
+bool   i_h4_on   = input.bool(true,  "H4",  group=GRP, inline="h4")
+color  i_h4_clr  = input.color(#AB47BC, "",  group=GRP, inline="h4")
+bool   i_d_on    = input.bool(true,  "D",   group=GRP, inline="d")
+color  i_d_clr   = input.color(#FF7043, "",  group=GRP, inline="d")
+bool   i_w_on    = input.bool(true,  "W",   group=GRP, inline="w")
+color  i_w_clr   = input.color(#FFCA28, "",  group=GRP, inline="w")
+bool   i_mn_on   = input.bool(false, "MN",  group=GRP, inline="mn")
+color  i_mn_clr  = input.color(#EF5350, "",  group=GRP, inline="mn")
+
+string GRP_LBL = "Labels"
+bool   i_show_bos   = input.bool(false, "Show BOS labels",  group=GRP_LBL)
+bool   i_show_choch = input.bool(true,  "Show CHoCH labels", group=GRP_LBL)
+bool   i_show_prop  = input.bool(true,  "Show propagated (e+) labels", group=GRP_LBL)
+bool   i_show_lvls  = input.bool(false, "Show level lines",  group=GRP_LBL)
+
+string GRP_DASH = "Dashboard"
+bool   i_dash_on  = input.bool(true, "Show Dashboard", group=GRP_DASH)
+string i_dash_pos = input.string("Top Left", "Position", options=["Top Left", "Top Right", "Bottom Left", "Bottom Right"], group=GRP_DASH)
+
+// =============================================================================
+// PERIOD TRACKING (from iora_bos_choch template)
+// Finds previous-period high/low and first break time per level.
+// =============================================================================
+
+track_period(string tf) =>
+    bool new_period = ta.change(time(tf)) != 0
+    var float cur_hi   = na
+    var int   cur_hi_t = na
+    var float cur_lo   = na
+    var int   cur_lo_t = na
+    var float prev_hi   = na
+    var int   prev_hi_t = na
+    var float prev_lo   = na
+    var int   prev_lo_t = na
+    var int   hi_brk_t  = na
+    var int   lo_brk_t  = na
+    if new_period
+        prev_hi   := cur_hi
+        prev_hi_t := cur_hi_t
+        prev_lo   := cur_lo
+        prev_lo_t := cur_lo_t
+        cur_hi    := high
+        cur_hi_t  := time
+        cur_lo    := low
+        cur_lo_t  := time
+        hi_brk_t  := na
+        lo_brk_t  := na
+    else
+        if high >= nz(cur_hi)
+            cur_hi   := high
+            cur_hi_t := time
+        if low <= nz(cur_lo, 1e18)
+            cur_lo   := low
+            cur_lo_t := time
+    if na(hi_brk_t) and not na(prev_hi) and high > prev_hi
+        hi_brk_t := time
+    if na(lo_brk_t) and not na(prev_lo) and low < prev_lo
+        lo_brk_t := time
+    [prev_hi, prev_hi_t, prev_lo, prev_lo_t, hi_brk_t, lo_brk_t]
+
+// =============================================================================
+// SWING STATE MACHINE
+// Tracks trend, classifies breaks as BOS/CHoCH + HH/LH/HL/LL.
+// Detects parent propagation (break exceeds parent level).
+//
+// Returns: [trend, brk_evt, cls, btype, propag, last_cls, last_type, last_prop]
+//   trend:    1=UP, -1=DOWN, 0=NEUTRAL
+//   brk_evt:  0=none, 1=high break, -1=low break (edge-detected this bar)
+//   cls:      0=none, 1=HH, 2=LH, 3=LL, 4=HL
+//   btype:    0=none, 1=BOS, 2=CHoCH, 3=INIT
+//   propag:   true if break exceeded parent level
+//   last_cls/last_type/last_prop: persisted values for dashboard
+// =============================================================================
+
+swing_state(float prev_hi, float prev_lo, int hi_brk, int lo_brk, float par_hi, float par_lo) =>
+    var int   st_trend = 0
+    var float st_shi   = na
+    var float st_slo   = na
+    var int   st_lcls  = 0
+    var int   st_ltyp  = 0
+    var bool  st_lprop = false
+
+    bool hi_edge = hi_brk == time and not na(prev_hi)
+    bool lo_edge = lo_brk == time and not na(prev_lo)
+
+    int  brk_evt = 0
+    int  cls     = 0
+    int  btype   = 0
+    bool propag  = false
+
+    if hi_edge
+        cls   := na(st_shi) or prev_hi > st_shi ? 1 : 2
+        btype := st_trend == 0 ? 3 : (st_trend > 0 ? 1 : 2)
+        st_shi   := prev_hi
+        st_trend := 1
+        brk_evt  := 1
+        propag   := not na(par_hi) and high > par_hi
+        st_lcls  := cls
+        st_ltyp  := btype
+        st_lprop := propag
+
+    if lo_edge
+        cls   := na(st_slo) or prev_lo < st_slo ? 3 : 4
+        btype := st_trend == 0 ? 3 : (st_trend < 0 ? 1 : 2)
+        st_slo   := prev_lo
+        st_trend := -1
+        brk_evt  := -1
+        propag   := not na(par_lo) and low < par_lo
+        st_lcls  := cls
+        st_ltyp  := btype
+        st_lprop := propag
+
+    [st_trend, brk_evt, cls, btype, propag, st_lcls, st_ltyp, st_lprop]
+
+// =============================================================================
+// LEVEL LINE DRAWING — thin horizontal lines from extreme bar to break/now
+// =============================================================================
+
+draw_lvl(line ln, float lvl, int origin_t, int brk_t, color clr) =>
+    if na(lvl) or na(origin_t)
+        ln
+    else
+        bool brkn  = not na(brk_t)
+        color c    = brkn ? color.new(clr, 70) : clr
+        string s   = brkn ? line.style_dashed : line.style_solid
+        string ext = brkn ? extend.none : extend.right
+        int x2     = brkn ? brk_t : time
+        if na(ln)
+            line.new(origin_t, lvl, x2, lvl, xloc=xloc.bar_time, extend=ext, color=c, style=s, width=1)
+        else
+            ln.set_x1(origin_t)
+            ln.set_y1(lvl)
+            ln.set_x2(x2)
+            ln.set_y2(lvl)
+            ln.set_extend(ext)
+            ln.set_color(c)
+            ln.set_style(s)
+            ln
+
+// =============================================================================
+// BREAK LABEL DRAWING — creates label at break bar
+// =============================================================================
+
+draw_brk_lbl(int brk_evt, int cls, int btype, bool propag, string tf_name, color base_clr, bool enabled) =>
+    if enabled and brk_evt != 0 and btype > 0 and btype < 3
+        bool show_type = (btype == 1 and i_show_bos) or (btype == 2 and i_show_choch)
+        bool show_prop = propag and i_show_prop
+        bool show = show_type or show_prop
+        if show
+            string cl  = cls == 1 ? "HH" : (cls == 2 ? "LH" : (cls == 3 ? "LL" : "HL"))
+            string bt  = btype == 2 ? "CHoCH" : "BOS"
+            string txt = propag ? (tf_name + " e" + bt + "+ " + cl) : (tf_name + " " + bt + " " + cl)
+            color txt_clr = btype == 2 ? base_clr : color.new(base_clr, 50)
+            if propag
+                txt_clr := base_clr
+            string sz = btype == 2 ? size.small : size.tiny
+            if propag and btype == 1
+                sz := size.small
+            label.new(bar_index, brk_evt > 0 ? high : low, txt, style=brk_evt > 0 ? label.style_label_down : label.style_label_up, color=color.new(color.white, 100), textcolor=txt_clr, size=sz)
+
+// =============================================================================
+// TRACK PERIODS — 7 TFs (M5 through MN)
+// =============================================================================
+
+[m5_hi,  m5_hi_t,  m5_lo,  m5_lo_t,  m5_hbrk,  m5_lbrk]  = track_period("5")
+[m15_hi, m15_hi_t, m15_lo, m15_lo_t, m15_hbrk, m15_lbrk] = track_period("15")
+[h1_hi,  h1_hi_t,  h1_lo,  h1_lo_t,  h1_hbrk,  h1_lbrk]  = track_period("60")
+[h4_hi,  h4_hi_t,  h4_lo,  h4_lo_t,  h4_hbrk,  h4_lbrk]  = track_period("240")
+[dy_hi,  dy_hi_t,  dy_lo,  dy_lo_t,  dy_hbrk,  dy_lbrk]  = track_period("1D")
+[wk_hi,  wk_hi_t,  wk_lo,  wk_lo_t,  wk_hbrk,  wk_lbrk] = track_period("1W")
+[mn_hi,  mn_hi_t,  mn_lo,  mn_lo_t,  mn_hbrk,  mn_lbrk]  = track_period("1M")
+
+// =============================================================================
+// SWING STATE — per TF with parent propagation
+// Parent map: M5→M15, M15→H1, H1→H4, H4→D, D→W, W→MN, MN→none
+// =============================================================================
+
+float no_par = na
+[m5_trend,  m5_brk,  m5_cls,  m5_bt,  m5_prop,  m5_lcls,  m5_ltyp,  m5_lprop]  = swing_state(m5_hi,  m5_lo,  m5_hbrk,  m5_lbrk,  m15_hi, m15_lo)
+[m15_trend, m15_brk, m15_cls, m15_bt, m15_prop, m15_lcls, m15_ltyp, m15_lprop] = swing_state(m15_hi, m15_lo, m15_hbrk, m15_lbrk, h1_hi,  h1_lo)
+[h1_trend,  h1_brk,  h1_cls,  h1_bt,  h1_prop,  h1_lcls,  h1_ltyp,  h1_lprop]  = swing_state(h1_hi,  h1_lo,  h1_hbrk,  h1_lbrk,  h4_hi,  h4_lo)
+[h4_trend,  h4_brk,  h4_cls,  h4_bt,  h4_prop,  h4_lcls,  h4_ltyp,  h4_lprop]  = swing_state(h4_hi,  h4_lo,  h4_hbrk,  h4_lbrk,  dy_hi,  dy_lo)
+[dy_trend,  dy_brk,  dy_cls,  dy_bt,  dy_prop,  dy_lcls,  dy_ltyp,  dy_lprop]  = swing_state(dy_hi,  dy_lo,  dy_hbrk,  dy_lbrk,  wk_hi,  wk_lo)
+[wk_trend,  wk_brk,  wk_cls,  wk_bt,  wk_prop,  wk_lcls,  wk_ltyp,  wk_lprop] = swing_state(wk_hi,  wk_lo,  wk_hbrk,  wk_lbrk,  mn_hi,  mn_lo)
+[mn_trend,  mn_brk,  mn_cls,  mn_bt,  mn_prop,  mn_lcls,  mn_ltyp,  mn_lprop]  = swing_state(mn_hi,  mn_lo,  mn_hbrk,  mn_lbrk,  no_par, no_par)
+
+// =============================================================================
+// DRAW LEVEL LINES
+// =============================================================================
+
+var line ln_m5_hi  = na, var line ln_m5_lo  = na
+var line ln_m15_hi = na, var line ln_m15_lo = na
+var line ln_h1_hi  = na, var line ln_h1_lo  = na
+var line ln_h4_hi  = na, var line ln_h4_lo  = na
+var line ln_dy_hi  = na, var line ln_dy_lo  = na
+var line ln_wk_hi  = na, var line ln_wk_lo  = na
+var line ln_mn_hi  = na, var line ln_mn_lo  = na
+
+if i_show_lvls
+    if i_m5_on
+        ln_m5_hi  := draw_lvl(ln_m5_hi,  m5_hi,  m5_hi_t,  m5_hbrk,  i_m5_clr)
+        ln_m5_lo  := draw_lvl(ln_m5_lo,  m5_lo,  m5_lo_t,  m5_lbrk,  i_m5_clr)
+    if i_m15_on
+        ln_m15_hi := draw_lvl(ln_m15_hi, m15_hi, m15_hi_t, m15_hbrk, i_m15_clr)
+        ln_m15_lo := draw_lvl(ln_m15_lo, m15_lo, m15_lo_t, m15_lbrk, i_m15_clr)
+    if i_h1_on
+        ln_h1_hi  := draw_lvl(ln_h1_hi,  h1_hi,  h1_hi_t,  h1_hbrk,  i_h1_clr)
+        ln_h1_lo  := draw_lvl(ln_h1_lo,  h1_lo,  h1_lo_t,  h1_lbrk,  i_h1_clr)
+    if i_h4_on
+        ln_h4_hi  := draw_lvl(ln_h4_hi,  h4_hi,  h4_hi_t,  h4_hbrk,  i_h4_clr)
+        ln_h4_lo  := draw_lvl(ln_h4_lo,  h4_lo,  h4_lo_t,  h4_lbrk,  i_h4_clr)
+    if i_d_on
+        ln_dy_hi  := draw_lvl(ln_dy_hi,  dy_hi,  dy_hi_t,  dy_hbrk,  i_d_clr)
+        ln_dy_lo  := draw_lvl(ln_dy_lo,  dy_lo,  dy_lo_t,  dy_lbrk,  i_d_clr)
+    if i_w_on
+        ln_wk_hi  := draw_lvl(ln_wk_hi,  wk_hi,  wk_hi_t,  wk_hbrk,  i_w_clr)
+        ln_wk_lo  := draw_lvl(ln_wk_lo,  wk_lo,  wk_lo_t,  wk_lbrk,  i_w_clr)
+    if i_mn_on
+        ln_mn_hi  := draw_lvl(ln_mn_hi,  mn_hi,  mn_hi_t,  mn_hbrk,  i_mn_clr)
+        ln_mn_lo  := draw_lvl(ln_mn_lo,  mn_lo,  mn_lo_t,  mn_lbrk,  i_mn_clr)
+
+// =============================================================================
+// DRAW BREAK LABELS
+// Called unconditionally to maintain consistent execution.
+// Internal enabled check prevents label creation when TF is off.
+// =============================================================================
+
+draw_brk_lbl(m5_brk,  m5_cls,  m5_bt,  m5_prop,  "M5",  i_m5_clr,  i_m5_on)
+draw_brk_lbl(m15_brk, m15_cls, m15_bt, m15_prop, "M15", i_m15_clr, i_m15_on)
+draw_brk_lbl(h1_brk,  h1_cls,  h1_bt,  h1_prop,  "H1",  i_h1_clr,  i_h1_on)
+draw_brk_lbl(h4_brk,  h4_cls,  h4_bt,  h4_prop,  "H4",  i_h4_clr,  i_h4_on)
+draw_brk_lbl(dy_brk,  dy_cls,  dy_bt,  dy_prop,  "D",   i_d_clr,   i_d_on)
+draw_brk_lbl(wk_brk,  wk_cls,  wk_bt,  wk_prop,  "W",   i_w_clr,   i_w_on)
+draw_brk_lbl(mn_brk,  mn_cls,  mn_bt,  mn_prop,  "MN",  i_mn_clr,  i_mn_on)
+
+// =============================================================================
+// DASHBOARD TABLE
+// =============================================================================
+
+cls_str(int c) =>
+    c == 1 ? "HH" : (c == 2 ? "LH" : (c == 3 ? "LL" : (c == 4 ? "HL" : "—")))
+
+typ_str(int t) =>
+    t == 1 ? "BOS" : (t == 2 ? "CHoCH" : (t == 3 ? "init" : "—"))
+
+trend_str(int t) =>
+    t > 0 ? "▲" : (t < 0 ? "▼" : "—")
+
+trend_clr(int t) =>
+    t > 0 ? #26A69A : (t < 0 ? #EF5350 : #808080)
+
+string tbl_pos = switch i_dash_pos
+    "Top Left"     => position.top_left
+    "Top Right"    => position.top_right
+    "Bottom Left"  => position.bottom_left
+    "Bottom Right" => position.bottom_right
+    => position.top_left
+
+var table dash = table.new(tbl_pos, 4, 8, border_width=1, border_color=#363636, bgcolor=#1A1A2E)
+
+dash_row(int row, string tf, int trend, int lcls, int ltyp, bool lprop, color tf_clr) =>
+    table.cell(dash, 0, row, tf, text_color=tf_clr, text_size=size.small, text_halign=text.align_center)
+    table.cell(dash, 1, row, trend_str(trend), text_color=trend_clr(trend), text_size=size.small, text_halign=text.align_center)
+    string evt = "—"
+    color evt_clr = #808080
+    if ltyp > 0 and ltyp < 3
+        string ie = lprop ? "e" : "i"
+        string bt = typ_str(ltyp)
+        string pl = lprop ? "+" : ""
+        string cl = cls_str(lcls)
+        evt := ie + bt + pl + " " + cl
+        evt_clr := ltyp == 2 ? (lcls <= 2 ? #26A69A : #EF5350) : color.new(#808080, 0)
+    table.cell(dash, 2, row, evt, text_color=evt_clr, text_size=size.small, text_halign=text.align_center)
+
+if i_dash_on and barstate.islast
+    table.cell(dash, 0, 0, "TF",    text_color=#AAAAAA, text_size=size.small, bgcolor=#252540, text_halign=text.align_center)
+    table.cell(dash, 1, 0, "Trend", text_color=#AAAAAA, text_size=size.small, bgcolor=#252540, text_halign=text.align_center)
+    table.cell(dash, 2, 0, "Last",  text_color=#AAAAAA, text_size=size.small, bgcolor=#252540, text_halign=text.align_center)
+
+    dash_row(1, "M5",  m5_trend,  m5_lcls,  m5_ltyp,  m5_lprop,  i_m5_clr)
+    dash_row(2, "M15", m15_trend, m15_lcls, m15_ltyp, m15_lprop, i_m15_clr)
+    dash_row(3, "H1",  h1_trend,  h1_lcls,  h1_ltyp,  h1_lprop,  i_h1_clr)
+    dash_row(4, "H4",  h4_trend,  h4_lcls,  h4_ltyp,  h4_lprop,  i_h4_clr)
+    dash_row(5, "D",   dy_trend,  dy_lcls,  dy_ltyp,  dy_lprop,  i_d_clr)
+    dash_row(6, "W",   wk_trend,  wk_lcls,  wk_ltyp,  wk_lprop,  i_w_clr)
+    dash_row(7, "MN",  mn_trend,  mn_lcls,  mn_ltyp,  mn_lprop,  i_mn_clr)
