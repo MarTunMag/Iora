@@ -52,6 +52,11 @@ _EVENT_COLS = [
     "lo_is_ll",
     "ztop",
     "zbot",
+    # Push zone extensions
+    "seq_hh",
+    "seq_ll",
+    "hi_txt",
+    "lo_txt",
 ]
 
 
@@ -116,6 +121,20 @@ def build_aligned_multi_tf(
                 series = prefixed[col].where(prefixed[col].notna(), False).astype(bool)
                 edge = series & ~series.shift(1, fill_value=False)
                 prefixed[f"{tf_label}_edge_{fc}"] = edge
+
+        # Period boundary detection: True on first base bar of new TF period
+        if tf_label == base_tf:
+            prefixed[f"{tf_label}_new_period"] = True
+        else:
+            # Detect when the aligned HTF period changes from base TF perspective
+            tf_time_series = pd.Series(ev.index, index=ev.index, name="tf_time")
+            left_for_period = pd.DataFrame({"_ts": base_index}, index=base_index).sort_index()
+            tf_time_aligned = pd.merge_asof(
+                left_for_period, tf_time_series.to_frame(),
+                left_index=True, right_index=True,
+                direction="backward", allow_exact_matches=True,
+            )["tf_time"]
+            prefixed[f"{tf_label}_new_period"] = tf_time_aligned != tf_time_aligned.shift(1)
 
         aligned_parts.append(prefixed)
 

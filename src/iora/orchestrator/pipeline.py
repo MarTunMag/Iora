@@ -51,6 +51,12 @@ from iora.orchestrator.zone_engine import (
     init_zone_state,
     zone_engine_tick,
 )
+from iora.orchestrator.push_zone_engine import (
+    PushZoneEngineConfig,
+    PushZoneEngineState,
+    init_push_zone_state,
+    push_zone_engine_tick,
+)
 from iora.orchestrator.structure_engine import (
     StructureConfig,
     StructureState,
@@ -74,6 +80,12 @@ class PipelineConfig:
     lookback: int = 30  # Keep more zones in memory for user-controlled display
     tl_history: int = 10
     ub_exhaust_threshold: int = 5
+    push_zone_on: bool = False
+    push_zone_max_age: dict[str, int] = field(default_factory=lambda: {
+        "M1": 50, "M5": 50, "M15": 50, "H1": 50,
+        "H4": 50, "D1": 50, "W1": 30, "MN1": 20,
+    })
+    period_history_depth: int = 3
 
 
 @dataclass(slots=True)
@@ -132,6 +144,11 @@ class PipelineOutput:
 
     # --- HTF Bias cascade ---
     htf_bias: HTFBiasState | None = None
+
+    # --- Push Zone Engine ---
+    push_zones_by_tf: dict[str, list] = field(default_factory=dict)
+    push_trend_by_tf: dict[str, int] = field(default_factory=dict)
+    period_levels_by_tf: dict[str, dict] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -298,12 +315,25 @@ def _collect_outputs(
     htf_bias_state: HTFBiasState,
     structure_breaks: list[StructureBreak],
     tf_list: list[str],
+    push_zone_state: PushZoneEngineState | None = None,
 ) -> PipelineOutput:
     """Assemble final PipelineOutput from all engine states."""
     zones_by_tf: dict[str, list[FractalZone]] = {}
     for tf in tf_list:
         zs = zone_state.zone_states[tf]
         zones_by_tf[tf] = list(zs.supply_zones) + list(zs.demand_zones)
+
+    push_zones_by_tf: dict[str, list] = {}
+    push_trend_by_tf: dict[str, int] = {}
+    period_levels_by_tf: dict[str, dict] = {}
+    if push_zone_state is not None:
+        for tf, ts in push_zone_state.tick_states.items():
+            push_zones_by_tf[tf] = list(ts.supply_zones) + list(ts.demand_zones)
+            push_trend_by_tf[tf] = ts.trend
+            period_levels_by_tf[tf] = {
+                "highs": list(ts.period.prev_highs),
+                "lows": list(ts.period.prev_lows),
+            }
 
     return PipelineOutput(
         macro_bias_state=bias_state.to_model(),
@@ -329,6 +359,9 @@ def _collect_outputs(
         cascade_signals=cascade_state.signals,
         cascade_summary=get_cascade_summary(cascade_state),
         htf_bias=htf_bias_state,
+        push_zones_by_tf=push_zones_by_tf,
+        push_trend_by_tf=push_trend_by_tf,
+        period_levels_by_tf=period_levels_by_tf,
     )
 
 
@@ -378,6 +411,15 @@ def run_pipeline(
     cycle_state_obj = CycleTickState()
     cascade_state = init_cascade_state(tf_list)
     htf_bias_state = init_htf_bias_state()
+    push_zone_state: PushZoneEngineState | None = None
+    push_zone_config: PushZoneEngineConfig | None = None
+    if config.push_zone_on:
+        push_zone_state = init_push_zone_state(tf_list, config.period_history_depth)
+        push_zone_config = PushZoneEngineConfig(
+            doji_pct=config.doji_pct,
+            max_age=config.push_zone_max_age,
+            period_history_depth=config.period_history_depth,
+        )
     bus = EventBus()
     structure_breaks: list[StructureBreak] = []
 
@@ -387,6 +429,9 @@ def run_pipeline(
 
         zone_engine_tick(zone_state, ctx, zone_config, bus)
         _classify_structure_breaks(bus, ev_offset, structure_breaks)
+
+        if push_zone_state is not None:
+            push_zone_engine_tick(push_zone_state, ctx, push_zone_config, bus=bus)
 
         # Early cascade: detect parent-TF structural shifts via child-TF CHoCH
         # and inject early anchors into XTF trendlines BEFORE structure_tick
@@ -408,4 +453,5 @@ def run_pipeline(
     return _collect_outputs(
         zone_state, structure_state, bias_state, cycle_state_obj,
         cascade_state, htf_bias_state, structure_breaks, tf_list,
+        push_zone_state=push_zone_state,
     )
