@@ -314,6 +314,7 @@ def _make_trade(
         pnl_pips = (sig.entry_price - exit_price) / pip_size
 
     return {
+        # Core trade fields
         "entry_time": sig.entry_time,
         "exit_time": exit_time,
         "entry_price": sig.entry_price,
@@ -323,10 +324,26 @@ def _make_trade(
         "tp_price": sig.tp_price,
         "exit_reason": exit_reason,
         "pnl_pips": pnl_pips,
+        "risk_pips": sig.risk_pips,
+        "reward_pips": sig.reward_pips,
+        "rr_ratio": sig.rr_ratio,
+        # Signal classification
         "signal_type": sig.signal_type,
         "struct_cls": sig.struct_cls,
         "zone_tf": sig.zone_tf,
         "parent_tf": sig.parent_tf,
         "nesting_depth": sig.nesting_depth,
-        "rr_ratio": sig.rr_ratio,
+        "opposing_nest": sig.opposing_nest,
+        # Zone context
+        "zone_top": sig.zone.top,
+        "zone_bottom": sig.zone.bottom,
+        "zone_is_push": sig.zone.is_push,
+        "zone_is_reversal": sig.zone.is_reversal,
+        "zone_is_terminal": sig.zone.is_terminal,
+        "zone_swing_cls": sig.zone.swing_cls,
+        "zone_count": sig.zone.count_num,
+        # Trend state at entry
+        "trend_by_tf": dict(sig.trend_by_tf),
+        # Zone counts at entry
+        "zone_counts": dict(sig.zone_counts),
     }

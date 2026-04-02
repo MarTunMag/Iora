@@ -36,8 +36,13 @@ def _get_pip_size(symbol: str) -> float:
 
 @dataclass(frozen=True, slots=True)
 class SweepTradeRecord:
-    """Lightweight trade record for sweep results. No external deps."""
+    """Comprehensive trade record for sweep results. No external deps.
 
+    Captures full entry context so post-hoc analysis can answer
+    when, where, why, and how each trade won or lost.
+    """
+
+    # Core trade fields
     trade_id: str
     symbol: str
     direction: int          # 1=LONG, -1=SHORT
@@ -46,12 +51,30 @@ class SweepTradeRecord:
     entry_price: float
     exit_price: float
     pnl_pips: float
+    risk_pips: float
+    reward_pips: float
     return_r: float         # P&L in R-multiples
+    rr_ratio: float         # Planned reward:risk
     exit_reason: str
     sl_price: float
     tp_price: float
-    zone_tf: str = ""
-    signal_type: str = ""
+
+    # Signal classification (WHY did we enter?)
+    signal_type: str = ""   # "push", "reversal", "terminal", "normal"
+    struct_cls: str = ""    # "BOS", "CHoCH", ""
+    zone_tf: str = ""       # Entry zone timeframe
+    parent_tf: str = ""     # Parent zone timeframe
+    nesting_depth: int = 0
+    opposing_nest: bool = False
+
+    # Zone context (WHERE did we enter?)
+    zone_top: float = 0.0
+    zone_bottom: float = 0.0
+    zone_is_push: bool = False
+    zone_is_reversal: bool = False
+    zone_is_terminal: bool = False
+    zone_swing_cls: str = ""  # "HH", "LH", "HL", "LL"
+    zone_count: int = 0
 
     @property
     def is_winner(self) -> bool:
@@ -60,6 +83,10 @@ class SweepTradeRecord:
     @property
     def holding_period(self) -> pd.Timedelta:
         return self.exit_time - self.entry_time
+
+    @property
+    def direction_str(self) -> str:
+        return "long" if self.direction == 1 else "short"
 
 
 def convert_trades(
@@ -82,8 +109,10 @@ def convert_trades(
         direction_int = 1 if t["direction"] == "long" else -1
         pnl_pips = t["pnl_pips"]
 
-        # Risk in pips for R-multiple
-        risk_pips = abs(t["entry_price"] - t["sl_price"]) / pip_size
+        # Risk/reward from trade dict (already computed by strategy)
+        risk_pips = t.get("risk_pips", 0.0)
+        reward_pips = t.get("reward_pips", 0.0)
+        rr_ratio = t.get("rr_ratio", 0.0)
         return_r = pnl_pips / risk_pips if risk_pips > 0 else 0.0
 
         records.append(SweepTradeRecord(
@@ -95,12 +124,28 @@ def convert_trades(
             entry_price=t["entry_price"],
             exit_price=t["exit_price"],
             pnl_pips=pnl_pips,
+            risk_pips=risk_pips,
+            reward_pips=reward_pips,
             return_r=return_r,
+            rr_ratio=rr_ratio,
             exit_reason=t["exit_reason"],
             sl_price=t["sl_price"],
             tp_price=t["tp_price"],
-            zone_tf=t.get("zone_tf", ""),
+            # Signal classification
             signal_type=t.get("signal_type", ""),
+            struct_cls=t.get("struct_cls", ""),
+            zone_tf=t.get("zone_tf", ""),
+            parent_tf=t.get("parent_tf", ""),
+            nesting_depth=t.get("nesting_depth", 0),
+            opposing_nest=t.get("opposing_nest", False),
+            # Zone context
+            zone_top=t.get("zone_top", 0.0),
+            zone_bottom=t.get("zone_bottom", 0.0),
+            zone_is_push=t.get("zone_is_push", False),
+            zone_is_reversal=t.get("zone_is_reversal", False),
+            zone_is_terminal=t.get("zone_is_terminal", False),
+            zone_swing_cls=t.get("zone_swing_cls", ""),
+            zone_count=t.get("zone_count", 0),
         ))
 
     return records

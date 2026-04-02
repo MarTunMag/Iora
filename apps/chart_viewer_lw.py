@@ -720,6 +720,297 @@ def api_clear_cache():
     return jsonify({"status": "ok"})
 
 
+from iora.strategy.strategy_config import StrategyConfig
+from iora.strategy.zone_timeline import build_zone_timeline
+from iora.strategy.push_zone_strategy import evaluate_strategy
+from iora.strategy.trade_converter import convert_trades
+from iora.strategy.sweep_runner import run_sweep, compute_metrics
+from iora.strategy.config_grid import build_config_grid
+from apps.backtest_serializers import (
+    serialize_trade_markers,
+    serialize_trade_lines,
+    serialize_equity_curve,
+    serialize_equity_curve_r,
+    serialize_metrics_summary,
+    serialize_trade_detail,
+)
+
+
+@cache.memoize(timeout=CACHE_TIMEOUT_SEC)
+def _build_backtest_timeline(symbol: str, base_tf: str = "M5"):
+    """Build zone timeline for backtest (cached 10 min)."""
+    tfs = [base_tf, "M15", "H1", "H4", "D1"]
+    data_by_tf = {}
+    for tf in tfs:
+        df = _load(symbol, tf, start=None, end=None)
+        if not df.empty:
+            data_by_tf[tf] = df
+    if base_tf not in data_by_tf:
+        return None
+    return build_zone_timeline(data_by_tf, base_tf=base_tf)
+
+
+def _parse_strategy_config(config_dict: dict) -> StrategyConfig:
+    """Parse a JSON config dict into StrategyConfig."""
+    kwargs = {}
+    valid_fields = {
+        "entry_tf", "parent_tf", "require_nesting", "signal_types",
+        "struct_filter", "htf_trend_filter", "htf_trend_tf",
+        "max_zone_count", "no_trade_zones", "sl_mode", "tp_mode",
+        "fixed_rr", "sl_period_depth", "position_mode", "direction",
+    }
+    for k, v in config_dict.items():
+        if k in valid_fields:
+            if k == "signal_types" and isinstance(v, list):
+                kwargs[k] = set(v)
+            else:
+                kwargs[k] = v
+    return StrategyConfig(**kwargs)
+
+
+# ── Backtest endpoints ────────────────────────────────────────────────────
+
+
+@app.route("/api/backtest/run", methods=["POST"])
+@_limit("5 per minute")
+def api_backtest_run():
+    """Run strategy on a symbol with a given config.
+
+    Body: { symbol, config (optional dict) }
+    Returns: trades, metrics, metrics_raw, equity, equity_r, markers,
+             trade_lines, total_signals, config.
+    """
+    data = request.get_json() or {}
+    symbol = data.get("symbol")
+    if not symbol:
+        return jsonify({"error": "symbol is required"}), 400
+    if symbol not in _get_symbols():
+        return jsonify({"error": f"Unknown symbol: {symbol}"}), 400
+
+    config_dict = data.get("config") or {}
+    config = _parse_strategy_config(config_dict)
+
+    timeline = _build_backtest_timeline(symbol, base_tf=config.entry_tf)
+    if timeline is None:
+        return jsonify({"error": f"No data available for {symbol}"}), 404
+
+    result = evaluate_strategy(timeline, config, symbol=symbol)
+    records = convert_trades(result.trades, symbol=symbol)
+    metrics_raw = compute_metrics(records)
+
+    return jsonify({
+        "trades": [serialize_trade_detail(r) for r in records],
+        "metrics": serialize_metrics_summary(metrics_raw),
+        "metrics_raw": metrics_raw,
+        "equity": serialize_equity_curve(records),
+        "equity_r": serialize_equity_curve_r(records),
+        "markers": serialize_trade_markers(records),
+        "trade_lines": serialize_trade_lines(records),
+        "total_signals": len(result.signals),
+        "config": config.to_dict(),
+    })
+
+
+@app.route("/api/backtest/sweep", methods=["POST"])
+@_limit("2 per minute")
+def api_backtest_sweep():
+    """Run a parameter sweep across multiple configs.
+
+    Body: { symbol, dimensions (dict of field -> list of values),
+            config (optional base config dict) }
+    Max 200 configs. Returns: results (list), n_configs, symbol.
+    """
+    data = request.get_json() or {}
+    symbol = data.get("symbol")
+    if not symbol:
+        return jsonify({"error": "symbol is required"}), 400
+    if symbol not in _get_symbols():
+        return jsonify({"error": f"Unknown symbol: {symbol}"}), 400
+
+    dimensions = data.get("dimensions") or {}
+    base_config = _parse_strategy_config(data.get("config") or {})
+
+    try:
+        configs = build_config_grid(dimensions, base=base_config)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    MAX_CONFIGS = 200
+    if len(configs) > MAX_CONFIGS:
+        return jsonify({"error": f"Too many configs ({len(configs)}); max is {MAX_CONFIGS}"}), 400
+
+    timeline = _build_backtest_timeline(symbol, base_tf=base_config.entry_tf)
+    if timeline is None:
+        return jsonify({"error": f"No data available for {symbol}"}), 404
+
+    results = []
+    for cfg in configs:
+        result = evaluate_strategy(timeline, cfg, symbol=symbol)
+        records = convert_trades(result.trades, symbol=symbol)
+        metrics = compute_metrics(records)
+        metrics["total_signals"] = len(result.signals)
+        results.append({
+            "config": cfg.to_dict(),
+            "metrics": metrics,
+        })
+
+    return jsonify({
+        "results": results,
+        "n_configs": len(configs),
+        "symbol": symbol,
+    })
+
+
+@app.route("/api/backtest/trades", methods=["GET"])
+def api_backtest_trades():
+    """Get trade list with full context for a symbol.
+
+    Query params: symbol, entry_tf (default M5).
+    Default config: require_nesting=False, no_trade_zones=False.
+    Returns: trades, total, symbol.
+    """
+    symbol = request.args.get("symbol")
+    if not symbol:
+        return jsonify({"error": "symbol is required"}), 400
+    if symbol not in _get_symbols():
+        return jsonify({"error": f"Unknown symbol: {symbol}"}), 400
+
+    entry_tf = request.args.get("entry_tf", "M5")
+    config = StrategyConfig(
+        entry_tf=entry_tf,
+        require_nesting=False,
+        no_trade_zones=False,
+    )
+
+    timeline = _build_backtest_timeline(symbol, base_tf=entry_tf)
+    if timeline is None:
+        return jsonify({"error": f"No data available for {symbol}"}), 404
+
+    result = evaluate_strategy(timeline, config, symbol=symbol)
+    records = convert_trades(result.trades, symbol=symbol)
+
+    return jsonify({
+        "trades": [serialize_trade_detail(r) for r in records],
+        "total": len(records),
+        "symbol": symbol,
+    })
+
+
+@app.route("/api/backtest/equity", methods=["GET"])
+def api_backtest_equity():
+    """Get equity curve for a symbol.
+
+    Query params: symbol, mode (\"pips\" or \"r\", default \"pips\"), entry_tf.
+    Returns: equity, mode, symbol.
+    """
+    symbol = request.args.get("symbol")
+    if not symbol:
+        return jsonify({"error": "symbol is required"}), 400
+    if symbol not in _get_symbols():
+        return jsonify({"error": f"Unknown symbol: {symbol}"}), 400
+
+    mode = request.args.get("mode", "pips")
+    entry_tf = request.args.get("entry_tf", "M5")
+    config = StrategyConfig(entry_tf=entry_tf)
+
+    timeline = _build_backtest_timeline(symbol, base_tf=entry_tf)
+    if timeline is None:
+        return jsonify({"error": f"No data available for {symbol}"}), 404
+
+    result = evaluate_strategy(timeline, config, symbol=symbol)
+    records = convert_trades(result.trades, symbol=symbol)
+
+    if mode == "r":
+        equity = serialize_equity_curve_r(records)
+    else:
+        equity = serialize_equity_curve(records)
+
+    return jsonify({
+        "equity": equity,
+        "mode": mode,
+        "symbol": symbol,
+    })
+
+
+@app.route("/api/backtest/report", methods=["GET"])
+def api_backtest_report():
+    """Get summary metrics report for a symbol.
+
+    Query params: symbol, entry_tf (default M5).
+    Returns: metrics, metrics_raw, config, symbol, total_bars.
+    """
+    symbol = request.args.get("symbol")
+    if not symbol:
+        return jsonify({"error": "symbol is required"}), 400
+    if symbol not in _get_symbols():
+        return jsonify({"error": f"Unknown symbol: {symbol}"}), 400
+
+    entry_tf = request.args.get("entry_tf", "M5")
+    config = StrategyConfig(entry_tf=entry_tf)
+
+    timeline = _build_backtest_timeline(symbol, base_tf=entry_tf)
+    if timeline is None:
+        return jsonify({"error": f"No data available for {symbol}"}), 404
+
+    result = evaluate_strategy(timeline, config, symbol=symbol)
+    records = convert_trades(result.trades, symbol=symbol)
+    metrics_raw = compute_metrics(records)
+
+    return jsonify({
+        "metrics": serialize_metrics_summary(metrics_raw),
+        "metrics_raw": metrics_raw,
+        "config": config.to_dict(),
+        "symbol": symbol,
+        "total_bars": len(timeline),
+    })
+
+
+@app.route("/api/backtest/multi", methods=["POST"])
+@_limit("1 per minute")
+def api_backtest_multi():
+    """Run backtest across multiple symbols.
+
+    Body: { symbols (list, max 10), config (optional dict) }
+    Returns per-symbol results with metrics and equity curve.
+    """
+    data = request.get_json() or {}
+    symbols = data.get("symbols")
+    if not symbols:
+        return jsonify({"error": "symbols is required"}), 400
+    if not isinstance(symbols, list):
+        return jsonify({"error": "symbols must be a list"}), 400
+
+    MAX_SYMBOLS = 10
+    if len(symbols) > MAX_SYMBOLS:
+        return jsonify({"error": f"Too many symbols (max {MAX_SYMBOLS})"}), 400
+
+    known_symbols = _get_symbols()
+    invalid = [s for s in symbols if s not in known_symbols]
+    if invalid:
+        return jsonify({"error": f"Unknown symbols: {invalid}"}), 400
+
+    config_dict = data.get("config") or {}
+    config = _parse_strategy_config(config_dict)
+
+    results = {}
+    for symbol in symbols:
+        timeline = _build_backtest_timeline(symbol, base_tf=config.entry_tf)
+        if timeline is None:
+            results[symbol] = {"error": "no data", "metrics": None, "equity": []}
+            continue
+        result = evaluate_strategy(timeline, config, symbol=symbol)
+        records = convert_trades(result.trades, symbol=symbol)
+        metrics_raw = compute_metrics(records)
+        results[symbol] = {
+            "metrics": serialize_metrics_summary(metrics_raw),
+            "metrics_raw": metrics_raw,
+            "equity": serialize_equity_curve(records),
+            "total_trades": metrics_raw.get("total_trades", 0),
+        }
+
+    return jsonify({"results": results, "symbols": symbols})
+
+
 @app.route("/api/screenshot", methods=["POST"])
 @_limit("5 per minute")
 def api_screenshot():
