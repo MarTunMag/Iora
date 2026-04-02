@@ -385,6 +385,37 @@ tests/
 
 ---
 
+## Implementation Notes
+
+These items must be addressed in the implementation plan:
+
+### 1. Overlapping Zone Retest Resolution
+
+When multiple zones on the same TF/side are active and price enters a region where they overlap or are close together:
+- **Retest counting (Level 0-3):** ALL overlapping zones get `test_count` incremented — they were all touched.
+- **Entry logic (Level 4):** When multiple zones are touched simultaneously, the **nearest zone to current price** (smallest `abs(zone_midpoint - close)`) is the entry zone. Only one entry per bar per TF pair.
+
+### 2. Cross-Symbol Aggregation
+
+Level 4 sweep results must be produced at two levels:
+- **Per-symbol results** — find which symbols work with which configs
+- **Aggregated per asset class** (forex majors, forex crosses, metals, crypto, indices, energy) — find class-level patterns
+- The filter attribution funnel should work at both levels
+
+### 3. ML Context Capture
+
+Level 4 entry signals should capture full context snapshot per the `EntrySignal` spec in `docs/ML_COMPONENT_ANALYSIS.md`. Sweep dimensions (session, zone age) are used as filters, but the raw values should also be logged on every entry for future ML training. Each entry record should include: zone age bars, session label, bias state, nearest period hi/lo, birth context — even when these aren't being filtered on.
+
+### 4. Cascade State: Inside vs Recently-Touched
+
+The cascade logic should distinguish two HTF states:
+- **`inside_htf_zone`** — price is currently sitting inside the HTF zone (active retest in progress). Potentially stronger signal.
+- **`recent_htf_retest`** — an HTF zone was touched within the last N entry-TF bars, but price has since moved away.
+
+Both should be trackable cascade states. `inside_htf_zone` may be a stronger filter — the data will show.
+
+---
+
 ## Success Criteria
 
 1. Level 1 audit runs across all 38 symbols and produces zone population statistics
