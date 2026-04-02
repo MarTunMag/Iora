@@ -291,9 +291,7 @@ method process(array<Zone> zones, bool fire, float ztop, float zbot, bool is_sup
         else
             new_dem_count += 1
         int cnum = is_sup ? new_sup_count : new_dem_count
-        string cnt_str = parent_zones.size() > 0 ? " #" + str.tostring(cnum) : ""
-        string lbl_txt = i_normal and i_labels ? tf_label(tf_str) + (is_sup ? " S" : " D") + cnt_str : na
-        box new_box    = box.new(z_time, ztop, z_time + tf_ms * 6, zbot, xloc = xloc.bar_time, extend = extend.right, bgcolor = bg_clr, border_color = br_clr, border_width = 1, text = lbl_txt, text_size = size.tiny, text_color = tx_clr, text_halign = text.align_right, text_valign = text.align_top)
+        box new_box    = box.new(z_time, ztop, z_time + tf_ms * 6, zbot, xloc = xloc.bar_time, extend = extend.right, bgcolor = bg_clr, border_color = br_clr, border_width = 1, text = na, text_size = size.tiny, text_color = tx_clr, text_halign = text.align_right, text_valign = text.align_top)
         zones.push(Zone.new(ztop, zbot, is_sup, z_time, new_box, false, false, "", cls, cnum, false))
 
     // 3. Push validation (after zone creation)
@@ -319,10 +317,6 @@ method process(array<Zone> zones, bool fire, float ztop, float zbot, bool is_sup
                         z.bx.set_bgcolor(i_psup_bg)
                         z.bx.set_border_color(i_psup_br)
                         z.bx.set_border_width(1)
-                        string cnt_pfx = z.count_num > 0 ? " #" + str.tostring(z.count_num) : ""
-                        string suffix = scls == "BOS" ? " ▼ BOS" : scls == "CHoCH" ? " ◆ CHoCH" : ""
-                        string ptxt = i_labels ? tf_label(tf_str) + " S" + cnt_pfx + " LL" + suffix : na
-                        z.bx.set_text(ptxt)
                     break
             // Tag most recent demand as REVERSAL (the trigger zone just created)
             for i = zones.size() - 1 to 0
@@ -333,9 +327,6 @@ method process(array<Zone> zones, bool fire, float ztop, float zbot, bool is_sup
                         z.bx.set_bgcolor(i_rev_bg)
                         z.bx.set_border_color(i_rev_br)
                         z.bx.set_border_width(1)
-                        string cnt_pfx = z.count_num > 0 ? " #" + str.tostring(z.count_num) : ""
-                        string rtxt = i_labels ? tf_label(tf_str) + " D" + cnt_pfx + " REV ⚐" : na
-                        z.bx.set_text(rtxt)
                     break
             new_push_lo := seq_ll_val
 
@@ -358,10 +349,6 @@ method process(array<Zone> zones, bool fire, float ztop, float zbot, bool is_sup
                         z.bx.set_bgcolor(i_pdem_bg)
                         z.bx.set_border_color(i_pdem_br)
                         z.bx.set_border_width(1)
-                        string cnt_pfx = z.count_num > 0 ? " #" + str.tostring(z.count_num) : ""
-                        string suffix = scls == "BOS" ? " ▲ BOS" : scls == "CHoCH" ? " ◆ CHoCH" : ""
-                        string ptxt = i_labels ? tf_label(tf_str) + " D" + cnt_pfx + " HH" + suffix : na
-                        z.bx.set_text(ptxt)
                     break
             // Tag most recent supply as REVERSAL (the trigger zone just created)
             for i = zones.size() - 1 to 0
@@ -372,11 +359,69 @@ method process(array<Zone> zones, bool fire, float ztop, float zbot, bool is_sup
                         z.bx.set_bgcolor(i_rev_bg)
                         z.bx.set_border_color(i_rev_br)
                         z.bx.set_border_width(1)
-                        string cnt_pfx = z.count_num > 0 ? " #" + str.tostring(z.count_num) : ""
-                        string rtxt = i_labels ? tf_label(tf_str) + " S" + cnt_pfx + " REV ⚐" : na
-                        z.bx.set_text(rtxt)
                     break
             new_push_hi := seq_hh_val
+
+    // 7. Nesting check — does the new zone sit inside a parent zone?
+    string nest_ctx = ""
+    if fire and valid and parent_zones.size() > 0
+        Zone child = zones.get(zones.size() - 1)
+        float best_range = 1e18
+        int   best_idx   = -1
+        for i = 0 to parent_zones.size() - 1
+            Zone p = parent_zones.get(i)
+            if child.top <= p.top and child.bottom >= p.bottom
+                float pr = p.top - p.bottom
+                if pr < best_range
+                    best_range := pr
+                    best_idx   := i
+        if best_idx >= 0
+            Zone bp = parent_zones.get(best_idx)
+            string ptf = tf_label(tf_parent(tf_str))
+            string pside = bp.is_supply ? "S" : "D"
+            string pcls = bp.is_push and bp.struct_cls != "" ? " " + bp.struct_cls : ""
+            nest_ctx := "(in " + ptf + " " + pside + pcls + ")"
+            // Opposing direction = terminal
+            bool opposing = child.is_supply != bp.is_supply
+            if opposing
+                child.is_terminal := true
+                if not na(child.bx)
+                    child.bx.set_bgcolor(i_term_bg)
+                    child.bx.set_border_color(i_term_br)
+
+    // Optional nesting connector lines
+    if fire and valid and nest_ctx != "" and i_nest_lines
+        Zone child = zones.get(zones.size() - 1)
+        color ln_clr = child.is_terminal ? i_term_br : (child.is_supply ? i_sup_br : i_dem_br)
+        line.new(child.origin_time, child.top, child.origin_time, child.top + (child.top - child.bottom) * 0.5, xloc = xloc.bar_time, color = ln_clr, width = 1, style = line.style_dotted)
+
+    // 9. Label finalization — rebuild label with all classifications
+    if fire and valid and zones.size() > 0 and i_labels
+        Zone latest = zones.get(zones.size() - 1)
+        string side_str = latest.is_supply ? " S" : " D"
+        string cnt_str = latest.count_num > 0 ? " #" + str.tostring(latest.count_num) : ""
+        string exh_str = latest.count_num == 5 ? " ⚠" : (latest.count_num >= 8 and not latest.is_terminal) ? " ✕" : ""
+        string role_str = ""
+        if latest.is_push
+            string swing = latest.is_supply ? " LL" : " HH"
+            string struct_sfx = ""
+            if latest.struct_cls == "BOS"
+                struct_sfx := latest.is_supply ? " ▼ BOS" : " ▲ BOS"
+            else if latest.struct_cls == "CHoCH"
+                struct_sfx := " ◆ CHoCH"
+            role_str := swing + struct_sfx
+        else if latest.is_reversal
+            role_str := " REV ⚐"
+        else if latest.is_terminal
+            role_str := " ✕"
+        string nest_str = nest_ctx != "" ? " " + nest_ctx : ""
+        string final_lbl = tf_label(tf_str) + side_str + cnt_str + exh_str + role_str + nest_str
+        // Only show label if zone is visible (push, reversal, terminal, or normal toggle on)
+        bool visible = latest.is_push or latest.is_reversal or latest.is_terminal or i_normal
+        if visible and not na(latest.bx)
+            latest.bx.set_text(final_lbl)
+        else if not visible and not na(latest.bx)
+            latest.bx.set_text(na)
 
     [new_push_hi, new_push_lo, new_sup_count, new_dem_count, new_sup_reset, new_dem_reset]
 
