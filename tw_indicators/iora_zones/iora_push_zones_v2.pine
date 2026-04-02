@@ -249,6 +249,23 @@ method process(array<Zone> zones, bool fire, float ztop, float zbot, bool is_sup
     int new_sup_reset = sup_reset_time_in
     int new_dem_reset = dem_reset_time_in
 
+    // Count reset — Trigger 1: parent fires same-side zone
+    if parent_fire
+        if parent_is_sup
+            new_sup_count := 0
+            new_sup_reset := time
+        else
+            new_dem_count := 0
+            new_dem_reset := time
+
+    // Count reset — Trigger 2: same-TF structural invalidation (HH resets supply, LL resets demand)
+    if fire and is_sup and hi_txt == "HH"
+        new_sup_count := 0
+        new_sup_reset := time
+    if fire and not is_sup and lo_txt == "LL"
+        new_dem_count := 0
+        new_dem_reset := time
+
     if zones.size() > 0
         for i = zones.size() - 1 to 0
             Zone z = zones.get(i)
@@ -268,9 +285,16 @@ method process(array<Zone> zones, bool fire, float ztop, float zbot, bool is_sup
         // When i_normal is on: border-only (no fill). When off: fully transparent.
         color  bg_clr  = color.new(color.white, 100)
         color  br_clr  = i_normal ? (is_sup ? i_sup_br : i_dem_br) : color.new(color.white, 100)
-        string lbl_txt = i_normal and i_labels ? tf_label(tf_str) + (is_sup ? " S " : " D ") + cls : na
+        // Count increment
+        if is_sup
+            new_sup_count += 1
+        else
+            new_dem_count += 1
+        int cnum = is_sup ? new_sup_count : new_dem_count
+        string cnt_str = parent_zones.size() > 0 ? " #" + str.tostring(cnum) : ""
+        string lbl_txt = i_normal and i_labels ? tf_label(tf_str) + (is_sup ? " S" : " D") + cnt_str : na
         box new_box    = box.new(z_time, ztop, z_time + tf_ms * 6, zbot, xloc = xloc.bar_time, extend = extend.right, bgcolor = bg_clr, border_color = br_clr, border_width = 1, text = lbl_txt, text_size = size.tiny, text_color = tx_clr, text_halign = text.align_right, text_valign = text.align_top)
-        zones.push(Zone.new(ztop, zbot, is_sup, z_time, new_box, false, false, "", cls))
+        zones.push(Zone.new(ztop, zbot, is_sup, z_time, new_box, false, false, "", cls, cnum, false))
 
     // 3. Push validation (after zone creation)
     float new_push_hi = prev_push_hi
@@ -295,8 +319,9 @@ method process(array<Zone> zones, bool fire, float ztop, float zbot, bool is_sup
                         z.bx.set_bgcolor(i_psup_bg)
                         z.bx.set_border_color(i_psup_br)
                         z.bx.set_border_width(1)
+                        string cnt_pfx = z.count_num > 0 ? " #" + str.tostring(z.count_num) : ""
                         string suffix = scls == "BOS" ? " ▼ BOS" : scls == "CHoCH" ? " ◆ CHoCH" : ""
-                        string ptxt = i_labels ? tf_label(tf_str) + " S LL" + suffix : na
+                        string ptxt = i_labels ? tf_label(tf_str) + " S" + cnt_pfx + " LL" + suffix : na
                         z.bx.set_text(ptxt)
                     break
             // Tag most recent demand as REVERSAL (the trigger zone just created)
@@ -308,7 +333,8 @@ method process(array<Zone> zones, bool fire, float ztop, float zbot, bool is_sup
                         z.bx.set_bgcolor(i_rev_bg)
                         z.bx.set_border_color(i_rev_br)
                         z.bx.set_border_width(1)
-                        string rtxt = i_labels ? tf_label(tf_str) + " D REV ⚐" : na
+                        string cnt_pfx = z.count_num > 0 ? " #" + str.tostring(z.count_num) : ""
+                        string rtxt = i_labels ? tf_label(tf_str) + " D" + cnt_pfx + " REV ⚐" : na
                         z.bx.set_text(rtxt)
                     break
             new_push_lo := seq_ll_val
@@ -332,8 +358,9 @@ method process(array<Zone> zones, bool fire, float ztop, float zbot, bool is_sup
                         z.bx.set_bgcolor(i_pdem_bg)
                         z.bx.set_border_color(i_pdem_br)
                         z.bx.set_border_width(1)
+                        string cnt_pfx = z.count_num > 0 ? " #" + str.tostring(z.count_num) : ""
                         string suffix = scls == "BOS" ? " ▲ BOS" : scls == "CHoCH" ? " ◆ CHoCH" : ""
-                        string ptxt = i_labels ? tf_label(tf_str) + " D HH" + suffix : na
+                        string ptxt = i_labels ? tf_label(tf_str) + " D" + cnt_pfx + " HH" + suffix : na
                         z.bx.set_text(ptxt)
                     break
             // Tag most recent supply as REVERSAL (the trigger zone just created)
@@ -345,7 +372,8 @@ method process(array<Zone> zones, bool fire, float ztop, float zbot, bool is_sup
                         z.bx.set_bgcolor(i_rev_bg)
                         z.bx.set_border_color(i_rev_br)
                         z.bx.set_border_width(1)
-                        string rtxt = i_labels ? tf_label(tf_str) + " S REV ⚐" : na
+                        string cnt_pfx = z.count_num > 0 ? " #" + str.tostring(z.count_num) : ""
+                        string rtxt = i_labels ? tf_label(tf_str) + " S" + cnt_pfx + " REV ⚐" : na
                         z.bx.set_text(rtxt)
                     break
             new_push_hi := seq_hh_val
