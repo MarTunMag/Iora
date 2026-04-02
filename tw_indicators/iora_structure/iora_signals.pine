@@ -1264,6 +1264,16 @@ m15_zone_matches_dir(int dir) =>
     else
         false
 
+// Zone containment check — is current close inside any zone in the array?
+is_inside_zone(array<Zone> zones) =>
+    bool inside = false
+    if zones.size() > 0
+        for int i = 0 to math.min(zones.size() - 1, 7)
+            Zone z = zones.get(i)
+            if close >= z.bottom and close <= z.top
+                inside := true
+    inside
+
 // =============================================================================
 // === SECTION 13: TRIPLET STATE MACHINES
 // =============================================================================

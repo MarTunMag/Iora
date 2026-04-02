@@ -18,10 +18,10 @@ float  i_risk_pct    = input.float(1.0,     "Risk % (risk-based mode)",     grou
 string i_dir_filter  = input.string("Both", "Direction filter",             group="Strategy", options=["Both", "D-Bias Only", "Long Only", "Short Only"])
 
 // --- Group: Models ---
-bool   i_model_a     = input.bool(true,     "Enable Model A (Terminal Reversal)",   group="Models")
-bool   i_model_b     = input.bool(true,     "Enable Model B (Mode B Continuation)", group="Models")
-bool   i_model_c     = input.bool(true,     "Enable Model C (Cascade Add-On)",      group="Models")
-bool   i_model_d     = input.bool(true,     "Enable Model D (Macro Bias Limit)",    group="Models")
+bool   i_model_push     = input.bool(true, "Enable PUSH entries",     group="Models")
+bool   i_model_continue = input.bool(true, "Enable CONTINUE entries", group="Models")
+bool   i_model_pullback = input.bool(true, "Enable PULLBACK entries", group="Models")
+bool   i_model_reversal = input.bool(true, "Enable REVERSAL entries", group="Models")
 
 // --- Group: Zones (visual, retained for trade review) ---
 bool   i_show_zones  = input.bool(true,           "Show zone boxes",           group="Zones")
@@ -1232,34 +1232,43 @@ if consume.active
         consume.score   := consume.score + 1
 
 // =============================================================================
-// 1-2-3 CASCADE DETECTION
+// === SECTION 12: TRIPLET HELPERS
 // =============================================================================
 
-// Per-TF 3-zone compression detection
-detect_123(array<Zone> sup_arr, array<Zone> dem_arr) =>
-    bool bear = false
-    bool bull = false
-    if dem_arr.size() >= 2 and sup_arr.size() >= 1
-        Zone d1 = dem_arr.get(1)
-        Zone s1 = sup_arr.get(0)
-        Zone d2 = dem_arr.get(0)
-        if s1.birth_bar > d1.birth_bar and d2.birth_bar > s1.birth_bar
-            bear := d2.top < s1.bottom
-    if sup_arr.size() >= 2 and dem_arr.size() >= 1
-        Zone s1b = sup_arr.get(1)
-        Zone d1b = dem_arr.get(0)
-        Zone s2b = sup_arr.get(0)
-        if d1b.birth_bar > s1b.birth_bar and s2b.birth_bar > d1b.birth_bar
-            bull := s2b.bottom > d1b.top
-    [bear, bull]
+// Find the most recent zone with a specific swing classification
+// Returns the zone, or a Zone with na fields if not found
+get_zone_by_cls(array<Zone> zones, int cls) =>
+    Zone result = Zone.new()
+    bool found = false
+    if zones.size() > 0
+        for int i = 0 to math.min(zones.size() - 1, 7)
+            Zone z = zones.get(i)
+            if z.swing_cls == cls and not found
+                result := z
+                found := true
+    result
 
-[d_123_bear,  d_123_bull]  = detect_123(d_sup, d_dem)
-[h4_123_bear, h4_123_bull] = detect_123(h4_sup, h4_dem)
-[h1_123_bear, h1_123_bull] = detect_123(h1_sup, h1_dem)
-[m15_123_bear, m15_123_bull] = detect_123(m15_sup, m15_dem)
-[m5_123_bear, m5_123_bull] = detect_123(m5_sup, m5_dem)
+// Check if the M5 zone just created matches a given direction
+// dir > 0: demand zone (swc 3=LL or 4=HL) = bullish
+// dir < 0: supply zone (swc 1=HH or 2=LH) = bearish
+m5_zone_matches_dir(int dir) =>
+    if dir > 0
+        m5_fired and (m5_swc == 3 or m5_swc == 4)
+    else if dir < 0
+        m5_fired and (m5_swc == 1 or m5_swc == 2)
+    else
+        false
 
-// Zone containment check
+// Same logic for M15 (T5 child)
+m15_zone_matches_dir(int dir) =>
+    if dir > 0
+        m15_fired and (m15_swc == 3 or m15_swc == 4)
+    else if dir < 0
+        m15_fired and (m15_swc == 1 or m15_swc == 2)
+    else
+        false
+
+// Zone containment check — is current close inside any zone in the array?
 is_inside_zone(array<Zone> zones) =>
     bool inside = false
     if zones.size() > 0
@@ -1269,213 +1278,399 @@ is_inside_zone(array<Zone> zones) =>
                 inside := true
     inside
 
-// Cascade arming — bearish
-bool d_armed_bear   = d_123_bear
-bool h4_armed_bear  = d_armed_bear and h4_123_bear and is_inside_zone(d_sup)
-bool h1_armed_bear  = h4_armed_bear and h1_123_bear and is_inside_zone(h4_sup)
-bool m15_armed_bear = h1_armed_bear and m15_123_bear and is_inside_zone(h1_sup)
-bool m5_armed_bear  = m15_armed_bear and m5_123_bear and is_inside_zone(m15_sup)
-
-// Cascade arming — bullish
-bool d_armed_bull   = d_123_bull
-bool h4_armed_bull  = d_armed_bull and h4_123_bull and is_inside_zone(d_dem)
-bool h1_armed_bull  = h4_armed_bull and h1_123_bull and is_inside_zone(h4_dem)
-bool m15_armed_bull = h1_armed_bull and m15_123_bull and is_inside_zone(h1_dem)
-bool m5_armed_bull  = m15_armed_bull and m5_123_bull and is_inside_zone(m15_dem)
-
-// Output: highest armed level
-string cascade_level = m5_armed_bear or m5_armed_bull ? "M5" : m15_armed_bear or m15_armed_bull ? "M15" : h1_armed_bear or h1_armed_bull ? "H1" : h4_armed_bear or h4_armed_bull ? "H4" : d_armed_bear or d_armed_bull ? "D" : "—"
-int cascade_dir = m5_armed_bear ? -1 : m5_armed_bull ? 1 : 0
 
 // =============================================================================
-// TRENDLINE BREAK DETECTION — M5 and M15
+// === SECTION 13: TRIPLET STATE MACHINES
 // =============================================================================
 
-// M5 ascending TL (bullish support — breaks bearish)
-var float m5_tl_bull_y1 = na
-var float m5_tl_bull_y2 = na
-var int   m5_tl_bull_x1 = na
-var int   m5_tl_bull_x2 = na
-if m5_fired and m5_swc == 4  // HL swing
-    m5_tl_bull_y1 := nz(m5_tl_bull_y2, m5_plo)
-    m5_tl_bull_x1 := nz(m5_tl_bull_x2, bar_index - 10)
-    m5_tl_bull_y2 := m5_plo
-    m5_tl_bull_x2 := bar_index
+// --- T6: Parent=M15, Child=M5, Grandchild=M1 ---
 
-float m5_tl_bull_proj = na
-if not na(m5_tl_bull_x1) and not na(m5_tl_bull_x2) and m5_tl_bull_x2 > m5_tl_bull_x1
-    float m5_slope_b = (m5_tl_bull_y2 - m5_tl_bull_y1) / (m5_tl_bull_x2 - m5_tl_bull_x1)
-    m5_tl_bull_proj := m5_tl_bull_y2 + m5_slope_b * (bar_index - m5_tl_bull_x2)
-bool m5_tl_bull_break = not na(m5_tl_bull_proj) and close < m5_tl_bull_proj and close[1] >= nz(m5_tl_bull_proj[1])
+var string t6_state       = "IDLE"
+var int    t6_dir         = 0
+var float  t6_push_top    = na
+var float  t6_push_bot    = na
+var float  t6_last_pb_top = na
+var float  t6_last_pb_bot = na
+var int    t6_zone_count  = 0
+var bool   t6_m1_choch    = false
+var int    t6_prev_parent = 0
 
-// M5 descending TL (bearish resistance — breaks bullish)
-var float m5_tl_bear_y1 = na
-var float m5_tl_bear_y2 = na
-var int   m5_tl_bear_x1 = na
-var int   m5_tl_bear_x2 = na
-if m5_fired and m5_swc == 2  // LH swing
-    m5_tl_bear_y1 := nz(m5_tl_bear_y2, m5_phi)
-    m5_tl_bear_x1 := nz(m5_tl_bear_x2, bar_index - 10)
-    m5_tl_bear_y2 := m5_phi
-    m5_tl_bear_x2 := bar_index
+// T6 parent direction — derived from M15's last swing classification
+int t6_parent_dir = (m15_swc == 1 or m15_swc == 4) ? 1 : (m15_swc == 2 or m15_swc == 3) ? -1 : 0
 
-float m5_tl_bear_proj = na
-if not na(m5_tl_bear_x1) and not na(m5_tl_bear_x2) and m5_tl_bear_x2 > m5_tl_bear_x1
-    float m5_slope_s = (m5_tl_bear_y2 - m5_tl_bear_y1) / (m5_tl_bear_x2 - m5_tl_bear_x1)
-    m5_tl_bear_proj := m5_tl_bear_y2 + m5_slope_s * (bar_index - m5_tl_bear_x2)
-bool m5_tl_bear_break = not na(m5_tl_bear_proj) and close > m5_tl_bear_proj and close[1] <= nz(m5_tl_bear_proj[1])
+// M1 CHoCH — grandchild confirms pullback exhaustion
+// Bullish parent: M1 HL (swc==4) = pullback exhausting, parent direction resuming
+// Bearish parent: M1 LH (swc==2) = pullback exhausting, parent direction resuming
+if t6_state == "PULLBACK" and m1_fired
+    if t6_dir > 0 and m1_swc == 4
+        t6_m1_choch := true
+    else if t6_dir < 0 and m1_swc == 2
+        t6_m1_choch := true
 
-// M15 ascending TL
-var float m15_tl_bull_y1 = na
-var float m15_tl_bull_y2 = na
-var int   m15_tl_bull_x1 = na
-var int   m15_tl_bull_x2 = na
-if m15_fired and m15_swc == 4
-    m15_tl_bull_y1 := nz(m15_tl_bull_y2, m15_plo)
-    m15_tl_bull_x1 := nz(m15_tl_bull_x2, bar_index - 10)
-    m15_tl_bull_y2 := m15_plo
-    m15_tl_bull_x2 := bar_index
+// M15 structural level — used to distinguish PULLBACK from REVERSING
+// Bullish M15: last HL demand bottom is the structural floor
+// Bearish M15: last LH supply top is the structural ceiling
+Zone t6_struct_zone = t6_parent_dir > 0 ? get_zone_by_cls(m15_dem, 4) : get_zone_by_cls(m15_sup, 2)
+float t6_struct_level = t6_parent_dir > 0 ? t6_struct_zone.bottom : t6_struct_zone.top
+bool t6_struct_valid = not na(t6_struct_level)
 
-float m15_tl_bull_proj = na
-if not na(m15_tl_bull_x1) and not na(m15_tl_bull_x2) and m15_tl_bull_x2 > m15_tl_bull_x1
-    float m15_slope_b = (m15_tl_bull_y2 - m15_tl_bull_y1) / (m15_tl_bull_x2 - m15_tl_bull_x1)
-    m15_tl_bull_proj := m15_tl_bull_y2 + m15_slope_b * (bar_index - m15_tl_bull_x2)
-bool m15_tl_bull_break = not na(m15_tl_bull_proj) and close < m15_tl_bull_proj and close[1] >= nz(m15_tl_bull_proj[1])
+// T6 state transitions — driven by M5 zone creation events
+string t6_prev_state = t6_state
 
-// M15 descending TL
-var float m15_tl_bear_y1 = na
-var float m15_tl_bear_y2 = na
-var int   m15_tl_bear_x1 = na
-var int   m15_tl_bear_x2 = na
-if m15_fired and m15_swc == 2
-    m15_tl_bear_y1 := nz(m15_tl_bear_y2, m15_phi)
-    m15_tl_bear_x1 := nz(m15_tl_bear_x2, bar_index - 10)
-    m15_tl_bear_y2 := m15_phi
-    m15_tl_bear_x2 := bar_index
+if m5_fired
+    bool is_with    = m5_zone_matches_dir(t6_parent_dir)
+    bool is_counter = m5_zone_matches_dir(-t6_parent_dir)
 
-float m15_tl_bear_proj = na
-if not na(m15_tl_bear_x1) and not na(m15_tl_bear_x2) and m15_tl_bear_x2 > m15_tl_bear_x1
-    float m15_slope_s = (m15_tl_bear_y2 - m15_tl_bear_y1) / (m15_tl_bear_x2 - m15_tl_bear_x1)
-    m15_tl_bear_proj := m15_tl_bear_y2 + m15_slope_s * (bar_index - m15_tl_bear_x2)
-bool m15_tl_bear_break = not na(m15_tl_bear_proj) and close > m15_tl_bear_proj and close[1] <= nz(m15_tl_bear_proj[1])
+    if t6_state == "IDLE"
+        // IDLE → PUSHING: first M5 zone in parent direction, inside parent zone
+        bool inside_parent = t6_parent_dir > 0 ? is_inside_zone(m15_dem) : is_inside_zone(m15_sup)
+        if is_with and inside_parent
+            t6_state      := "PUSHING"
+            t6_dir        := t6_parent_dir
+            t6_push_top   := t6_parent_dir > 0 ? m5_dem.get(0).top : m5_sup.get(0).top
+            t6_push_bot   := t6_parent_dir > 0 ? m5_dem.get(0).bottom : m5_sup.get(0).bottom
+            t6_zone_count := 1
+            t6_m1_choch   := false
+
+    else if t6_state == "PUSHING"
+        if is_with
+            // PUSHING → CONTINUING: next zone same dir, extends beyond push zone
+            bool extends = t6_dir > 0 ? (m5_dem.get(0).bottom > t6_push_top) : (m5_sup.get(0).top < t6_push_bot)
+            if extends
+                t6_state      := "CONTINUING"
+                t6_zone_count := t6_zone_count + 1
+            else
+                t6_zone_count := t6_zone_count + 1
+        else if is_counter
+            // PUSHING → PULLBACK or REVERSING
+            if t6_struct_valid
+                bool breaks_struct = t6_parent_dir > 0 ? (low < t6_struct_level) : (high > t6_struct_level)
+                if breaks_struct
+                    t6_state      := "REVERSING"
+                    t6_zone_count := 0
+                else
+                    t6_state       := "PULLBACK"
+                    t6_last_pb_top := is_counter and t6_parent_dir > 0 ? m5_sup.get(0).top : m5_dem.get(0).top
+                    t6_last_pb_bot := is_counter and t6_parent_dir > 0 ? m5_sup.get(0).bottom : m5_dem.get(0).bottom
+                    t6_zone_count  := 1
+                    t6_m1_choch    := false
+            else
+                // No structural level found — conservative: treat as REVERSING
+                t6_state      := "REVERSING"
+                t6_zone_count := 0
+
+    else if t6_state == "CONTINUING"
+        if is_with
+            t6_zone_count := t6_zone_count + 1
+        else if is_counter
+            // Same PULLBACK/REVERSING check as PUSHING
+            if t6_struct_valid
+                bool breaks_struct2 = t6_parent_dir > 0 ? (low < t6_struct_level) : (high > t6_struct_level)
+                if breaks_struct2
+                    t6_state      := "REVERSING"
+                    t6_zone_count := 0
+                else
+                    t6_state       := "PULLBACK"
+                    t6_last_pb_top := is_counter and t6_parent_dir > 0 ? m5_sup.get(0).top : m5_dem.get(0).top
+                    t6_last_pb_bot := is_counter and t6_parent_dir > 0 ? m5_sup.get(0).bottom : m5_dem.get(0).bottom
+                    t6_zone_count  := 1
+                    t6_m1_choch    := false
+            else
+                t6_state      := "REVERSING"
+                t6_zone_count := 0
+
+    else if t6_state == "PULLBACK"
+        if is_counter
+            // Additional pullback zone — update last_pb tracking
+            t6_last_pb_top := t6_parent_dir > 0 ? m5_sup.get(0).top : m5_dem.get(0).top
+            t6_last_pb_bot := t6_parent_dir > 0 ? m5_sup.get(0).bottom : m5_dem.get(0).bottom
+            t6_zone_count  := t6_zone_count + 1
+            // Check if this counter-zone breaks structural level
+            if t6_struct_valid
+                bool breaks_struct3 = t6_parent_dir > 0 ? (low < t6_struct_level) : (high > t6_struct_level)
+                if breaks_struct3
+                    t6_state      := "REVERSING"
+                    t6_zone_count := 0
+        else if is_with and t6_m1_choch
+            // Resolution A: zone at push zone level
+            bool at_push = t6_dir > 0 ? (m5_dem.get(0).bottom <= t6_push_top) : (m5_sup.get(0).top >= t6_push_bot)
+            // Resolution B: last pullback zone body-close broken
+            bool pb_broken = t6_dir > 0 ? (close > t6_last_pb_top) : (close < t6_last_pb_bot)
+            if at_push or pb_broken
+                t6_state      := "PUSHING"
+                t6_dir        := t6_parent_dir
+                t6_push_top   := t6_dir > 0 ? m5_dem.get(0).top : m5_sup.get(0).top
+                t6_push_bot   := t6_dir > 0 ? m5_dem.get(0).bottom : m5_sup.get(0).bottom
+                t6_zone_count := 1
+                t6_m1_choch   := false
+
+    else if t6_state == "REVERSING"
+        // Wait for M15 to confirm new direction
+        if is_with and t6_parent_dir != t6_dir
+            // M15 has flipped — this is first zone in new direction
+            t6_state      := "PUSHING"
+            t6_dir        := t6_parent_dir
+            t6_push_top   := t6_dir > 0 ? m5_dem.get(0).top : m5_sup.get(0).top
+            t6_push_bot   := t6_dir > 0 ? m5_dem.get(0).bottom : m5_sup.get(0).bottom
+            t6_zone_count := 1
+            t6_m1_choch   := false
+
+// State reset on M15 direction change
+// Compare against stored previous parent dir (not current-bar t6_parent_dir,
+// which already reflects this bar's m15_swc and would always match)
+if m15_fired
+    if t6_parent_dir != t6_prev_parent and t6_state != "REVERSING"
+        t6_state      := "IDLE"
+        t6_dir        := 0
+        t6_push_top   := na
+        t6_push_bot   := na
+        t6_zone_count := 0
+    t6_prev_parent := t6_parent_dir
+
+// Track state transitions for debug
+bool t6_changed = t6_state != t6_prev_state
+
+// --- T5: Parent=H1, Child=M15, Grandchild=M5 ---
+
+var string t5_state       = "IDLE"
+var int    t5_dir         = 0
+var float  t5_push_top    = na
+var float  t5_push_bot    = na
+var float  t5_last_pb_top = na
+var float  t5_last_pb_bot = na
+var int    t5_zone_count  = 0
+var bool   t5_m5_choch    = false
+var int    t5_prev_parent = 0
+
+// T5 parent direction — derived from H1's last swing classification
+int t5_parent_dir = (h1_swc == 1 or h1_swc == 4) ? 1 : (h1_swc == 2 or h1_swc == 3) ? -1 : 0
+
+// M5 CHoCH — grandchild confirms pullback exhaustion for T5
+if t5_state == "PULLBACK" and m5_fired
+    if t5_dir > 0 and m5_swc == 4
+        t5_m5_choch := true
+    else if t5_dir < 0 and m5_swc == 2
+        t5_m5_choch := true
+
+// T5 structural level — H1 HL demand bottom (bullish) or LH supply top (bearish)
+Zone t5_struct_zone = t5_parent_dir > 0 ? get_zone_by_cls(h1_dem, 4) : get_zone_by_cls(h1_sup, 2)
+float t5_struct_level = t5_parent_dir > 0 ? t5_struct_zone.bottom : t5_struct_zone.top
+bool t5_struct_valid = not na(t5_struct_level)
+
+// T5 state transitions — driven by M15 zone creation events
+string t5_prev_state = t5_state
+
+if m15_fired
+    bool is_with5    = m15_zone_matches_dir(t5_parent_dir)
+    bool is_counter5 = m15_zone_matches_dir(-t5_parent_dir)
+
+    if t5_state == "IDLE"
+        bool inside_parent5 = t5_parent_dir > 0 ? is_inside_zone(h1_dem) : is_inside_zone(h1_sup)
+        if is_with5 and inside_parent5
+            t5_state      := "PUSHING"
+            t5_dir        := t5_parent_dir
+            t5_push_top   := t5_dir > 0 ? m15_dem.get(0).top : m15_sup.get(0).top
+            t5_push_bot   := t5_dir > 0 ? m15_dem.get(0).bottom : m15_sup.get(0).bottom
+            t5_zone_count := 1
+            t5_m5_choch   := false
+
+    else if t5_state == "PUSHING"
+        if is_with5
+            bool extends5 = t5_dir > 0 ? (m15_dem.get(0).bottom > t5_push_top) : (m15_sup.get(0).top < t5_push_bot)
+            if extends5
+                t5_state      := "CONTINUING"
+                t5_zone_count := t5_zone_count + 1
+            else
+                t5_zone_count := t5_zone_count + 1
+        else if is_counter5
+            if t5_struct_valid
+                bool breaks_struct5 = t5_parent_dir > 0 ? (low < t5_struct_level) : (high > t5_struct_level)
+                if breaks_struct5
+                    t5_state      := "REVERSING"
+                    t5_zone_count := 0
+                else
+                    t5_state       := "PULLBACK"
+                    t5_last_pb_top := is_counter5 and t5_parent_dir > 0 ? m15_sup.get(0).top : m15_dem.get(0).top
+                    t5_last_pb_bot := is_counter5 and t5_parent_dir > 0 ? m15_sup.get(0).bottom : m15_dem.get(0).bottom
+                    t5_zone_count  := 1
+                    t5_m5_choch    := false
+            else
+                t5_state      := "REVERSING"
+                t5_zone_count := 0
+
+    else if t5_state == "CONTINUING"
+        if is_with5
+            t5_zone_count := t5_zone_count + 1
+        else if is_counter5
+            if t5_struct_valid
+                bool breaks_struct5b = t5_parent_dir > 0 ? (low < t5_struct_level) : (high > t5_struct_level)
+                if breaks_struct5b
+                    t5_state      := "REVERSING"
+                    t5_zone_count := 0
+                else
+                    t5_state       := "PULLBACK"
+                    t5_last_pb_top := is_counter5 and t5_parent_dir > 0 ? m15_sup.get(0).top : m15_dem.get(0).top
+                    t5_last_pb_bot := is_counter5 and t5_parent_dir > 0 ? m15_sup.get(0).bottom : m15_dem.get(0).bottom
+                    t5_zone_count  := 1
+                    t5_m5_choch    := false
+            else
+                t5_state      := "REVERSING"
+                t5_zone_count := 0
+
+    else if t5_state == "PULLBACK"
+        if is_counter5
+            t5_last_pb_top := t5_parent_dir > 0 ? m15_sup.get(0).top : m15_dem.get(0).top
+            t5_last_pb_bot := t5_parent_dir > 0 ? m15_sup.get(0).bottom : m15_dem.get(0).bottom
+            t5_zone_count  := t5_zone_count + 1
+            if t5_struct_valid
+                bool breaks_struct5c = t5_parent_dir > 0 ? (low < t5_struct_level) : (high > t5_struct_level)
+                if breaks_struct5c
+                    t5_state      := "REVERSING"
+                    t5_zone_count := 0
+        else if is_with5 and t5_m5_choch
+            bool at_push5 = t5_dir > 0 ? (m15_dem.get(0).bottom <= t5_push_top) : (m15_sup.get(0).top >= t5_push_bot)
+            bool pb_broken5 = t5_dir > 0 ? (close > t5_last_pb_top) : (close < t5_last_pb_bot)
+            if at_push5 or pb_broken5
+                t5_state      := "PUSHING"
+                t5_dir        := t5_parent_dir
+                t5_push_top   := t5_dir > 0 ? m15_dem.get(0).top : m15_sup.get(0).top
+                t5_push_bot   := t5_dir > 0 ? m15_dem.get(0).bottom : m15_sup.get(0).bottom
+                t5_zone_count := 1
+                t5_m5_choch   := false
+
+    else if t5_state == "REVERSING"
+        if is_with5 and t5_parent_dir != t5_dir
+            t5_state      := "PUSHING"
+            t5_dir        := t5_parent_dir
+            t5_push_top   := t5_dir > 0 ? m15_dem.get(0).top : m15_sup.get(0).top
+            t5_push_bot   := t5_dir > 0 ? m15_dem.get(0).bottom : m15_sup.get(0).bottom
+            t5_zone_count := 1
+            t5_m5_choch   := false
+
+// State reset on H1 direction change
+if h1_fired
+    if t5_parent_dir != t5_prev_parent and t5_state != "REVERSING"
+        t5_state      := "IDLE"
+        t5_dir        := 0
+        t5_push_top   := na
+        t5_push_bot   := na
+        t5_zone_count := 0
+    t5_prev_parent := t5_parent_dir
+
+// Track T5 state transitions for debug
+bool t5_changed = t5_state != t5_prev_state
+
+// T5 confidence — alignment between T5 and T6
+string t5_confidence = "MEDIUM"
+if t5_state == "PUSHING" or t5_state == "CONTINUING"
+    if (t5_dir > 0 and t6_dir > 0) or (t5_dir < 0 and t6_dir < 0)
+        t5_confidence := "HIGH"
+    else if (t5_dir > 0 and t6_dir < 0) or (t5_dir < 0 and t6_dir > 0)
+        t5_confidence := "LOW"
+else if t5_state == "REVERSING"
+    t5_confidence := "LOW"
 
 // =============================================================================
-// TERMINAL EXHAUSTION GATE
+// === SECTION 14: ENTRY SIGNALS
 // =============================================================================
 
-bool d_level_broken = d_swc != 0
+// Entry triggers — fire on M5 zone creation when T6 state matches
+// Note: reversal_fire uses t6_prev_state because the REVERSING → PUSHING
+// transition runs before this block (per spec evaluation order). When the
+// first M5 zone in the new direction fires, state transitions to PUSHING,
+// but the signal should fire as a REVERSAL entry (it's the resolution of
+// the reversal state, not the start of a new push).
+bool push_fire     = m5_fired and t6_state == "PUSHING"         and m5_zone_matches_dir(t6_dir) and t6_prev_state != "REVERSING"
+bool continue_fire = m5_fired and t6_state == "CONTINUING"      and m5_zone_matches_dir(t6_dir)
+bool pullback_fire = m5_fired and t6_state == "PULLBACK"        and m5_zone_matches_dir(-t6_dir)
+bool reversal_fire = m5_fired and t6_prev_state == "REVERSING"  and t6_state == "PUSHING" and m5_zone_matches_dir(t6_dir)
 
-bool h4_counter = false
-if d_dir < 0 and h4_dem.size() > 0
-    Zone z_h4c = h4_dem.get(0)
-    h4_counter := z_h4c.bottom < nz(d_plo)
-else if d_dir > 0 and h4_sup.size() > 0
-    Zone z_h4c = h4_sup.get(0)
-    h4_counter := z_h4c.top > nz(d_phi)
+// Rising-edge detection — fire once per state entry
+var bool push_prev     = false
+var bool continue_prev = false
+var bool pullback_prev = false
+var bool reversal_prev = false
 
-bool h1_count_met = h1_zone_cnt >= h1_ew_thr
-bool terminal_active = d_level_broken and h4_counter and h1_count_met and opp_nesting
+bool push_signal     = push_fire and not push_prev
+bool continue_signal = continue_fire and not continue_prev
+bool pullback_signal = pullback_fire and not pullback_prev
+bool reversal_signal = reversal_fire and not reversal_prev
 
-// =============================================================================
-// D-LEVEL CYCLE PHASE
-// =============================================================================
-
-var int   d_cycle_phase      = 0
-var bool  d_cycle_running    = false
-var float d_cycle_boundary_hi = na
-var float d_cycle_boundary_lo = na
-
-// Phase A entry: terminal exhaustion first fires
-if terminal_active and not d_cycle_running
-    d_cycle_phase      := 1
-    d_cycle_running    := true
-    if d_dir < 0
-        d_cycle_boundary_hi := nz(d_phi)
-        d_cycle_boundary_lo := h1_sup.size() > 0 ? h1_sup.get(0).bottom : nz(d_phi)
-    else
-        d_cycle_boundary_lo := nz(d_plo)
-        d_cycle_boundary_hi := h1_dem.size() > 0 ? h1_dem.get(0).top : nz(d_plo)
-
-if d_cycle_running
-    if d_cycle_phase == 1
-        if h4_counter
-            d_cycle_phase := 2
-    else if d_cycle_phase == 2
-        bool in_boundary = close >= d_cycle_boundary_lo and close <= d_cycle_boundary_hi
-        if in_boundary
-            d_cycle_phase := 3
-    else if d_cycle_phase == 3
-        if d_fired and d_swc != 0
-            d_cycle_phase := 4
-    else if d_cycle_phase == 4
-        if d_fired and ((d_dir < 0 and d_swc == 3) or (d_dir > 0 and d_swc == 1))
-            d_cycle_phase := 5
-    else if d_cycle_phase == 5
-        d_cycle_running := false
-        d_cycle_phase   := 0
-
-// Is there an M15 zone nested inside an H4 zone on the reversal side?
-is_m15_nested_h4(int reversal_dir) =>
-    bool nested = false
-    array<Zone> m15_z = reversal_dir > 0 ? m15_dem : m15_sup
-    array<Zone> h4_z  = reversal_dir > 0 ? h4_dem  : h4_sup
-    if m15_z.size() > 0 and h4_z.size() > 0
-        for int i = 0 to math.min(m15_z.size() - 1, 3)
-            Zone mz = m15_z.get(i)
-            for int j = 0 to math.min(h4_z.size() - 1, 3)
-                Zone hz = h4_z.get(j)
-                if mz.top <= hz.top and mz.bottom >= hz.bottom
-                    nested := true
-    nested
-
-// M5 zone proximity: is price inside the M5 zone we'd use for entry?
-bool at_m5_dem = is_inside_zone(m5_dem)
-bool at_m5_sup = is_inside_zone(m5_sup)
-
-// Model A: Terminal Reversal
-int reversal_dir = d_dir < 0 ? 1 : d_dir > 0 ? -1 : 0
-bool m15_tl_brk = reversal_dir > 0 ? m15_tl_bear_break : m15_tl_bull_break
-bool at_m5_a = reversal_dir > 0 ? at_m5_dem : at_m5_sup
-bool model_a = terminal_active and consume.score >= 2 and is_m15_nested_h4(reversal_dir) and m15_tl_brk and (cascade_dir == reversal_dir and cascade_level == "M5") and m1_cv == 3 and m1_sd == reversal_dir and at_m5_a
-
-var bool model_a_prev = false
-bool model_a_fire = model_a and not model_a_prev
-model_a_prev := model_a
-
-// Model B: Mode B Continuation — D-cycle Phase D push with full consumption
-bool at_m5_b = d_dir > 0 ? at_m5_dem : at_m5_sup
-bool model_b = d_cycle_phase == 4 and consume.score == 4 and (m5_fired or m15_fired) and at_m5_b
-
-var bool model_b_prev = false
-bool model_b_fire = model_b and not model_b_prev
-model_b_prev := model_b
+push_prev     := push_fire
+continue_prev := continue_fire
+pullback_prev := pullback_fire
+reversal_prev := reversal_fire
 
 // =============================================================================
-// ENTRY MODEL C: 1-2-3 Cascade Add-On
+// === SECTION 15: SL/TP COMPUTATION
 // =============================================================================
-int cascade_add_dir = cascade_dir
-bool in_zone_c = cascade_add_dir > 0 ? (is_inside_zone(m15_dem) or is_inside_zone(h1_dem)) : (is_inside_zone(m15_sup) or is_inside_zone(h1_sup))
-bool at_m5_c = cascade_add_dir > 0 ? at_m5_dem : at_m5_sup
-bool model_c = cascade_level == "M5" and m1_cv == 3 and m1_sd == cascade_add_dir and in_zone_c and at_m5_c
 
-var bool model_c_prev = false
-bool model_c_fire = model_c and not model_c_prev
-model_c_prev := model_c
+var float sig_entry = na
+var float sig_sl    = na
+var float sig_tp    = na
+var int   sig_dir   = 0
+var string sig_type = "—"
+float tick10 = syminfo.mintick * 10
+
+if push_signal
+    sig_type := "PUSH"
+    sig_dir  := t6_dir
+    if t6_dir > 0 and m5_dem.size() > 0
+        sig_entry := m5_dem.get(0).bottom
+        sig_sl    := t6_push_bot - tick10
+        if m15_sup.size() > 0
+            sig_tp := m15_sup.get(0).bottom
+    else if t6_dir < 0 and m5_sup.size() > 0
+        sig_entry := m5_sup.get(0).top
+        sig_sl    := t6_push_top + tick10
+        if m15_dem.size() > 0
+            sig_tp := m15_dem.get(0).top
+
+if continue_signal
+    sig_type := "CONT"
+    sig_dir  := t6_dir
+    if t6_dir > 0 and m5_dem.size() > 0
+        sig_entry := m5_dem.get(0).bottom
+        sig_sl    := m5_dem.get(0).bottom - tick10
+        if m15_sup.size() > 0
+            sig_tp := m15_sup.get(0).bottom
+    else if t6_dir < 0 and m5_sup.size() > 0
+        sig_entry := m5_sup.get(0).top
+        sig_sl    := m5_sup.get(0).top + tick10
+        if m15_dem.size() > 0
+            sig_tp := m15_dem.get(0).top
+
+if pullback_signal
+    sig_type := "PULL"
+    sig_dir  := -t6_dir
+    if sig_dir > 0 and m5_dem.size() > 0
+        sig_entry := m5_dem.get(0).bottom
+        sig_sl    := m5_dem.get(0).bottom - tick10
+        sig_tp    := t6_push_top
+    else if sig_dir < 0 and m5_sup.size() > 0
+        sig_entry := m5_sup.get(0).top
+        sig_sl    := m5_sup.get(0).top + tick10
+        sig_tp    := t6_push_bot
+
+if reversal_signal
+    sig_type := "REV"
+    sig_dir  := t6_dir
+    if t6_dir > 0 and m5_dem.size() > 0
+        sig_entry := m5_dem.get(0).bottom
+        Zone rev_sl = get_zone_by_cls(m15_dem, 4)
+        sig_sl := not na(rev_sl.bottom) ? rev_sl.bottom - tick10 : na
+        if m15_sup.size() > 0
+            sig_tp := m15_sup.get(0).bottom
+    else if t6_dir < 0 and m5_sup.size() > 0
+        sig_entry := m5_sup.get(0).top
+        Zone rev_sl2 = get_zone_by_cls(m15_sup, 2)
+        sig_sl := not na(rev_sl2.top) ? rev_sl2.top + tick10 : na
+        if m15_dem.size() > 0
+            sig_tp := m15_dem.get(0).top
+
 
 // =============================================================================
-// ENTRY MODEL D: Macro Bias Limit Order
-// =============================================================================
-bool m5_tl_brk_d = d_dir > 0 ? m5_tl_bull_break : m5_tl_bear_break
-bool in_zone_d = d_dir > 0 ? (is_inside_zone(h4_dem) or is_inside_zone(d_dem)) : (is_inside_zone(h4_sup) or is_inside_zone(d_sup))
-bool at_m5_d = d_dir > 0 ? at_m5_dem : at_m5_sup
-bool model_d = m5_tl_brk_d and in_zone_d and not terminal_active and at_m5_d
-
-var bool model_d_prev = false
-bool model_d_fire = model_d and not model_d_prev
-model_d_prev := model_d
-
-// =============================================================================
-// STRATEGY HELPERS
+// === TRADE HELPERS
 // =============================================================================
 
 // Direction filter gate
@@ -1499,129 +1694,49 @@ has_open(string id) =>
     found
 
 // =============================================================================
-// TRADE EXECUTION
+// === TRADE EXECUTION
 // =============================================================================
 
-// --- Model A: Terminal Reversal ---
-if model_a_fire and i_model_a and dir_ok(reversal_dir) and not has_open("Model_A")
-    float a_entry = na
-    float a_sl    = na
-    float a_tp    = na
-    if reversal_dir > 0 and m5_dem.size() > 0
-        Zone ez = m5_dem.get(0)
-        a_entry := ez.bottom
-    else if reversal_dir < 0 and m5_sup.size() > 0
-        Zone ez = m5_sup.get(0)
-        a_entry := ez.top
-    if reversal_dir > 0 and m1_sup.size() > 0
-        Zone sz = m1_sup.get(0)
-        a_sl := sz.top + syminfo.mintick * 10
-    else if reversal_dir < 0 and m1_dem.size() > 0
-        Zone sz = m1_dem.get(0)
-        a_sl := sz.bottom - syminfo.mintick * 10
-    if reversal_dir > 0 and h1_sup.size() > 0
-        Zone tz = h1_sup.get(0)
-        a_tp := tz.bottom
-    else if reversal_dir < 0 and h1_dem.size() > 0
-        Zone tz = h1_dem.get(0)
-        a_tp := tz.top
-    if not na(a_sl) and not na(a_tp) and not na(a_entry) and a_sl != a_entry
-        float qty = i_sizing_mode == "Fixed" ? i_lot_size : (strategy.equity * i_risk_pct / 100.0) / math.max(math.abs(a_entry - a_sl), syminfo.mintick)
-        if reversal_dir > 0
-            strategy.entry("Model_A", strategy.long, qty=qty)
-        else
-            strategy.entry("Model_A", strategy.short, qty=qty)
-        strategy.exit("Model_A_x", from_entry="Model_A", stop=a_sl, limit=a_tp)
+if push_signal and i_model_push and dir_ok(sig_dir) and not has_open("Push")
+    if not na(sig_sl) and not na(sig_tp) and sig_sl != sig_entry
+        float qty = i_sizing_mode == "Fixed" ? i_lot_size : (strategy.equity * i_risk_pct / 100.0) / math.max(math.abs(sig_entry - sig_sl), syminfo.mintick)
+        float adj_qty = t5_confidence == "MEDIUM" ? qty * 0.5 : t5_confidence == "LOW" ? 0.0 : qty
+        if adj_qty > 0
+            if sig_dir > 0
+                strategy.entry("Push", strategy.long, qty=adj_qty)
+            else
+                strategy.entry("Push", strategy.short, qty=adj_qty)
+            strategy.exit("Push_x", from_entry="Push", stop=sig_sl, limit=sig_tp)
 
-// --- Model B: Mode B Continuation ---
-if model_b_fire and i_model_b and dir_ok(d_dir) and not has_open("Model_B")
-    float b_entry = na
-    float b_sl    = na
-    float b_tp    = na
-    if d_dir > 0 and m5_dem.size() > 0
-        Zone ez = m5_dem.get(0)
-        b_entry := ez.bottom
-    else if d_dir < 0 and m5_sup.size() > 0
-        Zone ez = m5_sup.get(0)
-        b_entry := ez.top
-    if d_dir > 0 and m5_sup.size() > 0
-        Zone sz = m5_sup.get(0)
-        b_sl := sz.top + syminfo.mintick * 10
-    else if d_dir < 0 and m5_dem.size() > 0
-        Zone sz = m5_dem.get(0)
-        b_sl := sz.bottom - syminfo.mintick * 10
-    if d_dir > 0 and h4_sup.size() > 0
-        Zone tz = h4_sup.get(0)
-        b_tp := tz.bottom
-    else if d_dir < 0 and h4_dem.size() > 0
-        Zone tz = h4_dem.get(0)
-        b_tp := tz.top
-    if not na(b_sl) and not na(b_tp) and not na(b_entry) and b_sl != b_entry
-        float qty = i_sizing_mode == "Fixed" ? i_lot_size : (strategy.equity * i_risk_pct / 100.0) / math.max(math.abs(b_entry - b_sl), syminfo.mintick)
-        if d_dir > 0
-            strategy.entry("Model_B", strategy.long, qty=qty)
-        else
-            strategy.entry("Model_B", strategy.short, qty=qty)
-        strategy.exit("Model_B_x", from_entry="Model_B", stop=b_sl, limit=b_tp)
+if continue_signal and i_model_continue and dir_ok(sig_dir) and not has_open("Continue")
+    if not na(sig_sl) and not na(sig_tp) and sig_sl != sig_entry
+        float qty = i_sizing_mode == "Fixed" ? i_lot_size : (strategy.equity * i_risk_pct / 100.0) / math.max(math.abs(sig_entry - sig_sl), syminfo.mintick)
+        float adj_qty = t5_confidence == "MEDIUM" ? qty * 0.5 : t5_confidence == "LOW" ? 0.0 : qty
+        if adj_qty > 0
+            if sig_dir > 0
+                strategy.entry("Continue", strategy.long, qty=adj_qty)
+            else
+                strategy.entry("Continue", strategy.short, qty=adj_qty)
+            strategy.exit("Continue_x", from_entry="Continue", stop=sig_sl, limit=sig_tp)
 
-// --- Model C: Cascade Add-On ---
-if model_c_fire and i_model_c and dir_ok(cascade_add_dir) and not has_open("Model_C")
-    float c_entry = na
-    float c_sl    = na
-    float c_tp    = na
-    if cascade_add_dir > 0 and m5_dem.size() > 0
-        Zone ez = m5_dem.get(0)
-        c_entry := ez.bottom
-    else if cascade_add_dir < 0 and m5_sup.size() > 0
-        Zone ez = m5_sup.get(0)
-        c_entry := ez.top
-    if cascade_add_dir > 0 and m5_sup.size() > 0
-        Zone sz = m5_sup.get(0)
-        c_sl := sz.top + syminfo.mintick * 10
-    else if cascade_add_dir < 0 and m5_dem.size() > 0
-        Zone sz = m5_dem.get(0)
-        c_sl := sz.bottom - syminfo.mintick * 10
-    if cascade_add_dir > 0 and m15_sup.size() > 0
-        Zone tz = m15_sup.get(0)
-        c_tp := tz.bottom
-    else if cascade_add_dir < 0 and m15_dem.size() > 0
-        Zone tz = m15_dem.get(0)
-        c_tp := tz.top
-    if not na(c_sl) and not na(c_tp) and not na(c_entry) and c_sl != c_entry
-        float qty = i_sizing_mode == "Fixed" ? i_lot_size : (strategy.equity * i_risk_pct / 100.0) / math.max(math.abs(c_entry - c_sl), syminfo.mintick)
-        if cascade_add_dir > 0
-            strategy.entry("Model_C", strategy.long, qty=qty)
-        else
-            strategy.entry("Model_C", strategy.short, qty=qty)
-        strategy.exit("Model_C_x", from_entry="Model_C", stop=c_sl, limit=c_tp)
+if pullback_signal and i_model_pullback and dir_ok(sig_dir) and not has_open("Pullback")
+    if not na(sig_sl) and not na(sig_tp) and sig_sl != sig_entry
+        float qty = i_sizing_mode == "Fixed" ? i_lot_size : (strategy.equity * i_risk_pct / 100.0) / math.max(math.abs(sig_entry - sig_sl), syminfo.mintick)
+        float adj_qty = t5_confidence == "MEDIUM" ? qty * 0.5 : t5_confidence == "LOW" ? 0.0 : qty
+        if adj_qty > 0
+            if sig_dir > 0
+                strategy.entry("Pullback", strategy.long, qty=adj_qty)
+            else
+                strategy.entry("Pullback", strategy.short, qty=adj_qty)
+            strategy.exit("Pullback_x", from_entry="Pullback", stop=sig_sl, limit=sig_tp)
 
-// --- Model D: Macro Bias Limit ---
-if model_d_fire and i_model_d and dir_ok(d_dir) and not has_open("Model_D")
-    float d_entry_price = na
-    float d_sl_price    = na
-    float d_tp_price    = na
-    if d_dir > 0 and m5_dem.size() > 0
-        Zone ez = m5_dem.get(0)
-        d_entry_price := ez.bottom
-    else if d_dir < 0 and m5_sup.size() > 0
-        Zone ez = m5_sup.get(0)
-        d_entry_price := ez.top
-    if d_dir > 0 and m5_sup.size() > 0
-        Zone sz = m5_sup.get(0)
-        d_sl_price := sz.top + syminfo.mintick * 10
-    else if d_dir < 0 and m5_dem.size() > 0
-        Zone sz = m5_dem.get(0)
-        d_sl_price := sz.bottom - syminfo.mintick * 10
-    if d_dir > 0 and h4_sup.size() > 0
-        Zone tz = h4_sup.get(0)
-        d_tp_price := tz.bottom
-    else if d_dir < 0 and h4_dem.size() > 0
-        Zone tz = h4_dem.get(0)
-        d_tp_price := tz.top
-    if not na(d_sl_price) and not na(d_tp_price) and not na(d_entry_price) and d_sl_price != d_entry_price
-        float qty = i_sizing_mode == "Fixed" ? i_lot_size : (strategy.equity * i_risk_pct / 100.0) / math.max(math.abs(d_entry_price - d_sl_price), syminfo.mintick)
-        if d_dir > 0
-            strategy.entry("Model_D", strategy.long, qty=qty)
-        else
-            strategy.entry("Model_D", strategy.short, qty=qty)
-        strategy.exit("Model_D_x", from_entry="Model_D", stop=d_sl_price, limit=d_tp_price)
+if reversal_signal and i_model_reversal and dir_ok(sig_dir) and not has_open("Reversal")
+    if not na(sig_sl) and not na(sig_tp) and sig_sl != sig_entry
+        float qty = i_sizing_mode == "Fixed" ? i_lot_size : (strategy.equity * i_risk_pct / 100.0) / math.max(math.abs(sig_entry - sig_sl), syminfo.mintick)
+        float adj_qty = t5_confidence == "MEDIUM" ? qty * 0.5 : t5_confidence == "LOW" ? 0.0 : qty
+        if adj_qty > 0
+            if sig_dir > 0
+                strategy.entry("Reversal", strategy.long, qty=adj_qty)
+            else
+                strategy.entry("Reversal", strategy.short, qty=adj_qty)
+            strategy.exit("Reversal_x", from_entry="Reversal", stop=sig_sl, limit=sig_tp)
