@@ -51,21 +51,14 @@ def push_zone_tick(
       4. Reversal tagging
       5. BOS/CHoCH classification
     """
-    max_age_ms: int = max_age * tf_seconds * 1000
-    bar_ms: int = int(bar_time.timestamp() * 1000)
+    SOFT_CAP: int = 30  # Max zones per side per TF
     broken: list[PushZone] = []
 
-    # --- 1. Expire + break detection ---
+    # --- 1. Break detection (body-close only, no age expiry) ---
     for zones in (state.supply_zones, state.demand_zones):
         i: int = len(zones) - 1
         while i >= 0:
             z: PushZone = zones[i]
-            origin_ms: int = int(z.origin_time.timestamp() * 1000)
-            expired: bool = (bar_ms - origin_ms) > max_age_ms
-            if expired:
-                broken.append(zones.pop(i))
-                i -= 1
-                continue
             is_broken: bool = close > z.top if z.is_supply else close < z.bottom
             if is_broken:
                 broken.append(zones.pop(i))
@@ -89,55 +82,57 @@ def push_zone_tick(
     # --- 2. Zone creation ---
     if hi_fire and hi_ztop is not None and hi_zbot is not None and hi_ztop > hi_zbot:
         origin: pd.Timestamp = hi_time if hi_time is not None else bar_time
-        origin_ms = int(origin.timestamp() * 1000)
-        if (bar_ms - origin_ms) < max_age_ms:
-            state.sup_count += 1
-            z = PushZone(
-                top=hi_ztop,
-                bottom=hi_zbot,
-                is_supply=True,
-                origin_time=origin,
+        state.sup_count += 1
+        z = PushZone(
+            top=hi_ztop,
+            bottom=hi_zbot,
+            is_supply=True,
+            origin_time=origin,
+            timeframe=timeframe,
+            swing_cls=hi_txt,
+            count_num=state.sup_count,
+        )
+        state.supply_zones.append(z)
+        # Soft cap: evict oldest if exceeded
+        while len(state.supply_zones) > SOFT_CAP:
+            state.supply_zones.pop(0)
+        if bus is not None:
+            bus.emit(
+                EventID.ZONE_FIRE,
+                timestamp=bar_time,
                 timeframe=timeframe,
-                swing_cls=hi_txt,
-                count_num=state.sup_count,
+                payload={
+                    "top": z.top, "bot": z.bottom,
+                    "side": "supply", "swing_cls": hi_txt,
+                },
             )
-            state.supply_zones.append(z)
-            if bus is not None:
-                bus.emit(
-                    EventID.ZONE_FIRE,
-                    timestamp=bar_time,
-                    timeframe=timeframe,
-                    payload={
-                        "top": z.top, "bot": z.bottom,
-                        "side": "supply", "swing_cls": hi_txt,
-                    },
-                )
 
     if lo_fire and lo_ztop is not None and lo_zbot is not None and lo_ztop > lo_zbot:
         origin = lo_time if lo_time is not None else bar_time
-        origin_ms = int(origin.timestamp() * 1000)
-        if (bar_ms - origin_ms) < max_age_ms:
-            state.dem_count += 1
-            z = PushZone(
-                top=lo_ztop,
-                bottom=lo_zbot,
-                is_supply=False,
-                origin_time=origin,
+        state.dem_count += 1
+        z = PushZone(
+            top=lo_ztop,
+            bottom=lo_zbot,
+            is_supply=False,
+            origin_time=origin,
+            timeframe=timeframe,
+            swing_cls=lo_txt,
+            count_num=state.dem_count,
+        )
+        state.demand_zones.append(z)
+        # Soft cap: evict oldest if exceeded
+        while len(state.demand_zones) > SOFT_CAP:
+            state.demand_zones.pop(0)
+        if bus is not None:
+            bus.emit(
+                EventID.ZONE_FIRE,
+                timestamp=bar_time,
                 timeframe=timeframe,
-                swing_cls=lo_txt,
-                count_num=state.dem_count,
+                payload={
+                    "top": z.top, "bot": z.bottom,
+                    "side": "demand", "swing_cls": lo_txt,
+                },
             )
-            state.demand_zones.append(z)
-            if bus is not None:
-                bus.emit(
-                    EventID.ZONE_FIRE,
-                    timestamp=bar_time,
-                    timeframe=timeframe,
-                    payload={
-                        "top": z.top, "bot": z.bottom,
-                        "side": "demand", "swing_cls": lo_txt,
-                    },
-                )
 
     # --- 3-5. Push validation, reversal, BOS/CHoCH ---
     _push_validate(state, hi_fire, hi_txt, seq_hh, lo_fire, lo_txt, seq_ll)

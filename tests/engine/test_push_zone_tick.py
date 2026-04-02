@@ -141,7 +141,8 @@ class TestZoneBreak:
         assert len(state.supply_zones) == 1
         assert len(broken) == 0
 
-    def test_zone_expires_by_age(self):
+    def test_zone_not_expired_by_age(self):
+        """Zones should NOT be removed by age — only by body-close break."""
         state = PushZoneTickState()
         old_time = T0 - pd.Timedelta(hours=100)
         state.supply_zones.append(PushZone(
@@ -157,7 +158,42 @@ class TestZoneBreak:
             bar_time=T0, tf_seconds=TF_SECONDS, max_age=50,
             timeframe="H1",
         )
-        assert len(state.supply_zones) == 0
+        assert len(state.supply_zones) == 1  # Zone survives — no age expiry
+
+    def test_soft_cap_evicts_oldest(self):
+        """When more than 30 zones per side, oldest is evicted."""
+        state = PushZoneTickState()
+        for i in range(30):
+            state.supply_zones.append(PushZone(
+                top=1.3000 + i * 0.001, bottom=1.2990 + i * 0.001,
+                is_supply=True, origin_time=T0, timeframe="H1",
+            ))
+        # Fire a new supply zone — should evict oldest
+        push_zone_tick(
+            state=state, close=1.3500,
+            hi_fire=True, hi_ztop=1.3600, hi_zbot=1.3550,
+            hi_time=T1, hi_is_hh=False, hi_txt="LH", seq_hh=nan,
+            lo_fire=False, lo_ztop=None, lo_zbot=None,
+            lo_time=None, lo_is_ll=False, lo_txt="", seq_ll=nan,
+            bar_time=T1, tf_seconds=TF_SECONDS, max_age=50,
+            timeframe="H1",
+        )
+        assert len(state.supply_zones) <= 30  # Soft cap enforced
+
+    def test_zone_creation_ignores_age_check(self):
+        """New zones are created even when origin is old (age check removed)."""
+        state = PushZoneTickState()
+        push_zone_tick(
+            state=state, close=1.2900,
+            hi_fire=True, hi_ztop=1.3000, hi_zbot=1.2980,
+            hi_time=pd.Timestamp("2024-01-01"),  # Very old origin
+            hi_is_hh=False, hi_txt="LH", seq_hh=nan,
+            lo_fire=False, lo_ztop=None, lo_zbot=None,
+            lo_time=None, lo_is_ll=False, lo_txt="", seq_ll=nan,
+            bar_time=pd.Timestamp("2026-06-01"),
+            tf_seconds=TF_SECONDS, max_age=50, timeframe="H1",
+        )
+        assert len(state.supply_zones) == 1  # Zone created despite old origin
 
 
 class TestPushValidation:
