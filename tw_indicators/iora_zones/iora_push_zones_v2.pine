@@ -597,7 +597,16 @@ dash_position(string pos) =>
     string out = pos == "Top Left" ? position.top_left : pos == "Top Right" ? position.top_right : pos == "Bottom Right" ? position.bottom_right : position.bottom_left
     out
 
-dash_row(table tbl, int row_num, string tf_str, int trend_val, array<Zone> zones) =>
+unbroken_count(array<Zone> zones, bool is_supply, int reset_time) =>
+    int cnt = 0
+    if zones.size() > 0
+        for i = 0 to zones.size() - 1
+            Zone z = zones.get(i)
+            if z.is_supply == is_supply and z.origin_time >= reset_time
+                cnt += 1
+    cnt
+
+dash_row(table tbl, int row_num, string tf_str, int trend_val, array<Zone> zones, int sup_rst, int dem_rst, bool has_parent) =>
     string trend_txt = trend_val == 1 ? "BULL" : trend_val == -1 ? "BEAR" : "—"
     color  trend_clr = trend_val == 1 ? color.green : trend_val == -1 ? color.red : color.gray
     int sc = 0
@@ -612,36 +621,47 @@ dash_row(table tbl, int row_num, string tf_str, int trend_val, array<Zone> zones
                 dc += 1
             if z.is_push
                 string side = z.is_supply ? "S" : "D"
-                string suffix = z.struct_cls != "" ? "-" + z.struct_cls : ""
-                push_txt := side + " PUSH" + suffix
+                string swing = z.is_supply ? " LL" : " HH"
+                string suffix = z.struct_cls == "BOS" ? " BOS" : z.struct_cls == "CHoCH" ? " CHoCH" : ""
+                push_txt := side + swing + suffix
+    int ub_s = unbroken_count(zones, true, sup_rst)
+    int ub_d = unbroken_count(zones, false, dem_rst)
+    color s_clr = ub_s >= 8 ? color.red : ub_s >= 5 ? color.yellow : color.white
+    color d_clr = ub_d >= 8 ? color.red : ub_d >= 5 ? color.yellow : color.white
+    string s_txt = has_parent ? str.tostring(ub_s) : "—"
+    string d_txt = has_parent ? str.tostring(ub_d) : "—"
     table.cell(tbl, 0, row_num, tf_label(tf_str), text_size = size.tiny, text_color = color.white)
     table.cell(tbl, 1, row_num, trend_txt,          text_size = size.tiny, text_color = trend_clr)
     table.cell(tbl, 2, row_num, push_txt,            text_size = size.tiny, text_color = color.yellow)
-    table.cell(tbl, 3, row_num, str.tostring(sc) + "S " + str.tostring(dc) + "D", text_size = size.tiny, text_color = color.white)
+    table.cell(tbl, 3, row_num, s_txt,               text_size = size.tiny, text_color = s_clr)
+    table.cell(tbl, 4, row_num, d_txt,               text_size = size.tiny, text_color = d_clr)
+    table.cell(tbl, 5, row_num, str.tostring(sc) + "S " + str.tostring(dc) + "D", text_size = size.tiny, text_color = color.white)
     row_num + 1
 
 if i_dash and barstate.islast
     int tf_count = (i_tf0_on ? 1 : 0) + (i_tf1_on ? 1 : 0) + (i_tf2_on ? 1 : 0) + (i_tf3_on ? 1 : 0) + (i_tf4_on ? 1 : 0) + (i_tf5_on ? 1 : 0) + (i_tf6_on ? 1 : 0) + (i_tf7_on ? 1 : 0)
     if tf_count > 0
-        var table dash = table.new(dash_position(i_dash_pos), 4, tf_count + 1, bgcolor = color.new(#1a1a2e, 10), border_color = color.new(#ffffff, 80), border_width = 1, frame_color = color.new(#ffffff, 80), frame_width = 1)
+        var table dash = table.new(dash_position(i_dash_pos), 6, tf_count + 1, bgcolor = color.new(#1a1a2e, 10), border_color = color.new(#ffffff, 80), border_width = 1, frame_color = color.new(#ffffff, 80), frame_width = 1)
         table.cell(dash, 0, 0, "TF",    text_size = size.tiny, text_color = color.white)
         table.cell(dash, 1, 0, "Trend",  text_size = size.tiny, text_color = color.white)
         table.cell(dash, 2, 0, "Push",   text_size = size.tiny, text_color = color.white)
-        table.cell(dash, 3, 0, "Zones",  text_size = size.tiny, text_color = color.white)
+        table.cell(dash, 3, 0, "#S",     text_size = size.tiny, text_color = color.white)
+        table.cell(dash, 4, 0, "#D",     text_size = size.tiny, text_color = color.white)
+        table.cell(dash, 5, 0, "Zones",  text_size = size.tiny, text_color = color.white)
         int row = 1
-        if i_tf0_on
-            row := dash_row(dash, row, i_tf0, trend0, zones0)
-        if i_tf1_on
-            row := dash_row(dash, row, i_tf1, trend1, zones1)
-        if i_tf2_on
-            row := dash_row(dash, row, i_tf2, trend2, zones2)
-        if i_tf3_on
-            row := dash_row(dash, row, i_tf3, trend3, zones3)
-        if i_tf4_on
-            row := dash_row(dash, row, i_tf4, trend4, zones4)
-        if i_tf5_on
-            row := dash_row(dash, row, i_tf5, trend5, zones5)
-        if i_tf6_on
-            row := dash_row(dash, row, i_tf6, trend6, zones6)
         if i_tf7_on
-            row := dash_row(dash, row, i_tf7, trend7, zones7)
+            row := dash_row(dash, row, i_tf7, trend7, zones7, srt7, drt7, false)
+        if i_tf6_on
+            row := dash_row(dash, row, i_tf6, trend6, zones6, srt6, drt6, i_tf7_on)
+        if i_tf5_on
+            row := dash_row(dash, row, i_tf5, trend5, zones5, srt5, drt5, i_tf6_on)
+        if i_tf4_on
+            row := dash_row(dash, row, i_tf4, trend4, zones4, srt4, drt4, i_tf5_on)
+        if i_tf3_on
+            row := dash_row(dash, row, i_tf3, trend3, zones3, srt3, drt3, i_tf4_on)
+        if i_tf2_on
+            row := dash_row(dash, row, i_tf2, trend2, zones2, srt2, drt2, i_tf3_on)
+        if i_tf1_on
+            row := dash_row(dash, row, i_tf1, trend1, zones1, srt1, drt1, i_tf3_on)
+        if i_tf0_on
+            row := dash_row(dash, row, i_tf0, trend0, zones0, srt0, drt0, i_tf2_on)
