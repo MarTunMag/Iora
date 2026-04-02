@@ -450,77 +450,6 @@ if w_zone_fired
     check_nesting(newest_w, mn_sup, mn_dem, "MN")
 
 // =============================================================================
-// === L2: TRIPLET EVENT DISPATCH
-// =============================================================================
-
-if i_layer_2 and i_triplets
-    // --- T1: MN → W → D ---
-    // Parent reset: MN zone fires
-    if mn_zone_fired and mn_sup.size() > 0 and mn_zone_side < 0
-        FractalZone pz = mn_sup.get(0)
-        reset_triplet(t1, pz)
-    if mn_zone_fired and mn_dem.size() > 0 and mn_zone_side > 0
-        FractalZone pz = mn_dem.get(0)
-        reset_triplet(t1, pz)
-    // Child update: W zone fires
-    if w_zone_fired
-        FractalZone cz = w_zone_side < 0 ? w_sup.get(0) : w_dem.get(0)
-        update_child(t1, cz, w_sup, w_dem)
-    // Grandchild update: D zone fires
-    if d_zone_fired
-        FractalZone gz = d_zone_side < 0 ? d_sup.get(0) : d_dem.get(0)
-        update_grandchild(t1, gz)
-
-    // --- T2: W → D → H4 ---
-    if w_zone_fired and w_sup.size() > 0 and w_zone_side < 0
-        FractalZone pz = w_sup.get(0)
-        reset_triplet(t2, pz)
-    if w_zone_fired and w_dem.size() > 0 and w_zone_side > 0
-        FractalZone pz = w_dem.get(0)
-        reset_triplet(t2, pz)
-    if d_zone_fired
-        FractalZone cz = d_zone_side < 0 ? d_sup.get(0) : d_dem.get(0)
-        update_child(t2, cz, d_sup, d_dem)
-    if h4_zone_fired
-        FractalZone gz = h4_zone_side < 0 ? h4_sup.get(0) : h4_dem.get(0)
-        update_grandchild(t2, gz)
-
-    // --- T3: D → H4 → H1 ---
-    if d_zone_fired and d_sup.size() > 0 and d_zone_side < 0
-        FractalZone pz = d_sup.get(0)
-        reset_triplet(t3, pz)
-    if d_zone_fired and d_dem.size() > 0 and d_zone_side > 0
-        FractalZone pz = d_dem.get(0)
-        reset_triplet(t3, pz)
-    if h4_zone_fired
-        FractalZone cz = h4_zone_side < 0 ? h4_sup.get(0) : h4_dem.get(0)
-        update_child(t3, cz, h4_sup, h4_dem)
-    if h1_zone_fired
-        FractalZone gz = h1_zone_side < 0 ? h1_sup.get(0) : h1_dem.get(0)
-        update_grandchild(t3, gz)
-
-    // --- Per-bar pullback resolution ---
-    check_pullback_resolution(t1, w_sup, w_dem)
-    check_pullback_resolution(t2, d_sup, d_dem)
-    check_pullback_resolution(t3, h4_sup, h4_dem)
-
-// =============================================================================
-// === L1: BREAK + EXPIRY CALLS FOR ALL 10 ARRAYS
-// =============================================================================
-
-if i_layer_1
-    check_zone_breaks(h1_sup, true)
-    check_zone_breaks(h1_dem, false)
-    check_zone_breaks(h4_sup, true)
-    check_zone_breaks(h4_dem, false)
-    check_zone_breaks(d_sup, true)
-    check_zone_breaks(d_dem, false)
-    check_zone_breaks(w_sup, true)
-    check_zone_breaks(w_dem, false)
-    check_zone_breaks(mn_sup, true)
-    check_zone_breaks(mn_dem, false)
-
-// =============================================================================
 // === L2: TRIPLET STATE UDT + INSTANCES
 // =============================================================================
 
@@ -684,6 +613,77 @@ check_pullback_resolution(TripletState ts, array<FractalZone> child_sup, array<F
                                 ts.cont_bars.clear()
                             if not na(ts.pb_bars)
                                 ts.pb_bars.clear()
+
+// =============================================================================
+// === L2: TRIPLET EVENT DISPATCH
+// =============================================================================
+
+if i_layer_2 and i_triplets
+    // --- T1: MN → W → D ---
+    // Parent reset: MN zone fires
+    if mn_zone_fired and mn_sup.size() > 0 and mn_zone_side < 0
+        FractalZone pz = mn_sup.get(0)
+        reset_triplet(t1, pz)
+    if mn_zone_fired and mn_dem.size() > 0 and mn_zone_side > 0
+        FractalZone pz = mn_dem.get(0)
+        reset_triplet(t1, pz)
+    // Child update: W zone fires
+    if w_zone_fired
+        FractalZone cz = w_zone_side < 0 ? w_sup.get(0) : w_dem.get(0)
+        update_child(t1, cz, w_sup, w_dem)
+    // Grandchild update: D zone fires
+    if d_zone_fired
+        FractalZone gz = d_zone_side < 0 ? d_sup.get(0) : d_dem.get(0)
+        update_grandchild(t1, gz)
+
+    // --- T2: W → D → H4 ---
+    if w_zone_fired and w_sup.size() > 0 and w_zone_side < 0
+        FractalZone pz = w_sup.get(0)
+        reset_triplet(t2, pz)
+    if w_zone_fired and w_dem.size() > 0 and w_zone_side > 0
+        FractalZone pz = w_dem.get(0)
+        reset_triplet(t2, pz)
+    if d_zone_fired
+        FractalZone cz = d_zone_side < 0 ? d_sup.get(0) : d_dem.get(0)
+        update_child(t2, cz, d_sup, d_dem)
+    if h4_zone_fired
+        FractalZone gz = h4_zone_side < 0 ? h4_sup.get(0) : h4_dem.get(0)
+        update_grandchild(t2, gz)
+
+    // --- T3: D → H4 → H1 ---
+    if d_zone_fired and d_sup.size() > 0 and d_zone_side < 0
+        FractalZone pz = d_sup.get(0)
+        reset_triplet(t3, pz)
+    if d_zone_fired and d_dem.size() > 0 and d_zone_side > 0
+        FractalZone pz = d_dem.get(0)
+        reset_triplet(t3, pz)
+    if h4_zone_fired
+        FractalZone cz = h4_zone_side < 0 ? h4_sup.get(0) : h4_dem.get(0)
+        update_child(t3, cz, h4_sup, h4_dem)
+    if h1_zone_fired
+        FractalZone gz = h1_zone_side < 0 ? h1_sup.get(0) : h1_dem.get(0)
+        update_grandchild(t3, gz)
+
+    // --- Per-bar pullback resolution ---
+    check_pullback_resolution(t1, w_sup, w_dem)
+    check_pullback_resolution(t2, d_sup, d_dem)
+    check_pullback_resolution(t3, h4_sup, h4_dem)
+
+// =============================================================================
+// === L1: BREAK + EXPIRY CALLS FOR ALL 10 ARRAYS
+// =============================================================================
+
+if i_layer_1
+    check_zone_breaks(h1_sup, true)
+    check_zone_breaks(h1_dem, false)
+    check_zone_breaks(h4_sup, true)
+    check_zone_breaks(h4_dem, false)
+    check_zone_breaks(d_sup, true)
+    check_zone_breaks(d_dem, false)
+    check_zone_breaks(w_sup, true)
+    check_zone_breaks(w_dem, false)
+    check_zone_breaks(mn_sup, true)
+    check_zone_breaks(mn_dem, false)
 
 // =============================================================================
 // === L2: REVERSAL TARGET MARKING (Rule 11)
