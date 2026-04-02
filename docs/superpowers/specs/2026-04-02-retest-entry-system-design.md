@@ -33,10 +33,10 @@ Add fields to `PushZone` dataclass:
 | `birth_price_distance` | `float` | Distance from zone midpoint to close price at creation. Fresh-flip zones are near 0; zones where price already moved away are larger. Measured in ATR(14) of the zone's own TF for cross-symbol and cross-TF comparability. |
 | `birth_bias_d` | `str` | Daily bias state at zone creation: `"HH_push"`, `"LH_pullback"`, `"LL_push"`, `"HL_pullback"`, `"unknown"` |
 | `birth_bias_w` | `str` | Weekly context at zone creation: `"inside_w_zone"`, `"pushing_from_w"`, `"pulling_to_w"`, `"unknown"` |
-| `birth_period_pattern` | `str` | Period-tracker pattern at creation, derived from the 3-deep period history on the zone's own TF. Values: `"HH_HL"` (strong bull), `"LH_LL"` (strong bear), `"HH_LL"` (expansion), `"LH_HL"` (compression), `"mixed"`. Computed from `PeriodTracker.prev_highs[0:2]` and `prev_lows[0:2]` at creation time. |
+| `birth_period_pattern` | `str` | Period-tracker pattern at creation, derived from the 3-deep period history on the zone's own TF. Values: `"HH_HL"` (bull push), `"LH_LL"` (bear push), `"HH_LL"` (expansion), `"LH_HL"` (compression), `"mixed"`. Computed from `PeriodTracker.prev_highs[0:2]` and `prev_lows[0:2]` at creation time. Note: uses short 4-letter form (`HH_HL`) since it's a compact zone field. The bias timeline (Level 2) uses the same computation but with descriptive suffixes (`HH_HL_bull_push`) for readability in reports. Both encode the same (high_pattern, low_pattern) pair. |
 | `replacement_count` | `int` | How many same-TF same-side zones have been created since this one. When a new zone fires on TF X side S, ALL existing active zones on TF X side S have their `replacement_count` incremented by 1. This is performed by the orchestrator (`push_zone_engine.py`) after the tick function returns newly created zones, since the orchestrator has access to the full zone list per TF. |
 | `test_count` | `int` | Number of times price has touched this zone. A "touch" is defined as: for demand zones, bar low <= zone.top AND bar close > zone.bottom (wick entered but didn't break); for supply zones, bar high >= zone.bottom AND bar close < zone.top. Incremented by the orchestrator during the per-bar loop, checking all active zones against the current bar's OHLC. This runs at Level 0 so the count is available for all higher levels. |
-| `first_test_bar` | `int` | Bar index of first retest (-1 if untested). Set by the orchestrator on the first bar where `test_count` increments from 0 to 1. |
+| `first_test_time` | `Timestamp | None` | Timestamp of first retest (`None` if untested). Set by the orchestrator on the first bar where `test_count` increments from 0 to 1. Uses timestamp instead of bar index for cross-session/cross-symbol comparability. |
 
 Existing `PushZone` fields (`top`, `bottom`, `is_supply`, `origin_time`, `timeframe`, `is_push`, `is_reversal`, `is_terminal`, `struct_cls`, `swing_cls`, `count_num`) remain unchanged.
 
@@ -185,7 +185,7 @@ Events counted per combination of:
 | Touch type | wick_touch, body_close, near_miss, break_through |
 | Bias alignment | with_daily, against_daily, at_transition, neutral |
 | Zone role | push, continuation, pullback, reversal, any | Same derivation as Level 4 sweep dimension (see definition above) |
-| Zone age bucket | fresh (0-10 bars), young (10-50), mature (50-200), old (200+) |
+| Zone age bucket | fresh (0-10 bars), young (10-50), mature (50-200), old (200+) | Note: bar counts are on the zone's own TF. A "fresh" D1 zone (0-10 D1 bars = 0-10 days) is intentionally different from a "fresh" M1 zone (0-10 minutes). Cross-TF comparison uses the zone's TF label as context — the age bucket is always relative to the zone's native timeframe. |
 | Zone test count | first_touch, retested_1, retested_2plus |
 
 ### Output
