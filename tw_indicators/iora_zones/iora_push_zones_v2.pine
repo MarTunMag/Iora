@@ -241,9 +241,13 @@ method delete_zone(array<Zone> zones, int idx) =>
         box.delete(z.bx)
     zones.remove(idx)
 
-method process(array<Zone> zones, bool fire, float ztop, float zbot, bool is_sup, int z_time, string hi_txt, string lo_txt, float seq_hh_val, float seq_ll_val, int trend_val, string tf_str, float prev_push_hi, float prev_push_lo) =>
+method process(array<Zone> zones, bool fire, float ztop, float zbot, bool is_sup, int z_time, string hi_txt, string lo_txt, float seq_hh_val, float seq_ll_val, int trend_val, string tf_str, float prev_push_hi, float prev_push_lo, array<Zone> parent_zones, bool parent_fire, bool parent_is_sup, int sup_count_in, int dem_count_in, int sup_reset_time_in, int dem_reset_time_in) =>
     int tf_ms  = timeframe.in_seconds(tf_str) * 1000
     int max_ms = tf_max_age(tf_str) * tf_ms
+    int new_sup_count = sup_count_in
+    int new_dem_count = dem_count_in
+    int new_sup_reset = sup_reset_time_in
+    int new_dem_reset = dem_reset_time_in
 
     if zones.size() > 0
         for i = zones.size() - 1 to 0
@@ -346,7 +350,7 @@ method process(array<Zone> zones, bool fire, float ztop, float zbot, bool is_sup
                     break
             new_push_hi := seq_hh_val
 
-    [new_push_hi, new_push_lo]
+    [new_push_hi, new_push_lo, new_sup_count, new_dem_count, new_sup_reset, new_dem_reset]
 
 // =============================================================================
 // S7 — DATA REQUESTS (8 calls on raw OHLC)
@@ -447,45 +451,70 @@ var float ph5 = na, var float pl5 = na
 var float ph6 = na, var float pl6 = na
 var float ph7 = na, var float pl7 = na
 
-if i_tf0_on
-    [nph0, npl0] = zones0.process(f0, zt0, zb0, s0, tm0, h1s0, l1s0, hh0, ll0, trend0, i_tf0, ph0, pl0)
-    ph0 := nph0
-    pl0 := npl0
+var int sc0 = 0, var int dc0 = 0, var int srt0 = 0, var int drt0 = 0
+var int sc1 = 0, var int dc1 = 0, var int srt1 = 0, var int drt1 = 0
+var int sc2 = 0, var int dc2 = 0, var int srt2 = 0, var int drt2 = 0
+var int sc3 = 0, var int dc3 = 0, var int srt3 = 0, var int drt3 = 0
+var int sc4 = 0, var int dc4 = 0, var int srt4 = 0, var int drt4 = 0
+var int sc5 = 0, var int dc5 = 0, var int srt5 = 0, var int drt5 = 0
+var int sc6 = 0, var int dc6 = 0, var int srt6 = 0, var int drt6 = 0
+var int sc7 = 0, var int dc7 = 0, var int srt7 = 0, var int drt7 = 0
 
-if i_tf1_on
-    [nph1, npl1] = zones1.process(f1, zt1, zb1, s1, tm1, h1s1, l1s1, hh1, ll1, trend1, i_tf1, ph1, pl1)
-    ph1 := nph1
-    pl1 := npl1
-
-if i_tf2_on
-    [nph2, npl2] = zones2.process(f2, zt2, zb2, s2, tm2, h1s2, l1s2, hh2, ll2, trend2, i_tf2, ph2, pl2)
-    ph2 := nph2
-    pl2 := npl2
-
-if i_tf3_on
-    [nph3, npl3] = zones3.process(f3, zt3, zb3, s3, tm3, h1s3, l1s3, hh3, ll3, trend3, i_tf3, ph3, pl3)
-    ph3 := nph3
-    pl3 := npl3
-
-if i_tf4_on
-    [nph4, npl4] = zones4.process(f4, zt4, zb4, s4, tm4, h1s4, l1s4, hh4, ll4, trend4, i_tf4, ph4, pl4)
-    ph4 := nph4
-    pl4 := npl4
-
-if i_tf5_on
-    [nph5, npl5] = zones5.process(f5, zt5, zb5, s5, tm5, h1s5, l1s5, hh5, ll5, trend5, i_tf5, ph5, pl5)
-    ph5 := nph5
-    pl5 := npl5
-
-if i_tf6_on
-    [nph6, npl6] = zones6.process(f6, zt6, zb6, s6, tm6, h1s6, l1s6, hh6, ll6, trend6, i_tf6, ph6, pl6)
-    ph6 := nph6
-    pl6 := npl6
+// Process HIGH → LOW: parents populate before children check nesting
+var array<Zone> _empty = array.new<Zone>()  // READ-ONLY — never push/modify this array
 
 if i_tf7_on
-    [nph7, npl7] = zones7.process(f7, zt7, zb7, s7, tm7, h1s7, l1s7, hh7, ll7, trend7, i_tf7, ph7, pl7)
-    ph7 := nph7
-    pl7 := npl7
+    [nph7, npl7, nsc7, ndc7, nsrt7, ndrt7] = zones7.process(f7, zt7, zb7, s7, tm7, h1s7, l1s7, hh7, ll7, trend7, i_tf7, ph7, pl7, _empty, false, false, sc7, dc7, srt7, drt7)
+    ph7 := nph7, pl7 := npl7, sc7 := nsc7, dc7 := ndc7, srt7 := nsrt7, drt7 := ndrt7
+
+if i_tf6_on
+    array<Zone> p6 = i_tf7_on ? zones7 : _empty
+    bool pf6 = i_tf7_on ? f7 : false
+    bool ps6 = i_tf7_on ? s7 : false
+    [nph6, npl6, nsc6, ndc6, nsrt6, ndrt6] = zones6.process(f6, zt6, zb6, s6, tm6, h1s6, l1s6, hh6, ll6, trend6, i_tf6, ph6, pl6, p6, pf6, ps6, sc6, dc6, srt6, drt6)
+    ph6 := nph6, pl6 := npl6, sc6 := nsc6, dc6 := ndc6, srt6 := nsrt6, drt6 := ndrt6
+
+if i_tf5_on
+    array<Zone> p5 = i_tf6_on ? zones6 : _empty
+    bool pf5 = i_tf6_on ? f6 : false
+    bool ps5 = i_tf6_on ? s6 : false
+    [nph5, npl5, nsc5, ndc5, nsrt5, ndrt5] = zones5.process(f5, zt5, zb5, s5, tm5, h1s5, l1s5, hh5, ll5, trend5, i_tf5, ph5, pl5, p5, pf5, ps5, sc5, dc5, srt5, drt5)
+    ph5 := nph5, pl5 := npl5, sc5 := nsc5, dc5 := ndc5, srt5 := nsrt5, drt5 := ndrt5
+
+if i_tf4_on
+    array<Zone> p4 = i_tf5_on ? zones5 : _empty
+    bool pf4 = i_tf5_on ? f5 : false
+    bool ps4 = i_tf5_on ? s5 : false
+    [nph4, npl4, nsc4, ndc4, nsrt4, ndrt4] = zones4.process(f4, zt4, zb4, s4, tm4, h1s4, l1s4, hh4, ll4, trend4, i_tf4, ph4, pl4, p4, pf4, ps4, sc4, dc4, srt4, drt4)
+    ph4 := nph4, pl4 := npl4, sc4 := nsc4, dc4 := ndc4, srt4 := nsrt4, drt4 := ndrt4
+
+if i_tf3_on
+    array<Zone> p3 = i_tf4_on ? zones4 : _empty
+    bool pf3 = i_tf4_on ? f4 : false
+    bool ps3 = i_tf4_on ? s4 : false
+    [nph3, npl3, nsc3, ndc3, nsrt3, ndrt3] = zones3.process(f3, zt3, zb3, s3, tm3, h1s3, l1s3, hh3, ll3, trend3, i_tf3, ph3, pl3, p3, pf3, ps3, sc3, dc3, srt3, drt3)
+    ph3 := nph3, pl3 := npl3, sc3 := nsc3, dc3 := ndc3, srt3 := nsrt3, drt3 := ndrt3
+
+if i_tf2_on
+    array<Zone> p2 = i_tf3_on ? zones3 : _empty
+    bool pf2 = i_tf3_on ? f3 : false
+    bool ps2 = i_tf3_on ? s3 : false
+    [nph2, npl2, nsc2, ndc2, nsrt2, ndrt2] = zones2.process(f2, zt2, zb2, s2, tm2, h1s2, l1s2, hh2, ll2, trend2, i_tf2, ph2, pl2, p2, pf2, ps2, sc2, dc2, srt2, drt2)
+    ph2 := nph2, pl2 := npl2, sc2 := nsc2, dc2 := ndc2, srt2 := nsrt2, drt2 := ndrt2
+
+if i_tf1_on
+    array<Zone> p1 = i_tf3_on ? zones3 : _empty
+    bool pf1 = i_tf3_on ? f3 : false
+    bool ps1 = i_tf3_on ? s3 : false
+    [nph1, npl1, nsc1, ndc1, nsrt1, ndrt1] = zones1.process(f1, zt1, zb1, s1, tm1, h1s1, l1s1, hh1, ll1, trend1, i_tf1, ph1, pl1, p1, pf1, ps1, sc1, dc1, srt1, drt1)
+    ph1 := nph1, pl1 := npl1, sc1 := nsc1, dc1 := ndc1, srt1 := nsrt1, drt1 := ndrt1
+
+if i_tf0_on
+    array<Zone> p0 = i_tf2_on ? zones2 : _empty
+    bool pf0 = i_tf2_on ? f2 : false
+    bool ps0 = i_tf2_on ? s2 : false
+    [nph0, npl0, nsc0, ndc0, nsrt0, ndrt0] = zones0.process(f0, zt0, zb0, s0, tm0, h1s0, l1s0, hh0, ll0, trend0, i_tf0, ph0, pl0, p0, pf0, ps0, sc0, dc0, srt0, drt0)
+    ph0 := nph0, pl0 := npl0, sc0 := nsc0, dc0 := ndc0, srt0 := nsrt0, drt0 := ndrt0
 
 // =============================================================================
 // S10 — DASHBOARD
