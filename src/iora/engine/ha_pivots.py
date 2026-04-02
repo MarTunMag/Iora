@@ -55,6 +55,11 @@ def compute_pivot_events(ohlc: pd.DataFrame, doji_pct: float = 5.0) -> pd.DataFr
     ztop = np.full(n, np.nan, dtype=float)
     zbot = np.full(n, np.nan, dtype=float)
 
+    seq_hh = np.full(n, np.nan, dtype=float)
+    seq_ll = np.full(n, np.nan, dtype=float)
+    hi_txt = np.full(n, "", dtype=object)
+    lo_txt = np.full(n, "", dtype=object)
+
     for i in range(1, n):
         # Supply pivot: current bar is red, previous was blue
         if is_red[i] and is_blue[i - 1]:
@@ -78,6 +83,9 @@ def compute_pivot_events(ohlc: pd.DataFrame, doji_pct: float = 5.0) -> pd.DataFr
             hi_time[i] = ohlc.index[ext_i].to_datetime64()
             hi_is_hh[i] = bool(np.isnan(prev_hi) or rhi > prev_hi)
             prev_hi = rhi
+
+            seq_hh[i] = rhi
+            hi_txt[i] = "HH" if hi_is_hh[i] else "LH"
 
             ztop[i] = rhi
             zbot[i] = ha_l[i] if doji else ha_l[i - 1]
@@ -105,6 +113,9 @@ def compute_pivot_events(ohlc: pd.DataFrame, doji_pct: float = 5.0) -> pd.DataFr
             lo_is_ll[i] = bool(np.isnan(prev_lo) or rlo < prev_lo)
             prev_lo = rlo
 
+            seq_ll[i] = rlo
+            lo_txt[i] = "LL" if lo_is_ll[i] else "HL"
+
             ztop[i] = ha_h[i] if doji else ha_h[i - 1]
             zbot[i] = rlo
 
@@ -118,6 +129,10 @@ def compute_pivot_events(ohlc: pd.DataFrame, doji_pct: float = 5.0) -> pd.DataFr
             "lo_price": lo_price,
             "lo_time": pd.to_datetime(lo_time),
             "lo_is_ll": lo_is_ll,
+            "seq_hh": seq_hh,
+            "seq_ll": seq_ll,
+            "hi_txt": hi_txt,
+            "lo_txt": lo_txt,
             "ztop": ztop,
             "zbot": zbot,
         },
