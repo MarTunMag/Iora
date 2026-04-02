@@ -102,6 +102,65 @@
             </select>
         </div>
 
+        <!-- Backtest -->
+        <div class="sidebar-section" id="backtest-section">
+            <h3>Backtest</h3>
+
+            <label>SL Mode</label>
+            <select id="bt-sl-mode">
+                <option value="zone">Zone</option>
+                <option value="atr" selected>ATR</option>
+                <option value="structure">Structure</option>
+                <option value="fixed_pips">Fixed Pips</option>
+            </select>
+
+            <label>TP Mode</label>
+            <select id="bt-tp-mode">
+                <option value="zone">Zone</option>
+                <option value="fixed_rr" selected>Fixed R:R</option>
+                <option value="structure">Structure</option>
+                <option value="atr">ATR</option>
+            </select>
+
+            <label>Fixed R:R</label>
+            <input type="number" id="bt-fixed-rr" value="2.0" min="0.5" max="10" step="0.5">
+
+            <label>Nesting</label>
+            <select id="bt-nesting">
+                <option value="false">No</option>
+                <option value="true">Yes</option>
+            </select>
+
+            <label>Direction</label>
+            <select id="bt-direction">
+                <option value="both" selected>Both</option>
+                <option value="long">Long Only</option>
+                <option value="short">Short Only</option>
+            </select>
+
+            <label>HTF Trend</label>
+            <select id="bt-htf-trend">
+                <option value="none" selected>None</option>
+                <option value="with_trend">With Trend</option>
+            </select>
+
+            <div style="margin-top:8px; display:flex; gap:4px;">
+                <button id="bt-run-btn" style="flex:1;">Run</button>
+                <button id="bt-sweep-btn" style="flex:1;">Sweep</button>
+            </div>
+
+            <div id="bt-results" style="display:none; margin-top:8px;">
+                <div id="bt-metrics" class="bt-metrics-panel"></div>
+            </div>
+
+            <div id="bt-sweep-results" style="display:none; margin-top:8px; max-height:300px; overflow-y:auto;">
+                <table id="bt-sweep-table" class="bt-sweep-table">
+                    <thead><tr></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
     </div>
 
     <!-- Main Area -->
@@ -138,6 +197,9 @@
             <div id="crosshair-ohlcv"></div>
         </div>
 
+        <!-- Equity curve chart (shown during backtest) -->
+        <div id="equity-container" style="display:none; height:150px; width:100%;"></div>
+
         <!-- Replay bar -->
         <div id="replay-bar">
             <button id="replay-back10" title="Back 10" aria-label="Back 10 bars">⏪10</button>
@@ -161,5 +223,6 @@
     <script src="/static/js/multichart.js?v={{ cache_bust('multichart.js') }}"></script>
     <script src="/static/js/pulse.js?v={{ cache_bust('pulse.js') }}"></script>
     <script src="/static/js/structure.js?v={{ cache_bust('structure.js') }}"></script>
+    <script src="/static/js/backtest.js?v={{ cache_bust('backtest.js') }}"></script>
 </body>
 </html>
