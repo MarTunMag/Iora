@@ -21,6 +21,7 @@ from iora.engine.push_zone_tick import push_zone_tick
 from iora.engine.events import EventBus
 from iora.engine.models import BarContext
 from iora.constants import TF_ORDER
+from iora.diagnostics.period_pattern import compute_period_pattern
 
 
 # TF label → seconds per bar
@@ -80,6 +81,59 @@ def _check_nesting(
                 best_range = pr
                 best = p
     return best
+
+
+def _detect_retests(
+    ts: PushZoneTickState,
+    high: float,
+    low: float,
+    close: float,
+    bar_time: pd.Timestamp,
+) -> None:
+    """Check all active zones for retest events. Mutates zones in place.
+
+    A retest is: wick enters zone but close stays outside (not a break).
+    - Demand: low <= zone.top AND close > zone.bottom
+    - Supply: high >= zone.bottom AND close < zone.top
+    """
+    for z in ts.demand_zones:
+        if low <= z.top and close > z.bottom:
+            z.test_count += 1
+            if z.first_test_time is None:
+                z.first_test_time = bar_time
+
+    for z in ts.supply_zones:
+        if high >= z.bottom and close < z.top:
+            z.test_count += 1
+            if z.first_test_time is None:
+                z.first_test_time = bar_time
+
+
+def _update_replacement_counts(
+    ts: PushZoneTickState,
+    new_supply: bool,
+    new_demand: bool,
+) -> None:
+    """Increment replacement_count on existing zones when new same-side zone fires."""
+    if new_supply:
+        for z in ts.supply_zones[:-1]:  # All except the newest (last)
+            z.replacement_count += 1
+    if new_demand:
+        for z in ts.demand_zones[:-1]:
+            z.replacement_count += 1
+
+
+def _enrich_birth_metadata(
+    zone: PushZone,
+    ts: PushZoneTickState,
+    close: float,
+) -> None:
+    """Enrich a newly created zone with birth context metadata."""
+    zone.birth_period_pattern = compute_period_pattern(
+        ts.period.prev_highs, ts.period.prev_lows,
+    )
+    zone_mid = (zone.top + zone.bottom) / 2.0
+    zone.birth_price_distance = abs(zone_mid - close)
 
 
 def push_zone_engine_tick(
@@ -171,6 +225,18 @@ def push_zone_engine_tick(
             bar_time=bar_time, tf_seconds=tf_seconds, max_age=max_age,
             timeframe=tf, bus=bus,
         )
+
+        # --- 3.5. Retest detection + replacement counting ---
+        new_supply = hi_fire and hi_ztop is not None and hi_zbot is not None and hi_ztop > hi_zbot
+        new_demand = lo_fire and lo_ztop is not None and lo_zbot is not None and lo_ztop > lo_zbot
+        _update_replacement_counts(ts, new_supply, new_demand)
+        _detect_retests(ts, high, low, close, bar_time)
+
+        # --- 3.6. Enrich birth metadata on newly created zones ---
+        if new_supply and ts.supply_zones:
+            _enrich_birth_metadata(ts.supply_zones[-1], ts, close)
+        if new_demand and ts.demand_zones:
+            _enrich_birth_metadata(ts.demand_zones[-1], ts, close)
 
         # --- 4. Nesting detection ---
         if (hi_fire or lo_fire) and parent_tf and parent_tf in state.tick_states:

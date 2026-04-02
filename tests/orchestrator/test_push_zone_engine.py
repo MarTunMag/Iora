@@ -12,6 +12,9 @@ from iora.orchestrator.push_zone_engine import (
     init_push_zone_state,
     push_zone_engine_tick,
     _check_nesting,
+    _detect_retests,
+    _update_replacement_counts,
+    _enrich_birth_metadata,
 )
 from iora.engine.models import BarContext
 from iora.engine.events import EventBus
@@ -138,3 +141,116 @@ class TestCountReset:
                         }})
         push_zone_engine_tick(state, ctx, PushZoneEngineConfig())
         assert state.tick_states["H1"].sup_count == 1
+
+
+class TestRetestDetection:
+    def test_detect_retests_demand_wick_touch(self):
+        """Demand zone retest: bar low enters zone, close above zone."""
+        zone = PushZone(
+            top=1.2900, bottom=1.2880, is_supply=False,
+            origin_time=T0, timeframe="M5",
+        )
+        ts = PushZoneTickState()
+        ts.demand_zones.append(zone)
+        _detect_retests(ts, high=1.2950, low=1.2895, close=1.2940,
+                        bar_time=T1)
+        assert zone.test_count == 1
+        assert zone.first_test_time == T1
+
+    def test_detect_retests_supply_wick_touch(self):
+        """Supply zone retest: bar high enters zone, close below zone."""
+        zone = PushZone(
+            top=1.3000, bottom=1.2980, is_supply=True,
+            origin_time=T0, timeframe="M5",
+        )
+        ts = PushZoneTickState()
+        ts.supply_zones.append(zone)
+        _detect_retests(ts, high=1.2990, low=1.2950, close=1.2960,
+                        bar_time=T1)
+        assert zone.test_count == 1
+
+    def test_detect_retests_no_touch(self):
+        """No retest when price doesn't reach zone."""
+        zone = PushZone(
+            top=1.2900, bottom=1.2880, is_supply=False,
+            origin_time=T0, timeframe="M5",
+        )
+        ts = PushZoneTickState()
+        ts.demand_zones.append(zone)
+        _detect_retests(ts, high=1.2950, low=1.2920, close=1.2940,
+                        bar_time=T1)
+        assert zone.test_count == 0
+        assert zone.first_test_time is None
+
+    def test_detect_retests_body_close_inside_not_counted(self):
+        """Body close below zone bottom is NOT a retest (it's a break)."""
+        zone = PushZone(
+            top=1.2900, bottom=1.2880, is_supply=False,
+            origin_time=T0, timeframe="M5",
+        )
+        ts = PushZoneTickState()
+        ts.demand_zones.append(zone)
+        _detect_retests(ts, high=1.2910, low=1.2870, close=1.2875,
+                        bar_time=T1)
+        assert zone.test_count == 0
+
+    def test_detect_retests_multiple_touches(self):
+        """Multiple retests increment test_count, first_test_time stays."""
+        zone = PushZone(
+            top=1.2900, bottom=1.2880, is_supply=False,
+            origin_time=T0, timeframe="M5",
+        )
+        ts = PushZoneTickState()
+        ts.demand_zones.append(zone)
+        t2 = pd.Timestamp("2026-01-01 02:00")
+        _detect_retests(ts, high=1.2950, low=1.2895, close=1.2940,
+                        bar_time=T1)
+        _detect_retests(ts, high=1.2950, low=1.2890, close=1.2930,
+                        bar_time=t2)
+        assert zone.test_count == 2
+        assert zone.first_test_time == T1
+
+
+class TestReplacementCounts:
+    def test_replacement_count_increments(self):
+        """When a new zone fires, existing same-side zones get replacement_count += 1."""
+        old_zone = PushZone(
+            top=1.2900, bottom=1.2880, is_supply=False,
+            origin_time=T0, timeframe="M5",
+        )
+        new_zone = PushZone(
+            top=1.2850, bottom=1.2830, is_supply=False,
+            origin_time=T1, timeframe="M5",
+        )
+        ts = PushZoneTickState()
+        ts.demand_zones.append(old_zone)
+        ts.demand_zones.append(new_zone)
+        _update_replacement_counts(ts, new_supply=False, new_demand=True)
+        assert old_zone.replacement_count == 1
+        assert new_zone.replacement_count == 0
+
+
+class TestBirthMetadata:
+    def test_enrich_birth_metadata_period_pattern(self):
+        """New zone gets birth_period_pattern from period tracker."""
+        ts = PushZoneTickState()
+        ts.period = PeriodTracker()
+        ts.period.prev_highs = [1.3100, 1.3000, 1.2900]
+        ts.period.prev_lows = [1.2900, 1.2850, 1.2800]
+        zone = PushZone(
+            top=1.3050, bottom=1.3020, is_supply=True,
+            origin_time=T0, timeframe="M5",
+        )
+        _enrich_birth_metadata(zone, ts, close=1.3040)
+        assert zone.birth_period_pattern == "HH_HL"
+
+    def test_enrich_birth_metadata_price_distance(self):
+        """birth_price_distance is set relative to zone midpoint."""
+        ts = PushZoneTickState()
+        ts.period = PeriodTracker()
+        zone = PushZone(
+            top=1.3000, bottom=1.2980, is_supply=True,
+            origin_time=T0, timeframe="M5",
+        )
+        _enrich_birth_metadata(zone, ts, close=1.2940)
+        assert zone.birth_price_distance == pytest.approx(abs(1.2990 - 1.2940))
