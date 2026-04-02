@@ -6,29 +6,74 @@
 
 ## Project Overview
 
-Iora is a TradingView Pine Script v6 project for building rule-based trading indicators and strategies. The project is starting fresh — strategy rules, system specs, and documentation will be built from scratch in `docs/system/`.
+Iora is a multi-layer trading system with:
+1. **Pine Script v6 indicators** — TradingView-based zone detection, structure tracking, push zones
+2. **Python engine** — bar-by-bar pipeline replicating Pine logic for backtesting, signal generation, and automation
+3. **Flask visualization** — lightweight chart viewer for trade overlay and backtest reporting
+
+The Python engine is the primary development focus. Pine indicators serve as reference implementations and visual validation tools.
 
 ## Project Structure
 
 ```
-tw_indicators/
-  templates/                           Template indicators (reference/starting points)
-    HA Engulfing Fib.pine              Heikin-Ashi engulfing with Fibonacci levels
-    ha_supply_demand_zones.pine        HA-based supply/demand zone detection
-    HTF Candles (M5 - 12MN).pine       Higher timeframe candle overlay
-    spring_leaf_structure_v2.pine      Structure detection (legacy reference)
+src/iora/
+  engine/                              Core tick-level logic (stateless per-bar functions)
+    ha_pivots.py                       HA run-transition detection (zone fire events)
+    push_zone_models.py                PushZone, PeriodTracker, PushZoneTickState dataclasses
+    push_zone_tick.py                  Per-TF per-bar: zone creation, breaks, push validation, BOS/CHoCH
+    zone_tick.py                       Fractal zone tick (legacy zone system)
+    models.py                          BarContext, FractalZone, EventBus, EventID
+    events.py                          EventBus implementation
+  orchestrator/                        Multi-TF orchestration (calls engine/ per TF)
+    push_zone_engine.py                Push zone engine: period tracking, nesting, count resets
+    zone_engine.py                     Fractal zone engine (legacy)
+    pipeline.py                        Unified pipeline: all engines in one bar loop
+    signal_engine.py                   Signal layer: rules + position management
+  data/                                Data loading and alignment
+    tf_alignment.py                    Multi-TF alignment (merge_asof, edge detection, period boundaries)
+    parquet_storage.py                 Parquet file loader (data/raw/{SYMBOL}/{YEAR}/)
+    bar_iterator.py                    Bar-by-bar iterator over aligned data
+  indicators/                          Indicator computations (heikin_ashi, etc.)
+  rules/                               Entry/exit signal rules
+  features/                            Feature extraction from engine state
+
+tw_indicators/                         Pine Script v6 indicators
+  iora_zones/                          Push zone indicators (reference implementations)
+    iora_push_zones_v2.pine            Push zones with BOS/CHoCH (Python reference)
+  system/                              System indicators (structure, zones, BOS/CHoCH)
 
 docs/
   pinescriptv6/                        Full Pine v6 reference (68 files)
-  system/                              Strategy rules, specs, and system documentation (TBD)
+  system/                              Strategy rules, specs, and system documentation
+  superpowers/specs/                   Design specs
+  superpowers/plans/                   Implementation plans
+
+data/raw/                              38 symbols in parquet format (MT5 export)
+scripts/                               Verification and utility scripts
+tests/                                 pytest test suite
 ```
 
 ### How to begin each session
 1. Read this file
-2. Read `docs/pinescriptv6/LLM_MANIFEST.md` for Pine v6 reference routing
-3. Read any relevant strategy docs in `docs/system/` (once created)
-4. Read the current indicator files before modifying
+2. For Pine work: read `docs/pinescriptv6/LLM_MANIFEST.md` for v6 reference routing
+3. For Python work: read relevant specs in `docs/superpowers/specs/`
+4. Read the current files before modifying
 5. Build in layers — each layer compiles cleanly before the next
+
+---
+
+## Rules for Writing Python
+
+- Python 3.12+, pandas, numpy, pytest
+- All dataclasses use `@dataclass(slots=True)`
+- Follow existing patterns: engine tick functions mutate state in place, return broken/created items
+- Pipeline pattern: `init_*_state()` → per-bar `*_tick(state, ctx, config, bus)` calls
+- `BarContext` carries OHLC + `htf` dict (per-TF aligned data) + `edges` dict (fire edge flags)
+- TF labels: `"M1"`, `"M5"`, `"M15"`, `"H1"`, `"H4"`, `"D1"`, `"W1"`, `"MN1"`
+- TF order defined in `iora.constants`: `TF_ORDER`, `ENGINE_TF_ORDER` (without MN1)
+- Three break standards: push validation (wick/body), zone breaks (body-close), period breaks (wick)
+- Use `math.isnan()` for NaN checks, not `x != x` idiom
+- Tests in `tests/` mirroring `src/iora/` structure
 
 ---
 

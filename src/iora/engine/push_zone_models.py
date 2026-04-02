@@ -6,7 +6,7 @@ Pine reference: iora_push_zones_v2.pine (S2 Zone UDT, S5 track_period)
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from math import nan
+from math import isnan, nan
 
 import pandas as pd
 
@@ -56,13 +56,13 @@ class PeriodTracker:
 
     def rotate(self, new_period_time: pd.Timestamp) -> None:
         """Rotate current → previous on period boundary. Reset break detection."""
-        if self.cur_hi == self.cur_hi:  # not nan
+        if not isnan(self.cur_hi):
             self.prev_highs.insert(0, self.cur_hi)
             self.prev_hi_times.insert(0, self.cur_hi_time)
             if len(self.prev_highs) > self.history_depth:
                 self.prev_highs.pop()
                 self.prev_hi_times.pop()
-        if self.cur_lo == self.cur_lo:  # not nan
+        if not isnan(self.cur_lo):
             self.prev_lows.insert(0, self.cur_lo)
             self.prev_lo_times.insert(0, self.cur_lo_time)
             if len(self.prev_lows) > self.history_depth:

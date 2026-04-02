@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from math import isnan
+
 import pandas as pd
-import pytest
 
 from iora.engine.push_zone_models import PushZone, PeriodTracker, PushZoneTickState
 
@@ -67,8 +68,8 @@ class TestPushZone:
 class TestPeriodTracker:
     def test_initial_state(self):
         pt = PeriodTracker()
-        assert pt.cur_hi != pt.cur_hi  # nan
-        assert pt.cur_lo != pt.cur_lo  # nan
+        assert isnan(pt.cur_hi)
+        assert isnan(pt.cur_lo)
         assert len(pt.prev_highs) == 0
         assert len(pt.prev_lows) == 0
         assert pt.hi_brk_time is None
@@ -107,4 +108,4 @@ class TestPushZoneTickState:
         assert st.trend == 0
         assert st.sup_count == 0
         assert st.dem_count == 0
-        assert st.prev_push_extreme_hi != st.prev_push_extreme_hi  # nan
+        assert isnan(st.prev_push_extreme_hi)
