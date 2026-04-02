@@ -65,6 +65,38 @@ class TestPushZone:
         assert z.contains_price(1.2400) is True
 
 
+    def test_pushzone_new_metadata_fields_defaults(self):
+        """New metadata fields have correct defaults."""
+        z = PushZone(
+            top=1.3000, bottom=1.2980, is_supply=True,
+            origin_time=pd.Timestamp("2025-01-01"), timeframe="M5",
+        )
+        assert z.birth_price_distance == 0.0
+        assert z.birth_bias_d == "unknown"
+        assert z.birth_bias_w == "unknown"
+        assert z.birth_period_pattern == "unknown"
+        assert z.replacement_count == 0
+        assert z.test_count == 0
+        assert z.first_test_time is None
+
+    def test_pushzone_metadata_fields_settable(self):
+        """New metadata fields can be set at construction."""
+        z = PushZone(
+            top=1.3000, bottom=1.2980, is_supply=True,
+            origin_time=pd.Timestamp("2025-01-01"), timeframe="M5",
+            birth_price_distance=2.5,
+            birth_bias_d="HH_HL_bull_push",
+            birth_bias_w="pushing_from_w",
+            birth_period_pattern="HH_HL",
+            replacement_count=0,
+            test_count=0,
+            first_test_time=None,
+        )
+        assert z.birth_price_distance == 2.5
+        assert z.birth_bias_d == "HH_HL_bull_push"
+        assert z.birth_period_pattern == "HH_HL"
+
+
 class TestPeriodTracker:
     def test_initial_state(self):
         pt = PeriodTracker()

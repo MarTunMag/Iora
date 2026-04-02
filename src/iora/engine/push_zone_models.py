@@ -27,6 +27,15 @@ class PushZone:
     swing_cls: str = ""        # "HH", "LH", "HL", "LL"
     count_num: int = 0
 
+    # --- Retest & birth metadata (Level 0 enrichment) ---
+    birth_price_distance: float = 0.0    # ATR(14) units from zone midpoint to close at creation
+    birth_bias_d: str = "unknown"        # Daily bias at creation (e.g., "HH_HL_bull_push")
+    birth_bias_w: str = "unknown"        # Weekly context at creation
+    birth_period_pattern: str = "unknown" # Period pattern at creation (e.g., "HH_HL")
+    replacement_count: int = 0           # Same-TF same-side zones created since this one
+    test_count: int = 0                  # Times price touched this zone
+    first_test_time: pd.Timestamp | None = None  # Timestamp of first retest
+
     def contains_price(self, price: float) -> bool:
         return self.bottom <= price <= self.top
 
