@@ -5,6 +5,9 @@ No strategy, no trades — purely counting opportunities.
 """
 from __future__ import annotations
 
+# Import bias direction sets from bias_timeline (single source of truth)
+from iora.diagnostics.bias_timeline import _BULLISH_BIASES, _BEARISH_BIASES
+
 
 def classify_touch(
     zone,  # PushZone
@@ -65,3 +68,57 @@ def is_near_miss(
         distance = low - zone.top
 
     return distance <= threshold
+
+
+# Same-direction swing_cls pairs (continuation)
+_SAME_DIR = {
+    ("HH", "HH"), ("HL", "HL"), ("LL", "LL"), ("LH", "LH"),
+    ("HH", "HL"), ("HL", "HH"),  # Both bullish
+    ("LL", "LH"), ("LH", "LL"),  # Both bearish
+}
+
+
+def classify_zone_role(zone, prev_swing_cls: str) -> str:
+    """Classify zone's structural role.
+    Returns: "push", "reversal", "continuation", "pullback", "unknown".
+    """
+    if zone.is_push:
+        return "push"
+    if zone.is_reversal:
+        return "reversal"
+    if not prev_swing_cls or not zone.swing_cls:
+        return "unknown"
+    if (zone.swing_cls, prev_swing_cls) in _SAME_DIR:
+        return "continuation"
+    return "pullback"
+
+
+def classify_age_bucket(age_bars: int) -> str:
+    """fresh: 0-10, young: 11-50, mature: 51-200, old: 201+"""
+    if age_bars <= 10:
+        return "fresh"
+    if age_bars <= 50:
+        return "young"
+    if age_bars <= 200:
+        return "mature"
+    return "old"
+
+
+def classify_bias_alignment(is_supply: bool, d_bias: str, is_transition: bool = False) -> str:
+    """with_daily, against_daily, at_transition, neutral."""
+    if is_transition:
+        return "at_transition"
+    if d_bias in _BULLISH_BIASES:
+        return "with_daily" if not is_supply else "against_daily"
+    if d_bias in _BEARISH_BIASES:
+        return "with_daily" if is_supply else "against_daily"
+    return "neutral"
+
+
+def classify_test_count(test_count: int) -> str:
+    """first_touch (0), retested_1 (1), retested_2plus (2+)."""
+    if test_count == 0:
+        return "first_touch"
+    if test_count == 1:
+        return "retested_1"
+    return "retested_2plus"
