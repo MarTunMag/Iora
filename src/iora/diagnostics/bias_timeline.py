@@ -5,6 +5,11 @@ labels, D-to-W relationships, and zone distances.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+from math import inf
+
+import pandas as pd
+
 from iora.diagnostics.period_pattern import compute_period_pattern
 
 
@@ -72,3 +77,54 @@ def compute_bias_strength(
         return 2
 
     return 1
+
+
+def nearest_zone_distance(
+    close: float,
+    zones: list,
+    atr: float,
+) -> float:
+    """Compute ATR-relative distance to nearest zone.
+
+    Returns positive if outside zone (distance to nearest boundary),
+    negative if inside a zone (penetration depth).
+    Returns inf if no zones.
+    """
+    if not zones or atr <= 0:
+        return inf
+
+    best_dist = inf
+    for z in zones:
+        if z.bottom <= close <= z.top:
+            # Inside zone — return negative penetration depth
+            mid = (z.top + z.bottom) / 2.0
+            return -abs(close - mid) / atr - 0.001  # Always negative when inside
+        # Outside: distance to nearest boundary
+        if close < z.bottom:
+            dist = (z.bottom - close) / atr
+        else:
+            dist = (close - z.top) / atr
+        if dist < best_dist:
+            best_dist = dist
+
+    return best_dist
+
+
+@dataclass(slots=True)
+class BiasStateRecord:
+    """Per-bar structural bias state."""
+    timestamp: pd.Timestamp
+    d_bias: str = "unknown"
+    d_bias_strength: int = 0
+    d_to_w_relationship: str = "neutral"
+    h4_bias: str = "unknown"
+    h4_vs_daily: str = "neutral"
+    h1_bias: str = "unknown"
+    h1_vs_daily: str = "neutral"
+    nearest_w_supply_dist: float = field(default_factory=lambda: inf)
+    nearest_w_demand_dist: float = field(default_factory=lambda: inf)
+    nearest_d_supply_dist: float = field(default_factory=lambda: inf)
+    nearest_d_demand_dist: float = field(default_factory=lambda: inf)
+    is_bias_transition: bool = False
+    transition_from: str = ""
+    transition_to: str = ""

@@ -54,3 +54,45 @@ class TestComputeBiasStrength:
     def test_strong_bear_3_lh(self):
         # 3 consecutive LH + LL → strength 3
         assert compute_bias_strength([1.30, 1.32, 1.34], [1.24, 1.26, 1.28]) == 3
+
+
+import pandas as pd
+from iora.diagnostics.bias_timeline import nearest_zone_distance, BiasStateRecord
+from iora.engine.push_zone_models import PushZone
+
+
+class TestNearestZoneDistance:
+    def test_no_zones(self):
+        assert nearest_zone_distance(1.3000, [], 0.0020) == float("inf")
+
+    def test_single_zone_above(self):
+        z = PushZone(top=1.3100, bottom=1.3080, is_supply=True,
+                     origin_time=pd.Timestamp("2025-01-01"), timeframe="D1")
+        # Zone bottom = 1.3080, close = 1.3000, distance to nearest boundary = 0.0080
+        # ATR = 0.002, so in ATR units = 0.0080 / 0.002 = 4.0
+        dist = nearest_zone_distance(1.3000, [z], 0.002)
+        assert abs(dist - 4.0) < 0.01
+
+    def test_inside_zone_negative(self):
+        z = PushZone(top=1.3020, bottom=1.2980, is_supply=True,
+                     origin_time=pd.Timestamp("2025-01-01"), timeframe="D1")
+        # Close = 1.3000, inside zone (bottom=1.2980, top=1.3020)
+        dist = nearest_zone_distance(1.3000, [z], 0.002)
+        assert dist < 0  # Negative means inside
+
+    def test_picks_nearest(self):
+        z_far = PushZone(top=1.3200, bottom=1.3180, is_supply=True,
+                         origin_time=pd.Timestamp("2025-01-01"), timeframe="D1")
+        z_near = PushZone(top=1.3060, bottom=1.3040, is_supply=True,
+                          origin_time=pd.Timestamp("2025-01-01"), timeframe="D1")
+        dist = nearest_zone_distance(1.3000, [z_far, z_near], 0.002)
+        # Should pick z_near: boundary distance = 1.3040 - 1.3000 = 0.004 / 0.002 = 2.0
+        assert dist < 10.0  # Closer to z_near
+
+
+class TestBiasStateRecord:
+    def test_defaults(self):
+        rec = BiasStateRecord(timestamp=pd.Timestamp("2025-01-01"))
+        assert rec.d_bias == "unknown"
+        assert rec.d_bias_strength == 0
+        assert rec.is_bias_transition is False
