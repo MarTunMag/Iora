@@ -185,3 +185,108 @@ class TestClassifyTestCount:
     def test_retested_2plus(self):
         assert classify_test_count(2) == "retested_2plus"
         assert classify_test_count(5) == "retested_2plus"
+
+
+from iora.diagnostics.opportunity_counter import OpportunityEvent, detect_events
+from iora.diagnostics.bias_timeline import BiasStateRecord
+from iora.engine.push_zone_models import PushZoneTickState
+from math import inf
+
+
+class TestOpportunityEvent:
+    def test_fields(self):
+        evt = OpportunityEvent(
+            timestamp=pd.Timestamp("2025-06-01"),
+            zone_tf="H1", entry_tf="M5", tf_pair="M5@H1",
+            touch_type="wick_touch", zone_side="demand",
+            zone_role="push", age_bucket="fresh",
+            bias_alignment="with_daily", test_count_cls="first_touch",
+            zone_age_bars=5, zone_test_count=0,
+            bias_strength=3, price_distance_at_touch=1.5,
+        )
+        assert evt.tf_pair == "M5@H1"
+        assert evt.touch_type == "wick_touch"
+
+
+class TestDetectEvents:
+    def _make_bias_rec(self, d_bias="HH_HL_bull_push", strength=2, transition=False):
+        return BiasStateRecord(
+            timestamp=pd.Timestamp("2025-06-01"),
+            d_bias=d_bias, d_bias_strength=strength,
+            is_bias_transition=transition,
+        )
+
+    def test_detects_wick_touch(self):
+        z = _demand(top=1.3000, bottom=1.2980)
+        z.swing_cls = "HL"
+        ts = PushZoneTickState()
+        ts.demand_zones = [z]
+        bias = self._make_bias_rec()
+
+        events = detect_events(
+            tick_states={"H1": ts},
+            entry_tf="M5",
+            high=1.3050, low=1.2990, close=1.3020,
+            timestamp=pd.Timestamp("2025-06-01"),
+            bias_rec=bias, atr=0.002, pip_size=0.0001,
+            bar_idx=100, prev_swing_cls={"H1": {"demand": "HH"}},
+        )
+        assert len(events) == 1
+        assert events[0].touch_type == "wick_touch"
+        assert events[0].tf_pair == "M5@H1"
+        assert events[0].bias_alignment == "with_daily"
+
+    def test_detects_near_miss(self):
+        z = _demand(top=1.3000, bottom=1.2980)
+        ts = PushZoneTickState()
+        ts.demand_zones = [z]
+        bias = self._make_bias_rec()
+
+        events = detect_events(
+            tick_states={"H1": ts},
+            entry_tf="M5",
+            high=1.3050, low=1.3003, close=1.3020,
+            timestamp=pd.Timestamp("2025-06-01"),
+            bias_rec=bias, atr=0.002, pip_size=0.0001,
+            bar_idx=100, prev_swing_cls={},
+        )
+        assert len(events) == 1
+        assert events[0].touch_type == "near_miss"
+
+    def test_no_events_when_price_far(self):
+        z = _demand(top=1.3000, bottom=1.2980)
+        ts = PushZoneTickState()
+        ts.demand_zones = [z]
+        bias = self._make_bias_rec()
+
+        events = detect_events(
+            tick_states={"H1": ts},
+            entry_tf="M5",
+            high=1.3100, low=1.3050, close=1.3080,
+            timestamp=pd.Timestamp("2025-06-01"),
+            bias_rec=bias, atr=0.002, pip_size=0.0001,
+            bar_idx=100, prev_swing_cls={},
+        )
+        assert len(events) == 0
+
+    def test_multiple_tfs_multiple_events(self):
+        z_h1 = _demand(top=1.3000, bottom=1.2980)
+        z_h4 = _supply(top=1.3100, bottom=1.3080)
+        ts_h1 = PushZoneTickState()
+        ts_h1.demand_zones = [z_h1]
+        ts_h4 = PushZoneTickState()
+        ts_h4.supply_zones = [z_h4]
+        bias = self._make_bias_rec()
+
+        events = detect_events(
+            tick_states={"H1": ts_h1, "H4": ts_h4},
+            entry_tf="M5",
+            high=1.3090, low=1.2990, close=1.3020,
+            timestamp=pd.Timestamp("2025-06-01"),
+            bias_rec=bias, atr=0.002, pip_size=0.0001,
+            bar_idx=100, prev_swing_cls={},
+        )
+        assert len(events) == 2
+        tfs = {e.tf_pair for e in events}
+        assert "M5@H1" in tfs
+        assert "M5@H4" in tfs
