@@ -171,6 +171,86 @@ def compute_tf_vs_daily(
     return "against"
 
 
+def collect_bias_state(
+    state,  # PushZoneEngineState
+    timestamp: pd.Timestamp,
+    close: float,
+    atr: float,
+    prev_d_bias: str = "",
+) -> "BiasStateRecord":
+    """Collect structural bias state from engine state at one bar.
+
+    Args:
+        state: PushZoneEngineState with tick_states per TF
+        timestamp: Current bar time
+        close: Current close price
+        atr: ATR(14) of the base TF for distance normalization
+        prev_d_bias: Previous bar's daily bias (for transition detection)
+    """
+    ts_map = state.tick_states
+
+    # Daily bias
+    d_ts = ts_map.get("D1")
+    if d_ts and len(d_ts.period.prev_highs) >= 2:
+        d_bias = compute_bias_label(d_ts.period.prev_highs, d_ts.period.prev_lows)
+        d_strength = compute_bias_strength(d_ts.period.prev_highs, d_ts.period.prev_lows)
+    else:
+        d_bias = "unknown"
+        d_strength = 0
+
+    # H4 bias
+    h4_ts = ts_map.get("H4")
+    if h4_ts and len(h4_ts.period.prev_highs) >= 2:
+        h4_bias = compute_bias_label(h4_ts.period.prev_highs, h4_ts.period.prev_lows)
+    else:
+        h4_bias = "unknown"
+    h4_vs = compute_tf_vs_daily(h4_bias, d_bias)
+
+    # H1 bias
+    h1_ts = ts_map.get("H1")
+    if h1_ts and len(h1_ts.period.prev_highs) >= 2:
+        h1_bias = compute_bias_label(h1_ts.period.prev_highs, h1_ts.period.prev_lows)
+    else:
+        h1_bias = "unknown"
+    h1_vs = compute_tf_vs_daily(h1_bias, d_bias)
+
+    # Weekly zone distances
+    w_ts = ts_map.get("W1")
+    w_supply_dist = nearest_zone_distance(close, w_ts.supply_zones, atr) if w_ts else inf
+    w_demand_dist = nearest_zone_distance(close, w_ts.demand_zones, atr) if w_ts else inf
+
+    # Daily zone distances
+    d_supply_dist = nearest_zone_distance(close, d_ts.supply_zones, atr) if d_ts else inf
+    d_demand_dist = nearest_zone_distance(close, d_ts.demand_zones, atr) if d_ts else inf
+
+    # D-to-W relationship
+    d_to_w = compute_d_to_w_relationship(d_bias, w_supply_dist, w_demand_dist)
+
+    # Transition detection (suppress unknown→known as startup noise)
+    is_transition = bool(
+        prev_d_bias and prev_d_bias != d_bias
+        and d_bias != "unknown" and prev_d_bias != "unknown"
+    )
+
+    return BiasStateRecord(
+        timestamp=timestamp,
+        d_bias=d_bias,
+        d_bias_strength=d_strength,
+        d_to_w_relationship=d_to_w,
+        h4_bias=h4_bias,
+        h4_vs_daily=h4_vs,
+        h1_bias=h1_bias,
+        h1_vs_daily=h1_vs,
+        nearest_w_supply_dist=w_supply_dist,
+        nearest_w_demand_dist=w_demand_dist,
+        nearest_d_supply_dist=d_supply_dist,
+        nearest_d_demand_dist=d_demand_dist,
+        is_bias_transition=is_transition,
+        transition_from=prev_d_bias if is_transition else "",
+        transition_to=d_bias if is_transition else "",
+    )
+
+
 @dataclass(slots=True)
 class BiasStateRecord:
     """Per-bar structural bias state."""

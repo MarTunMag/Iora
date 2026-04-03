@@ -164,3 +164,96 @@ class TestTfVsDaily:
 
     def test_compression_vs_bull(self):
         assert compute_tf_vs_daily("LH_HL_compression", "HH_HL_bull_push") == "neutral"
+
+
+from iora.diagnostics.bias_timeline import collect_bias_state
+from iora.engine.push_zone_models import PushZoneTickState, PeriodTracker
+from iora.orchestrator.push_zone_engine import PushZoneEngineState
+
+
+def _make_period_tracker(prev_highs, prev_lows):
+    """Helper to build a PeriodTracker with preset history."""
+    pt = PeriodTracker()
+    pt.prev_highs = list(prev_highs)
+    pt.prev_lows = list(prev_lows)
+    return pt
+
+
+def _make_state(d_highs, d_lows, h4_highs=None, h4_lows=None,
+                h1_highs=None, h1_lows=None,
+                w_supply=None, w_demand=None,
+                d_supply=None, d_demand=None):
+    """Helper to build engine state with preset period histories and zones."""
+    tick_states = {}
+    for tf, highs, lows in [("D1", d_highs, d_lows),
+                             ("H4", h4_highs or [], h4_lows or []),
+                             ("H1", h1_highs or [], h1_lows or [])]:
+        ts = PushZoneTickState()
+        ts.period = _make_period_tracker(highs, lows)
+        tick_states[tf] = ts
+
+    w_ts = PushZoneTickState()
+    w_ts.supply_zones = list(w_supply or [])
+    w_ts.demand_zones = list(w_demand or [])
+    tick_states["W1"] = w_ts
+
+    if "D1" in tick_states:
+        tick_states["D1"].supply_zones = list(d_supply or [])
+        tick_states["D1"].demand_zones = list(d_demand or [])
+
+    return PushZoneEngineState(tick_states=tick_states)
+
+
+class TestCollectBiasState:
+    def test_basic_bull_bias(self):
+        state = _make_state(
+            d_highs=[1.32, 1.30, 1.28], d_lows=[1.28, 1.26, 1.24],
+            h4_highs=[1.315, 1.31], h4_lows=[1.275, 1.27],
+        )
+        rec = collect_bias_state(
+            state, pd.Timestamp("2025-06-01"), close=1.3000, atr=0.002,
+        )
+        assert rec.d_bias == "HH_HL_bull_push"
+        assert rec.d_bias_strength == 3
+        assert rec.h4_vs_daily == "with"
+
+    def test_no_data_returns_unknown(self):
+        state = _make_state(d_highs=[], d_lows=[])
+        rec = collect_bias_state(
+            state, pd.Timestamp("2025-06-01"), close=1.3000, atr=0.002,
+        )
+        assert rec.d_bias == "unknown"
+        assert rec.d_bias_strength == 0
+
+    def test_transition_detected(self):
+        state = _make_state(
+            d_highs=[1.32, 1.30], d_lows=[1.28, 1.26],
+        )
+        rec = collect_bias_state(
+            state, pd.Timestamp("2025-06-01"), close=1.3000, atr=0.002,
+            prev_d_bias="LH_LL_bear_push",
+        )
+        assert rec.is_bias_transition is True
+        assert rec.transition_from == "LH_LL_bear_push"
+        assert rec.transition_to == "HH_HL_bull_push"
+
+    def test_no_transition_when_same(self):
+        state = _make_state(
+            d_highs=[1.32, 1.30], d_lows=[1.28, 1.26],
+        )
+        rec = collect_bias_state(
+            state, pd.Timestamp("2025-06-01"), close=1.3000, atr=0.002,
+            prev_d_bias="HH_HL_bull_push",
+        )
+        assert rec.is_bias_transition is False
+
+    def test_no_transition_from_unknown(self):
+        """Transition from 'unknown' to a known bias is suppressed."""
+        state = _make_state(
+            d_highs=[1.32, 1.30], d_lows=[1.28, 1.26],
+        )
+        rec = collect_bias_state(
+            state, pd.Timestamp("2025-06-01"), close=1.3000, atr=0.002,
+            prev_d_bias="unknown",
+        )
+        assert rec.is_bias_transition is False
