@@ -1,14 +1,17 @@
 """Opportunity Counter Runner — runs engine + bias + event detection in one pass.
 
 Produces OpportunityResult with per-event records and aggregate statistics.
+Each entry TF loads its OWN full date range independently for maximum data depth.
 """
 from __future__ import annotations
 
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
 
+from iora.constants import ENGINE_TF_ORDER
 from iora.data.tf_alignment import build_aligned_multi_tf
 from iora.data.bar_iterator import iter_bars
 from iora.orchestrator.push_zone_engine import (
@@ -33,10 +36,24 @@ def _get_pip_size(symbol: str) -> float:
 
 
 @dataclass(slots=True)
+class DataPeriod:
+    """Date range metadata for one entry TF run."""
+    entry_tf: str
+    start: pd.Timestamp
+    end: pd.Timestamp
+    bar_count: int
+
+    @property
+    def years(self) -> float:
+        return (self.end - self.start).days / 365.25
+
+
+@dataclass(slots=True)
 class OpportunityResult:
     """Full opportunity counter output for one symbol."""
     symbol: str
     events: list[OpportunityEvent] = field(default_factory=list)
+    data_periods: list[DataPeriod] = field(default_factory=list)
 
     def to_dataframe(self) -> pd.DataFrame:
         if not self.events:
@@ -100,6 +117,12 @@ class OpportunityResult:
         return matrix
 
 
+def _tfs_for_entry(entry_tf: str) -> list[str]:
+    """Return the entry TF plus all higher TFs needed for engine + bias."""
+    idx = ENGINE_TF_ORDER.index(entry_tf) if entry_tf in ENGINE_TF_ORDER else 0
+    return [tf for tf in ENGINE_TF_ORDER if ENGINE_TF_ORDER.index(tf) >= idx]
+
+
 def run_opportunity_counter(
     data_by_tf: dict[str, pd.DataFrame],
     base_tf: str = "M5",
@@ -107,26 +130,59 @@ def run_opportunity_counter(
     period_depth: int = 3,
 ) -> OpportunityResult:
     """Run zone engine + bias + opportunity detection in one pass.
-    Uses base_tf as the entry TF."""
-    return _run_single_entry_tf(data_by_tf, base_tf, symbol, period_depth)
+    Uses base_tf as the entry TF with pre-loaded data."""
+    events, period = _run_single_entry_tf(data_by_tf, base_tf, symbol, period_depth)
+    periods = [period] if period else []
+    return OpportunityResult(symbol=symbol, events=events, data_periods=periods)
 
 
 def run_opportunity_counter_all_tfs(
-    data_by_tf: dict[str, pd.DataFrame],
+    storage_base_dir: str,
     symbol: str = "UNKNOWN",
     period_depth: int = 3,
+    max_workers: int = 4,
 ) -> OpportunityResult:
-    """Run opportunity counter for ALL entry TFs, merging results."""
+    """Run opportunity counter for ALL entry TFs in parallel, each with its full date range."""
     entry_tfs = ["M1", "M5", "M15", "H1"]
+    args_list = [
+        (storage_base_dir, symbol, entry_tf, period_depth)
+        for entry_tf in entry_tfs
+    ]
+
     all_events: list[OpportunityEvent] = []
+    all_periods: list[DataPeriod] = []
 
-    for entry_tf in entry_tfs:
-        if entry_tf not in data_by_tf:
-            continue
-        result = _run_single_entry_tf(data_by_tf, entry_tf, symbol, period_depth)
-        all_events.extend(result.events)
+    with ProcessPoolExecutor(max_workers=max_workers) as pool:
+        results = pool.map(_worker_entry_tf, args_list)
+        for events, period in results:
+            all_events.extend(events)
+            if period is not None:
+                all_periods.append(period)
 
-    return OpportunityResult(symbol=symbol, events=all_events)
+    return OpportunityResult(
+        symbol=symbol, events=all_events, data_periods=all_periods,
+    )
+
+
+def _worker_entry_tf(args: tuple) -> tuple[list[OpportunityEvent], DataPeriod | None]:
+    """Worker function for multiprocessing — loads data independently and runs one entry TF."""
+    storage_base_dir, symbol, entry_tf, period_depth = args
+
+    from iora.data.parquet_storage import ParquetStorage
+
+    storage = ParquetStorage(storage_base_dir)
+    needed_tfs = _tfs_for_entry(entry_tf)
+
+    data_by_tf: dict[str, pd.DataFrame] = {}
+    for tf in needed_tfs:
+        df = storage.load(symbol, tf)
+        if df is not None and not df.empty:
+            data_by_tf[tf] = df
+
+    if entry_tf not in data_by_tf:
+        return [], None
+
+    return _run_single_entry_tf(data_by_tf, entry_tf, symbol, period_depth)
 
 
 def _run_single_entry_tf(
@@ -134,8 +190,11 @@ def _run_single_entry_tf(
     base_tf: str,
     symbol: str,
     period_depth: int,
-) -> OpportunityResult:
-    """Run opportunity detection for a single entry TF."""
+) -> tuple[list[OpportunityEvent], DataPeriod | None]:
+    """Run opportunity detection for a single entry TF.
+
+    Returns (events, data_period).
+    """
     tfs = list(data_by_tf.keys())
     aligned_df, _ = build_aligned_multi_tf(data_by_tf, base_tf)
     state = init_push_zone_state(tfs, period_depth=period_depth)
@@ -145,6 +204,13 @@ def _run_single_entry_tf(
     base_df = data_by_tf[base_tf]
     atr_series = _compute_atr(base_df, period=14)
     pip_size = _get_pip_size(symbol)
+
+    period = DataPeriod(
+        entry_tf=base_tf,
+        start=base_df.index.min(),
+        end=base_df.index.max(),
+        bar_count=len(base_df),
+    )
 
     all_events: list[OpportunityEvent] = []
     prev_d_bias = ""
@@ -185,4 +251,4 @@ def _run_single_entry_tf(
 
         bar_idx += 1
 
-    return OpportunityResult(symbol=symbol, events=all_events)
+    return all_events, period
