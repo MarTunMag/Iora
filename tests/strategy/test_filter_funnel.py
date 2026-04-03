@@ -4,7 +4,7 @@ import pandas as pd
 from iora.diagnostics.opportunity_counter import OpportunityEvent
 from iora.strategy.retest_candidate import RetestCandidate
 from iora.strategy.retest_config import RetestConfig
-from iora.strategy.filter_funnel import apply_filters, FilterFunnel
+from iora.strategy.filter_funnel import apply_filters, FilterFunnel, apply_filters_with_cascade
 
 
 def _candidate(touch_type="wick_touch", bias="with_daily", role="continuation",
@@ -134,3 +134,104 @@ def test_funnel_step_tracking():
     assert bias_step.input_count == 2
     assert bias_step.output_count == 1
     assert bias_step.removed == 1
+
+
+def test_cascade_require_htf_signal():
+    """Cascade filter requires a recent HTF wick_touch event."""
+    t0 = pd.Timestamp("2025-01-15 10:00")
+    t1 = pd.Timestamp("2025-01-15 11:00")
+
+    # Entry candidate on M5@M15
+    entry_ev = OpportunityEvent(
+        timestamp=t1, zone_tf="M15", entry_tf="M5", tf_pair="M5@M15",
+        touch_type="wick_touch", zone_side="demand",
+        zone_role="continuation", age_bucket="fresh",
+        bias_alignment="with_daily", test_count_cls="retested_1",
+        zone_age_bars=5, zone_test_count=1, bias_strength=2,
+        price_distance_at_touch=1.5, replacement_count=0,
+        birth_bias_d="unknown", birth_period_pattern="HH_HL",
+        birth_price_distance=0.3,
+    )
+    entry_cand = RetestCandidate(
+        event=entry_ev, zone_top=1.2550, zone_bottom=1.2500,
+        entry_price=1.2560, atr=0.0080,
+        period_hi=1.2600, period_lo=1.2450,
+    )
+
+    # HTF event on M15@H1 (within lookback)
+    htf_ev = OpportunityEvent(
+        timestamp=t0, zone_tf="H1", entry_tf="M15", tf_pair="M15@H1",
+        touch_type="wick_touch", zone_side="demand",
+        zone_role="continuation", age_bucket="fresh",
+        bias_alignment="with_daily", test_count_cls="retested_1",
+        zone_age_bars=5, zone_test_count=1, bias_strength=2,
+        price_distance_at_touch=1.5, replacement_count=0,
+        birth_bias_d="unknown", birth_period_pattern="HH_HL",
+        birth_price_distance=0.3,
+    )
+    htf_cand = RetestCandidate(
+        event=htf_ev, zone_top=1.2550, zone_bottom=1.2500,
+        entry_price=1.2560, atr=0.0080,
+        period_hi=1.2600, period_lo=1.2450,
+    )
+
+    all_candidates = [htf_cand, entry_cand]
+    cfg = RetestConfig(
+        tf_pair="M5@M15", touch_type="wick_touch",
+        bias_filter="with_daily",
+        cascade_filter="require_htf_signal",
+        cascade_lookback=20,  # 20 M5 bars = 100 min > 60 min gap
+    )
+    funnel = apply_filters_with_cascade(
+        [entry_cand], cfg, all_candidates=all_candidates,
+    )
+    assert len(funnel.passed) == 1
+
+
+def test_cascade_no_htf_signal():
+    t0 = pd.Timestamp("2025-01-15 05:00")  # 6 hours earlier
+    t1 = pd.Timestamp("2025-01-15 11:00")
+
+    entry_ev = OpportunityEvent(
+        timestamp=t1, zone_tf="M15", entry_tf="M5", tf_pair="M5@M15",
+        touch_type="wick_touch", zone_side="demand",
+        zone_role="continuation", age_bucket="fresh",
+        bias_alignment="with_daily", test_count_cls="retested_1",
+        zone_age_bars=5, zone_test_count=1, bias_strength=2,
+        price_distance_at_touch=1.5, replacement_count=0,
+        birth_bias_d="unknown", birth_period_pattern="HH_HL",
+        birth_price_distance=0.3,
+    )
+    entry_cand = RetestCandidate(
+        event=entry_ev, zone_top=1.2550, zone_bottom=1.2500,
+        entry_price=1.2560, atr=0.0080,
+        period_hi=1.2600, period_lo=1.2450,
+    )
+
+    htf_ev = OpportunityEvent(
+        timestamp=t0, zone_tf="H1", entry_tf="M15", tf_pair="M15@H1",
+        touch_type="wick_touch", zone_side="demand",
+        zone_role="continuation", age_bucket="fresh",
+        bias_alignment="with_daily", test_count_cls="retested_1",
+        zone_age_bars=5, zone_test_count=1, bias_strength=2,
+        price_distance_at_touch=1.5, replacement_count=0,
+        birth_bias_d="unknown", birth_period_pattern="HH_HL",
+        birth_price_distance=0.3,
+    )
+    htf_cand = RetestCandidate(
+        event=htf_ev, zone_top=1.2550, zone_bottom=1.2500,
+        entry_price=1.2560, atr=0.0080,
+        period_hi=1.2600, period_lo=1.2450,
+    )
+
+    all_candidates = [htf_cand, entry_cand]
+    cfg = RetestConfig(
+        tf_pair="M5@M15", touch_type="wick_touch",
+        bias_filter="with_daily",
+        cascade_filter="require_htf_signal",
+        cascade_lookback=5,  # 5 M5 bars = 25 min << 360 min gap
+    )
+    funnel = apply_filters_with_cascade(
+        [entry_cand], cfg, all_candidates=all_candidates,
+    )
+    assert len(funnel.passed) == 0  # HTF signal too old

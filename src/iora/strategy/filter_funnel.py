@@ -8,6 +8,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+import pandas as pd
+
+from iora.constants import TF_SECONDS
 from iora.strategy.retest_candidate import RetestCandidate
 from iora.strategy.retest_config import RetestConfig, SESSION_WINDOWS
 
@@ -151,4 +154,59 @@ def apply_filters(
         ))
 
     funnel.passed = current
+    return funnel
+
+
+def apply_filters_with_cascade(
+    candidates: list[RetestCandidate],
+    cfg: RetestConfig,
+    all_candidates: list[RetestCandidate] | None = None,
+) -> FilterFunnel:
+    """Apply standard filters + cascade filter."""
+    # Standard filters first
+    funnel = apply_filters(candidates, cfg)
+
+    if cfg.cascade_filter == "none" or all_candidates is None:
+        return funnel
+
+    # Build HTF event index
+    htf_pairs = set(cfg.htf_pairs)
+    htf_events = sorted(
+        [c for c in all_candidates
+         if c.event.tf_pair in htf_pairs
+         and c.event.touch_type in ("wick_touch", "body_close")],
+        key=lambda c: c.event.timestamp,
+    )
+
+    # Lookback window in seconds
+    entry_tf_seconds = TF_SECONDS.get(cfg.entry_tf, 300)
+    lookback_seconds = cfg.cascade_lookback * entry_tf_seconds
+
+    min_htf = 2 if cfg.cascade_filter == "require_confluence_2" else 1
+
+    input_count = len(funnel.passed)
+    passed = []
+    for c in funnel.passed:
+        ts = c.event.timestamp
+        window_start = ts - pd.Timedelta(seconds=lookback_seconds)
+
+        htf_hit_pairs: set[str] = set()
+        for h in htf_events:
+            if h.event.timestamp < window_start:
+                continue
+            if h.event.timestamp > ts:
+                break
+            if cfg.cascade_direction == "same" and c.direction != h.direction:
+                continue
+            htf_hit_pairs.add(h.event.tf_pair)
+
+        if len(htf_hit_pairs) >= min_htf:
+            passed.append(c)
+
+    funnel.steps.append(FunnelStep(
+        name="cascade",
+        input_count=input_count,
+        output_count=len(passed),
+    ))
+    funnel.passed = passed
     return funnel

@@ -13,7 +13,7 @@ import pandas as pd
 
 from iora.strategy.retest_candidate import RetestCandidate
 from iora.strategy.retest_config import RetestConfig
-from iora.strategy.filter_funnel import FilterFunnel, apply_filters
+from iora.strategy.filter_funnel import FilterFunnel, apply_filters, apply_filters_with_cascade
 from iora.strategy.retest_sl_tp import compute_retest_sl, compute_retest_tp
 from iora.strategy.trade_converter import SweepTradeRecord, _get_pip_size
 from iora.strategy.sweep_runner import compute_metrics
@@ -168,7 +168,7 @@ def evaluate_retest_config(
         symbol: Trading symbol (used for pip size and trade IDs).
         bar_data: Optional OHLC DataFrame indexed by timestamp for simulation.
         pip_size: Override pip size (auto-detected from symbol if None).
-        all_candidates: Unused; reserved for cascade context in future.
+        all_candidates: All candidates across all tf_pairs for cascade context.
 
     Returns:
         RetestResult with funnel, trades, and computed metrics.
@@ -176,8 +176,8 @@ def evaluate_retest_config(
     # Filter to matching tf_pair first
     tf_filtered = [c for c in candidates if c.event.tf_pair == config.tf_pair]
 
-    # Apply all filters
-    funnel = apply_filters(tf_filtered, config)
+    # Apply all filters (including cascade if configured)
+    funnel = apply_filters_with_cascade(tf_filtered, config, all_candidates=all_candidates)
     passed = funnel.passed
 
     result = RetestResult(
