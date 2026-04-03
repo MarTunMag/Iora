@@ -278,3 +278,246 @@ method extendTL(TLState self, int barIdx) =>
         float proj = projPrice(self.a1p, self.a1b, self.a2p, self.a2b, barIdx)
         line.set_y2(self.activeTL, proj)
     true
+
+// ═══════════════════════════════════════════════════════════════
+// PIVOT LEVEL UDT
+// ═══════════════════════════════════════════════════════════════
+type PivotLevel
+    string tfName     = ""
+    bool   active     = false
+    int    lvIdx      = 0
+    color  hiClr      = #ef5350
+    color  loClr      = #26a69a
+    // Active/pending state
+    float  pendHi     = na
+    int    pendHiBar  = 0
+    float  pendLo     = na
+    int    pendLoBar  = 0
+    bool   lastHi     = false
+    bool   started    = false
+    // Last confirmed (for HH/LH/HL/LL classification)
+    float  lastCHi    = na
+    float  lastCLo    = na
+    // Active drawings
+    label  phLbl      = na
+    line   phLn       = na
+    label  plLbl      = na
+    line   plLn       = na
+    // Confirming pivot
+    label  cfHiLbl    = na
+    line   cfHiLn     = na
+    label  cfLoLbl    = na
+    line   cfLoLn     = na
+    // Confirmed history
+    array<label> cHiLbls = na
+    array<line>  cHiLns  = na
+    array<label> cLoLbls = na
+    array<line>  cLoLns  = na
+    // Trendline state (NEW)
+    TLState hiTL      = na
+    TLState loTL      = na
+
+// ═══════════════════════════════════════════════════════════════
+// PIVOT METHODS
+// ═══════════════════════════════════════════════════════════════
+method handleHigh(PivotLevel self, float ph, int pivotBar, int maxConf, bool showLbls, bool showLns, float atrOff, int maxTLHist, bool showTL, bool showDiv, int tlWidth) =>
+    if not self.active or na(ph)
+        false
+    else
+        string txt = self.tfName + " " + classifyHi(ph, self.lastCHi)
+        float yOff = nz(atrOff) * self.lvIdx
+
+        if not self.started
+            self.pendHi    := ph
+            self.pendHiBar := pivotBar
+            self.lastHi    := true
+            self.started   := true
+            if showLbls
+                self.phLbl := label.new(pivotBar, ph + yOff, txt, style=label.style_label_down, color=TRANS, textcolor=self.hiClr, size=size.tiny)
+            if showLns
+                self.phLn := line.new(pivotBar, ph, bar_index, ph, color=color.new(self.hiClr, 40), style=line.style_dashed, width=1)
+
+        else if self.lastHi
+            if ph > self.pendHi
+                if na(self.cfHiLbl) and not na(self.phLbl)
+                    self.cfHiLbl := self.phLbl
+                    self.cfHiLn  := self.phLn
+                    if showLbls and not na(self.cfHiLbl)
+                        label.set_textcolor(self.cfHiLbl, color.new(self.hiClr, 60))
+                    if showLns and not na(self.cfHiLn)
+                        line.set_color(self.cfHiLn, color.new(self.hiClr, 70))
+                else
+                    if not na(self.phLbl)
+                        label.delete(self.phLbl)
+                    if not na(self.phLn)
+                        line.delete(self.phLn)
+
+                self.pendHi    := ph
+                self.pendHiBar := pivotBar
+                string updTxt = self.tfName + " " + classifyHi(ph, self.lastCHi)
+                if showLbls
+                    self.phLbl := label.new(pivotBar, ph + yOff, updTxt, style=label.style_label_down, color=TRANS, textcolor=self.hiClr, size=size.tiny)
+                if showLns
+                    self.phLn := line.new(pivotBar, ph, bar_index, ph, color=color.new(self.hiClr, 40), style=line.style_dashed, width=1)
+
+        else
+            // Direction change: confirm pending low, then start new high
+            if not na(self.pendLo)
+                string loTxt = self.tfName + " " + classifyLo(self.pendLo, self.lastCLo)
+                if showLbls and not na(self.plLbl)
+                    label.set_text(self.plLbl, loTxt)
+                    label.set_textcolor(self.plLbl, color.new(self.loClr, 30))
+                if showLns and not na(self.plLn)
+                    line.set_color(self.plLn, color.new(self.loClr, 50))
+                    line.set_style(self.plLn, line.style_solid)
+                    line.set_x2(self.plLn, bar_index)
+                self.cLoLbls.push(self.plLbl)
+                self.cLoLns.push(self.plLn)
+                while self.cLoLbls.size() > maxConf
+                    label.delete(self.cLoLbls.shift())
+                while self.cLoLns.size() > maxConf
+                    line.delete(self.cLoLns.shift())
+                self.lastCLo := self.pendLo
+                // >>> TL INTEGRATION: confirmed low feeds ascending TL <<<
+                self.loTL.addAnchor(self.pendLo, self.pendLoBar, maxTLHist, showTL, showDiv, tlWidth)
+
+            if not na(self.cfLoLbl)
+                label.delete(self.cfLoLbl)
+                self.cfLoLbl := na
+            if not na(self.cfLoLn)
+                line.delete(self.cfLoLn)
+                self.cfLoLn := na
+            self.cfHiLbl := na
+            self.cfHiLn  := na
+
+            self.pendHi    := ph
+            self.pendHiBar := pivotBar
+            self.lastHi    := true
+            if showLbls
+                self.phLbl := label.new(pivotBar, ph + yOff, txt, style=label.style_label_down, color=TRANS, textcolor=self.hiClr, size=size.tiny)
+            if showLns
+                self.phLn := line.new(pivotBar, ph, bar_index, ph, color=color.new(self.hiClr, 40), style=line.style_dashed, width=1)
+        true
+
+method handleLow(PivotLevel self, float pl, int pivotBar, int maxConf, bool showLbls, bool showLns, float atrOff, int maxTLHist, bool showTL, bool showDiv, int tlWidth) =>
+    if not self.active or na(pl)
+        false
+    else
+        string txt = self.tfName + " " + classifyLo(pl, self.lastCLo)
+        float yOff = nz(atrOff) * self.lvIdx
+
+        if not self.started
+            self.pendLo    := pl
+            self.pendLoBar := pivotBar
+            self.lastHi    := false
+            self.started   := true
+            if showLbls
+                self.plLbl := label.new(pivotBar, pl - yOff, txt, style=label.style_label_up, color=TRANS, textcolor=self.loClr, size=size.tiny)
+            if showLns
+                self.plLn := line.new(pivotBar, pl, bar_index, pl, color=color.new(self.loClr, 40), style=line.style_dashed, width=1)
+
+        else if not self.lastHi
+            if pl < self.pendLo
+                if na(self.cfLoLbl) and not na(self.plLbl)
+                    self.cfLoLbl := self.plLbl
+                    self.cfLoLn  := self.plLn
+                    if showLbls and not na(self.cfLoLbl)
+                        label.set_textcolor(self.cfLoLbl, color.new(self.loClr, 60))
+                    if showLns and not na(self.cfLoLn)
+                        line.set_color(self.cfLoLn, color.new(self.loClr, 70))
+                else
+                    if not na(self.plLbl)
+                        label.delete(self.plLbl)
+                    if not na(self.plLn)
+                        line.delete(self.plLn)
+
+                self.pendLo    := pl
+                self.pendLoBar := pivotBar
+                string updTxt = self.tfName + " " + classifyLo(pl, self.lastCLo)
+                if showLbls
+                    self.plLbl := label.new(pivotBar, pl - yOff, updTxt, style=label.style_label_up, color=TRANS, textcolor=self.loClr, size=size.tiny)
+                if showLns
+                    self.plLn := line.new(pivotBar, pl, bar_index, pl, color=color.new(self.loClr, 40), style=line.style_dashed, width=1)
+
+        else
+            // Direction change: confirm pending high, then start new low
+            if not na(self.pendHi)
+                string hiTxt = self.tfName + " " + classifyHi(self.pendHi, self.lastCHi)
+                if showLbls and not na(self.phLbl)
+                    label.set_text(self.phLbl, hiTxt)
+                    label.set_textcolor(self.phLbl, color.new(self.hiClr, 30))
+                if showLns and not na(self.phLn)
+                    line.set_color(self.phLn, color.new(self.hiClr, 50))
+                    line.set_style(self.phLn, line.style_solid)
+                    line.set_x2(self.phLn, bar_index)
+                self.cHiLbls.push(self.phLbl)
+                self.cHiLns.push(self.phLn)
+                while self.cHiLbls.size() > maxConf
+                    label.delete(self.cHiLbls.shift())
+                while self.cHiLns.size() > maxConf
+                    line.delete(self.cHiLns.shift())
+                self.lastCHi := self.pendHi
+                // >>> TL INTEGRATION: confirmed high feeds descending TL <<<
+                self.hiTL.addAnchor(self.pendHi, self.pendHiBar, maxTLHist, showTL, showDiv, tlWidth)
+
+            if not na(self.cfHiLbl)
+                label.delete(self.cfHiLbl)
+                self.cfHiLbl := na
+            if not na(self.cfHiLn)
+                line.delete(self.cfHiLn)
+                self.cfHiLn := na
+            self.cfLoLbl := na
+            self.cfLoLn  := na
+
+            self.pendLo    := pl
+            self.pendLoBar := pivotBar
+            self.lastHi    := false
+            if showLbls
+                self.plLbl := label.new(pivotBar, pl - yOff, txt, style=label.style_label_up, color=TRANS, textcolor=self.loClr, size=size.tiny)
+            if showLns
+                self.plLn := line.new(pivotBar, pl, bar_index, pl, color=color.new(self.loClr, 40), style=line.style_dashed, width=1)
+        true
+
+method extendLines(PivotLevel self, bool showLns) =>
+    if self.active and showLns
+        if not na(self.phLn) and self.lastHi
+            line.set_x2(self.phLn, bar_index)
+        if not na(self.plLn) and not self.lastHi
+            line.set_x2(self.plLn, bar_index)
+    true
+
+// ═══════════════════════════════════════════════════════════════
+// INITIALIZATION
+// ═══════════════════════════════════════════════════════════════
+initLevel(string tf, color hiClr, color loClr, int idx) =>
+    PivotLevel lv = PivotLevel.new()
+    lv.tfName  := tf
+    lv.active  := tf != "Off"
+    lv.lvIdx   := idx
+    lv.hiClr   := hiClr
+    lv.loClr   := loClr
+    lv.cHiLbls := array.new<label>(0)
+    lv.cHiLns  := array.new<line>(0)
+    lv.cLoLbls := array.new<label>(0)
+    lv.cLoLns  := array.new<line>(0)
+    // TLState initialization
+    TLState hiTL = TLState.new()
+    hiTL.descending := true
+    hiTL.clr        := hiClr
+    hiTL.tfName     := tf
+    hiTL.history    := array.new<line>(0)
+    lv.hiTL := hiTL
+    TLState loTL = TLState.new()
+    loTL.descending := false
+    loTL.clr        := loClr
+    loTL.tfName     := tf
+    loTL.history    := array.new<line>(0)
+    lv.loTL := loTL
+    lv
+
+var PivotLevel lv0 = initLevel(i_lv1, i_c1Hi, i_c1Lo, 0)
+var PivotLevel lv1 = initLevel(i_lv2, i_c2Hi, i_c2Lo, 1)
+var PivotLevel lv2 = initLevel(i_lv3, i_c3Hi, i_c3Lo, 2)
+var PivotLevel lv3 = initLevel(i_lv4, i_c4Hi, i_c4Lo, 3)
+var PivotLevel lv4 = initLevel(i_lv5, i_c5Hi, i_c5Lo, 4)
+var PivotLevel lv5 = initLevel(i_lv6, i_c6Hi, i_c6Lo, 5)
