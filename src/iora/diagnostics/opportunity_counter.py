@@ -154,7 +154,7 @@ class OpportunityEvent:
 # Valid TF pairs: entry@context (each entry TF scans these higher context TFs)
 _TF_PAIRS: dict[str, list[str]] = {
     "M1": ["M5", "M15"],
-    "M5": ["M15", "H1", "H4"],
+    "M5": ["M15", "H1"],
     "M15": ["H1", "H4"],
     "H1": ["H4", "D1"],
 }

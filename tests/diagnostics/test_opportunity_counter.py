@@ -270,6 +270,7 @@ class TestDetectEvents:
         assert len(events) == 0
 
     def test_multiple_tfs_multiple_events(self):
+        # M15 entry scans H1 + H4 context TFs
         z_h1 = _demand(top=1.3000, bottom=1.2980)
         z_h4 = _supply(top=1.3100, bottom=1.3080)
         ts_h1 = PushZoneTickState()
@@ -280,7 +281,7 @@ class TestDetectEvents:
 
         events = detect_events(
             tick_states={"H1": ts_h1, "H4": ts_h4},
-            entry_tf="M5",
+            entry_tf="M15",
             high=1.3090, low=1.2990, close=1.3020,
             timestamp=pd.Timestamp("2025-06-01"),
             bias_rec=bias, atr=0.002, pip_size=0.0001,
@@ -288,5 +289,5 @@ class TestDetectEvents:
         )
         assert len(events) == 2
         tfs = {e.tf_pair for e in events}
-        assert "M5@H1" in tfs
-        assert "M5@H4" in tfs
+        assert "M15@H1" in tfs
+        assert "M15@H4" in tfs
