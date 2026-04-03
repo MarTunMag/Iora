@@ -102,8 +102,8 @@ def main():
         print(f"  Neutral:         {counts.get('neutral', 0):>6,}")
 
     if args.save_csv:
-        out_dir = Path("results")
-        out_dir.mkdir(exist_ok=True)
+        out_dir = Path("results") / args.symbol.upper()
+        out_dir.mkdir(parents=True, exist_ok=True)
         suffix = "_alltfs" if args.all_tfs else ""
         out_path = out_dir / f"{args.symbol.lower()}{suffix}_opportunities.csv"
         df = result.to_dataframe()

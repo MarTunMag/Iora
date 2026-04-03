@@ -61,14 +61,15 @@ def run_symbol(symbol: str) -> None:
         print(f"    Total:           {counts.get('total', 0):>8,}")
 
     # Save CSVs
-    OUT_DIR.mkdir(exist_ok=True)
-    out_path = OUT_DIR / f"{symbol.lower()}_alltfs_opportunities.csv"
+    sym_dir = OUT_DIR / symbol.upper()
+    sym_dir.mkdir(parents=True, exist_ok=True)
+    out_path = sym_dir / f"{symbol.lower()}_alltfs_opportunities.csv"
     df = result.to_dataframe()
     df.to_csv(out_path, index=False)
     print(f"\nSaved {len(df):,} events to {out_path}")
 
     matrix = result.opportunity_matrix()
-    matrix_path = OUT_DIR / f"{symbol.lower()}_alltfs_opportunity_matrix.csv"
+    matrix_path = sym_dir / f"{symbol.lower()}_alltfs_opportunity_matrix.csv"
     matrix.to_csv(matrix_path, index=False)
     print(f"Saved matrix ({len(matrix):,} combos) to {matrix_path}")
 
@@ -94,9 +95,9 @@ def main():
 
     # Final summary: list output files
     print("\nOutput files:")
-    for f in sorted(OUT_DIR.glob("*_alltfs_*")):
+    for f in sorted(OUT_DIR.glob("*/*_alltfs_*")):
         size_mb = f.stat().st_size / (1024 * 1024)
-        print(f"  {f.name} ({size_mb:.1f} MB)")
+        print(f"  {f.parent.name}/{f.name} ({size_mb:.1f} MB)")
 
 
 if __name__ == "__main__":

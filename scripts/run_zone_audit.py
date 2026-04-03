@@ -69,7 +69,10 @@ def main():
                 "birth_period_pattern": r.birth_period_pattern,
                 "birth_price_distance": r.birth_price_distance,
             } for r in result.lifecycle_records])
-            out_path = f"{args.output}/{symbol}_zone_audit.csv"
+            import os
+            sym_dir = f"{args.output}/{symbol.upper()}"
+            os.makedirs(sym_dir, exist_ok=True)
+            out_path = f"{sym_dir}/{symbol.lower()}_zone_audit.csv"
             records_df.to_csv(out_path, index=False)
             print(f"\n  Saved to {out_path}")
 

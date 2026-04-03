@@ -66,8 +66,8 @@ def main():
         print(f"  {label:20s} {count:6d} ({pct:5.1f}%)")
 
     if args.save_csv:
-        out_dir = Path("results")
-        out_dir.mkdir(exist_ok=True)
+        out_dir = Path("results") / args.symbol.upper()
+        out_dir.mkdir(parents=True, exist_ok=True)
         out_path = out_dir / f"{args.symbol.lower()}_bias_timeline.csv"
         df = result.to_dataframe()
         df.to_csv(out_path, index=False)

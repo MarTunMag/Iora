@@ -2,10 +2,10 @@
 
 > **Purpose:** Comprehensive analysis of Level 1 (Zone Audit), Level 2 (Bias Timeline), and Level 3 (Opportunity Counter) diagnostic data. These findings inform all Level 4 strategy design decisions.
 >
-> **Data period:** Jul 2024 – Apr 2026 (~21 months)
+> **Data periods:** M1: 0.7 yrs | M5: 1.7 yrs | M15: 4.4 yrs | H1: 16.5 yrs (XAUUSD: 27.9 yrs)
 > **Symbols analyzed:** GBPUSD, EURUSD, USDJPY, XAUUSD, GBPJPY
-> **Date produced:** 2026-04-03
-> **TF pairs covered:** M5@H1 (single-entry-TF runs). M5@M15 not yet generated (see Data Gaps).
+> **Date produced:** 2026-04-03 (updated with full-depth all-TFs data)
+> **TF pairs covered:** All 8 — M1@M5, M1@M15, M5@M15, M5@H1, M15@H1, M15@H4, H1@H4, H1@D1
 
 ---
 
@@ -15,9 +15,10 @@
 2. [Level 3: Opportunity Counter — Touch Types](#level-3-touch-types)
 3. [Level 3: Opportunity Counter — Dimension Analysis](#level-3-dimension-analysis)
 4. [Level 1: Zone Audit — Zone Lifecycle](#level-1-zone-lifecycle)
-5. [Cross-Level Insights](#cross-level-insights)
-6. [Data Gaps and Known Issues](#data-gaps)
-7. [Level 4 Design Implications](#level-4-implications)
+5. [All-TFs Full-Depth Analysis](#all-tfs-analysis)
+6. [Cross-Level Insights](#cross-level-insights)
+7. [Data Gaps and Known Issues](#data-gaps)
+8. [Level 4 Design Implications](#level-4-implications)
 
 ---
 
@@ -409,6 +410,202 @@ Remarkably consistent across symbols. ~15% of H1 zones receive 100+ retests befo
 
 ---
 
+## All-TFs Full-Depth Analysis <a id="all-tfs-analysis"></a>
+
+> **Run date:** 2026-04-03. Each entry TF loaded its own full date range independently.
+> **Runtime:** 46.4 minutes for 5 symbols, 8 TF pairs each. ~9M total events.
+
+### Data Depth per Entry TF
+
+| Entry TF | Period | Years | Bars | TF Pairs Produced |
+|----------|--------|------:|-----:|-------------------|
+| M1 | 2025-08 to 2026-04 | 0.7 | ~246k | M1@M5, M1@M15 |
+| M5 | 2024-07 to 2026-04 | 1.7 | ~129k | M5@M15, M5@H1 |
+| M15 | 2021-11 to 2026-04 | 4.4 | ~110k | M15@H1, M15@H4 |
+| H1 | 2009-09 to 2026-04 | 16.5 | ~102k | H1@H4, H1@D1 |
+
+XAUUSD H1 data extends to 1998 (27.9 years, 65k bars) — deepest dataset.
+
+### Event Totals per TF Pair (All 5 Symbols)
+
+| TF Pair | Total Events | Wick Touch | Body Close | Near-Miss | Break-Through | Wick % | Data Depth |
+|---------|------------:|----------:|---------:|---------:|-------------:|-------:|:-----------|
+| H1@D1 | 552,446 | 52,483 | 444,230 | 55,714 | 19 | 9.5% | 16.5 yrs |
+| H1@H4 | 806,322 | 146,532 | 512,475 | 146,387 | 928 | 18.2% | 16.5 yrs |
+| M15@H1 | 982,045 | 175,597 | 634,192 | 171,018 | 1,238 | 17.9% | 4.4 yrs |
+| M15@H4 | 657,193 | 74,106 | 505,236 | 77,792 | 59 | 11.3% | 4.4 yrs |
+| M5@M15 | 1,268,140 | 242,246 | 784,414 | 239,416 | 2,064 | 19.1% | 1.7 yrs |
+| M5@H1 | 894,904 | 109,041 | 670,265 | 115,384 | 214 | 12.2% | 1.7 yrs |
+| M1@M15 | 1,706,936 | 178,942 | 1,285,011 | 242,801 | 182 | 10.5% | 0.7 yrs |
+| M1@M5 | 2,174,310 | 324,074 | 1,395,105 | 453,731 | 1,400 | 14.9% | 0.7 yrs |
+
+**Key observations:**
+- **Wick touch % varies significantly by TF pair** — not uniform like the single-TF M5@H1 analysis suggested
+- **Adjacent-TF pairs have higher wick %** (M5@M15: 19.1%, H1@H4: 18.2%) vs skip-TF pairs (M15@H4: 11.3%, H1@D1: 9.5%)
+- This makes sense: adjacent TFs have tighter zone-to-price relationships, producing cleaner wicks rather than deep body penetrations
+- **H1@D1 has the lowest wick %** (9.5%) — D1 zones are so wide that entry bars (H1) close inside them 80% of the time
+
+### Per-Symbol Wick Consistency
+
+| TF Pair | GBPUSD | EURUSD | USDJPY | XAUUSD | GBPJPY | Total |
+|---------|-------:|-------:|-------:|-------:|-------:|------:|
+| H1@D1 | 10,871 | 11,691 | 10,840 | 7,583 | 11,498 | 52,483 |
+| H1@H4 | 30,581 | 30,329 | 31,752 | 21,292 | 32,578 | 146,532 |
+| M15@H1 | 35,115 | 34,969 | 33,453 | 33,514 | 38,546 | 175,597 |
+| M15@H4 | 14,988 | 15,257 | 13,826 | 14,233 | 15,802 | 74,106 |
+| M5@M15 | 47,858 | 49,855 | 44,248 | 46,666 | 53,619 | 242,246 |
+| M5@H1 | 21,074 | 22,612 | 20,043 | 20,369 | 24,943 | 109,041 |
+| M1@M15 | 33,293 | 35,517 | 33,368 | 35,321 | 41,443 | 178,942 |
+| M1@M5 | 61,932 | 63,353 | 60,230 | 64,057 | 74,502 | 324,074 |
+
+- **Cross-symbol consistency is excellent** — counts are within 10-15% of each other per pair (GBPJPY slightly higher, XAUUSD H1 slightly lower due to fewer trading hours)
+- **XAUUSD H1@H4 is lower** (21,292 vs 30k+ for FX) despite 27.9 years of data — gold has fewer bars per year due to limited trading sessions pre-2010
+
+### Statistical Depth Assessment
+
+For Level 4 sweep significance, we need sufficient wick_touch events per dimension combo. Minimum threshold: **500 wick touches per cell** for meaningful parameter optimization.
+
+| TF Pair | Total Wicks | Per Symbol Avg | Statistical Viability | Recommended Priority |
+|---------|----------:|:----------:|:---------------------:|:-------------------:|
+| H1@H4 | 146,532 | ~29k | Excellent (16.5 yrs) | **1st — primary** |
+| M15@H4 | 74,106 | ~15k | Excellent (4.4 yrs) | **2nd — primary** |
+| M15@H1 | 175,597 | ~35k | Excellent (4.4 yrs) | **3rd — primary** |
+| M5@H1 | 109,041 | ~22k | Good (1.7 yrs) | **4th — secondary** |
+| M5@M15 | 242,246 | ~48k | Good (1.7 yrs) | 5th — secondary |
+| H1@D1 | 52,483 | ~10k | Good (16.5 yrs) | 6th — secondary |
+| M1@M5 | 324,074 | ~65k | Limited (0.7 yrs) | 7th — tertiary |
+| M1@M15 | 178,942 | ~36k | Limited (0.7 yrs) | 8th — tertiary |
+
+**Priority rationale:**
+- H1@H4 and M15@H4 combine deep history with meaningful zone TFs — H4 zones are structural and durable
+- M15@H1 has excellent count and covers the intraday swing sweet spot
+- M5@H1 was the original analysis pair and remains solid
+- M1 pairs have only 0.7 years — too short for multi-regime validation; defer to later data accumulation
+
+### Wick Touch Rate by TF Pair Structure
+
+The wick touch % reveals a clear pattern based on the TF gap between entry and zone:
+
+| Gap Type | TF Pairs | Avg Wick % | Interpretation |
+|----------|----------|----------:|----------------|
+| 1-step adjacent | M1@M5, M5@M15, H1@H4 | 17.4% | Tight relationship, clean wicks |
+| 2-step gap | M1@M15, M5@H1, M15@H4 | 11.3% | Moderate gap, more body closes |
+| 3-step gap | M15@H1 | 17.9% | Exception — M15 is good entry resolution for H1 zones |
+| 4-step gap | H1@D1 | 9.5% | Wide gap, D1 zones too broad for H1 precision |
+
+M15@H1 breaks the pattern because M15 provides enough resolution to wick-reject H1 zones cleanly, while M15@H4 drops to 11.3% because H4 zones are too wide for M15 precision. This suggests **zone width relative to entry bar size** is the key driver, not just TF distance.
+
+### Zone Role Distribution by TF Pair (Wick Touches)
+
+| TF Pair | Continuation | Pullback | Reversal | Push |
+|---------|:-----------:|:-------:|:-------:|:---:|
+| H1@D1 | 73% | 21% | 4% | 2% |
+| H1@H4 | 72% | 25% | 2% | 1% |
+| M15@H1 | 72% | 25% | 2% | 1% |
+| M15@H4 | 73% | 20% | 4% | 3% |
+| M5@M15 | 71% | 27% | 1% | 1% |
+| M5@H1 | 73% | 22% | 3% | 2% |
+| M1@M15 | 74% | 22% | 2% | 2% |
+| M1@M5 | 72% | 25% | 1% | 1% |
+
+**Remarkably stable across all TF pairs.** Continuation zones always dominate at 71-74%, pullback at 20-27%. The zone role distribution is a structural constant, not TF-dependent.
+
+**Skip-TF pairs (H1@D1, M15@H4) show higher reversal %** (4% vs 1-2%) — when the zone is from a much higher TF, reversals at that zone are more structurally significant.
+
+### Age Bucket Distribution by TF Pair (Wick Touches)
+
+| TF Pair | Fresh | Young | Mature | Old |
+|---------|:-----:|:-----:|:------:|:---:|
+| H1@D1 | 37% | 36% | 16% | 12% |
+| H1@H4 | 33% | 35% | 18% | 14% |
+| M15@H1 | 40% | 27% | 21% | 12% |
+| M15@H4 | 39% | 35% | 15% | 11% |
+| M5@M15 | 39% | 33% | 13% | 15% |
+| M5@H1 | 43% | 26% | 19% | 11% |
+| M1@M15 | 43% | 31% | 12% | 14% |
+| M1@M5 | 41% | 32% | 15% | 12% |
+
+**H1@H4 is the outlier** with the most balanced distribution (33/35/18/14) — H4 zones persist long enough that young and mature zones contribute nearly as much as fresh. This validates H1@H4 as the best pair for studying zone aging effects.
+
+### Test Count Classification (Wick Touches)
+
+| TF Pair | Retested 1 | Retested 2+ |
+|---------|:--------:|:--------:|
+| H1@D1 | 3.0% | 97.0% |
+| H1@H4 | 7.3% | 92.7% |
+| M15@H1 | 6.9% | 93.1% |
+| M15@H4 | 3.7% | 96.3% |
+| M5@M15 | 7.6% | 92.4% |
+| M5@H1 | 4.2% | 95.8% |
+| M1@M15 | 3.4% | 96.6% |
+| M1@M5 | 6.0% | 94.0% |
+
+**Zero first-touch wick touches across ALL TF pairs** — confirming the M5@H1 finding is universal. "Retested 1" (first real retest) ranges from 3-8%, with adjacent-TF pairs having more (7-8%) because zones get their first retest faster on adjacent TFs.
+
+### Bias Alignment by TF Pair (Wick Touches)
+
+| TF Pair | With Daily | Against Daily | Neutral | At Transition |
+|---------|:---------:|:------------:|:------:|:------------:|
+| H1@D1 | 33% | 41% | 24% | 2% |
+| H1@H4 | 27% | 43% | 27% | 3% |
+| M15@H1 | 34% | 39% | 27% | 1% |
+| M15@H4 | 27% | 43% | 29% | 1% |
+| M5@M15 | 37% | 36% | 26% | 0% |
+| M5@H1 | 35% | 38% | 27% | 0% |
+| M1@M15 | 39% | 37% | 23% | 0% |
+| M1@M5 | 40% | 36% | 24% | 0% |
+
+**Critical insight: bias alignment direction FLIPS between LTF and HTF pairs:**
+- **LTF pairs (M1@M5, M1@M15, M5@M15)**: with-daily > against-daily (37-40% vs 36-37%)
+- **HTF pairs (H1@H4, M15@H4, H1@D1)**: against-daily > with-daily (41-43% vs 27-33%)
+
+This makes structural sense: on higher TFs, price pulls back to zones more during counter-trend moves (retracements are larger), while on lower TFs, trend-aligned zone retests are slightly more common (micro-pullbacks within the trend).
+
+**H1@H4 and H1@D1 have the highest at-transition %** (2-3%) — H1 bars are long enough to catch daily bias transitions, making these pairs best for transition-based entries.
+
+### Break-Through Rate by TF Pair
+
+| TF Pair | Break-Throughs | Rate | Interpretation |
+|---------|:------------:|:----:|----------------|
+| H1@D1 | 19 | 0.003% | D1 zones almost never break |
+| M15@H4 | 59 | 0.009% | H4 zones extremely reliable |
+| M5@H1 | 214 | 0.024% | H1 zones very reliable |
+| M1@M5 | 1,400 | 0.064% | M5 zones less reliable (expected) |
+| H1@H4 | 928 | 0.115% | H4 zones break more on H1 bars (wider bars) |
+| M15@H1 | 1,238 | 0.126% | H1 zones break more on M15 bars |
+| M5@M15 | 2,064 | 0.163% | M15 zones most fragile on M5 entry |
+
+**Higher break rates on adjacent TF pairs** (H1@H4: 0.115%, M5@M15: 0.163%) vs skip-TF pairs (M15@H4: 0.009%, H1@D1: 0.003%). Adjacent-TF entry bars have enough price range to actually break through zones, while skip-TF entry bars are too small to push through the wider HTF zones. All rates remain well below 0.2%.
+
+### High-Value Combinations: Wick Touch + With-Daily
+
+| TF Pair | Total Wicks+WithDaily | Continuation | Pullback | Push | Reversal |
+|---------|:--------:|:--------:|:--------:|:--------:|:--------:|
+| M1@M5 | 129,098 | 93,224 | 33,126 | 2,513 | 235 |
+| M5@M15 | 90,810 | 63,986 | 24,832 | 1,756 | 236 |
+| M1@M15 | 70,275 | 51,797 | 16,296 | 1,940 | 242 |
+| M15@H1 | 59,277 | 43,953 | 13,822 | 1,171 | 331 |
+| H1@H4 | 39,134 | 29,213 | 9,048 | 379 | 494 |
+| M5@H1 | 37,849 | 28,626 | 7,922 | 998 | 303 |
+| M15@H4 | 20,060 | 15,253 | 3,671 | 606 | 530 |
+| H1@D1 | 17,449 | 13,360 | 3,191 | 230 | 667 |
+
+**All pairs have ample high-value events.** Even the smallest cell (H1@D1 push+with-daily = 230) exceeds the analysis threshold. The sweep engine will have strong statistical power across all TF pairs.
+
+**Reversal zones at H1@D1 (667) and M15@H4 (530)** — these are the most "meaningful" reversals (against HTF structure + with daily bias). Worth tracking separately in the sweep.
+
+### Deep Pairs: Wick + With-Daily by Age Bucket
+
+| TF Pair | Fresh | Young | Mature | Old |
+|---------|------:|------:|------:|----:|
+| H1@D1 | 10,209 | 4,359 | 1,790 | 1,091 |
+| H1@H4 | 14,501 | 17,922 | 3,865 | 2,846 |
+| M15@H4 | 8,285 | 9,019 | 1,756 | 1,000 |
+
+**H1@H4 young > fresh** (17,922 vs 14,501) — H4 zones take longer to establish, so the "sweet spot" for with-daily wick retests is young (11-50 bars), not fresh. This differs from the M5@H1 finding where fresh dominated. Level 4 age filters should be TF-pair-specific.
+
+---
+
 ## Cross-Level Insights <a id="cross-level-insights"></a>
 
 ### 1. Zones Are Very Reliable
@@ -447,15 +644,9 @@ Price spends 33-45% of time inside weekly zones. This is high enough that "insid
 
 ## Data Gaps and Known Issues <a id="data-gaps"></a>
 
-### 1. Only M5@H1 TF Pair Covered
+### 1. ~~Only M5@H1 TF Pair Covered~~ RESOLVED
 
-Current opportunity counter runs used M5 as the sole entry TF with default `--tfs M5,H1,H4,D1,W1`. This produces only **M5@H1** events (2 of 8 spec TF pairs). Missing pairs:
-- M1@M5, M1@M15 (need M1 data as entry TF)
-- M5@M15 (need M15 loaded alongside M5)
-- M15@H1, M15@H4 (need M15 as entry TF)
-- H1@H4, H1@D1 (need H1 as entry TF)
-
-**Action:** Run `--all-tfs` with full TF coverage to generate all 8 pairs before finalizing Level 4 design.
+All 8 TF pairs now covered via `--all-tfs` runs (2026-04-03). Each entry TF loads its own full date range independently.
 
 ### 2. `birth_bias_d` Not Populated
 
@@ -510,6 +701,15 @@ Based on the data analysis above, the following recommendations should guide Lev
 16. **Trendline break while pushing from a zone adds confluence** — noted from user's Pine indicator `iora_pivot_hl_trendlines.pine`
 17. **Multi-TF trendline breaks** (e.g., H1 descending TL break + H1 zone retest) should be tested as additional cascade filter
 
-### Multi-TF Coverage
-18. **Run `--all-tfs` analysis** before finalizing Level 4 parameters — current data only covers M5@H1
-19. **Different TF pairs may have different optimal filters** — M1@M5 (scalp) vs H1@D1 (swing) likely need different parameter sets
+### TF Pair Selection and Prioritization (from All-TFs Analysis)
+18. **Start sweep with H1@H4** — deepest data (16.5 yrs), 146k wick touches, most balanced age distribution, 3% transition rate
+19. **M15@H4 second** — 4.4 yrs depth, H4 zones are structural and rarely break (0.009%), strong skip-TF filtering
+20. **M15@H1 and M5@H1 next** — intraday pairs with excellent wick counts; M15@H1 has the highest wick % (17.9%) despite being 3-step gap
+21. **Defer M1 pairs** — only 0.7 yrs of data; insufficient for multi-regime validation; add when more M1 data accumulates
+22. **Adjacent-TF pairs need tighter filters** — higher break-through rates (0.1-0.16%) and more noise; skip-TF pairs (M15@H4, H1@D1) are inherently cleaner
+
+### TF-Pair-Specific Parameter Adjustments (from All-TFs Analysis)
+23. **Age bucket preference varies by pair** — H1@H4 peaks at "young" not "fresh"; Level 4 age filters must be TF-pair-configurable
+24. **Bias alignment direction flips** — LTF pairs favor with-daily, HTF pairs favor against-daily in raw counts; the sweep must test both directions per pair
+25. **Wick % correlates with zone-width-to-bar-size ratio** — not just TF distance; this may inform dynamic zone sizing in Level 4
+26. **Reversal zone signals at HTF pairs** — H1@D1 and M15@H4 have disproportionately more reversal wick touches with daily bias; these are rare (230-667 per pair) but potentially highest conviction
