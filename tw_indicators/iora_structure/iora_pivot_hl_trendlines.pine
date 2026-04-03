@@ -172,3 +172,109 @@ delLabel(label lbl) =>
     if not na(lbl)
         label.delete(lbl)
     label(na)
+
+// ═══════════════════════════════════════════════════════════════
+// TL METHODS
+// ═══════════════════════════════════════════════════════════════
+method checkBreak(TLState self, float breakPrice, int barIdx, int maxHist) =>
+    if not na(self.a2p) and not self.broken
+        float proj = projPrice(self.a1p, self.a1b, self.a2p, self.a2b, barIdx)
+        bool broke = self.descending ? (breakPrice > proj) : (breakPrice < proj)
+        if broke
+            self.broken := true
+            line frozen = freezeTL(self.activeTL, self.clr, barIdx, proj)
+            self.history.push(frozen)
+            trimHistory(self.history, maxHist)
+            styleHistory(self.history, self.clr)
+    true
+
+method addAnchor(TLState self, float price, int bar, int maxHist, bool showTL, bool showDiv, int tlWidth) =>
+    if na(price)
+        false
+    else if not showTL
+        false
+    else
+        // Transition 1: No A1 — set first anchor
+        if na(self.a1p)
+            self.a1p := price
+            self.a1b := bar
+            self.lbl1 := label.new(bar, price, self.tfName, style=(self.descending ? label.style_label_down : label.style_label_up), color=TRANS, textcolor=color.new(self.clr, 30), size=size.tiny)
+
+        // Transition 2: A1 set, no A2 — set second anchor, draw TL
+        else if na(self.a2p)
+            self.a2p := price
+            self.a2b := bar
+            self.broken := false
+            self.activeTL := line.new(self.a1b, self.a1p, self.a2b, self.a2p, color=self.clr, width=tlWidth)
+            self.lbl2 := label.new(bar, price, self.tfName, style=(self.descending ? label.style_label_down : label.style_label_up), color=TRANS, textcolor=color.new(self.clr, 30), size=size.tiny)
+            // Divergence check
+            if showDiv
+                bool div = self.descending ? (self.a2p > self.a1p) : (self.a2p < self.a1p)
+                if div
+                    string divTxt = self.tfName + (self.descending ? " ▼" : " ▲")
+                    label.new(bar, price, divTxt, style=(self.descending ? label.style_label_down : label.style_label_up), color=TRANS, textcolor=self.clr, size=size.small)
+
+        // Transition 3: Broken — reset to fresh A1
+        else if self.broken
+            self.lbl1 := delLabel(self.lbl1)
+            self.lbl2 := delLabel(self.lbl2)
+            self.a1p := price
+            self.a1b := bar
+            self.a2p := na
+            self.a2b := 0
+            self.broken := false
+            self.activeTL := na
+            self.lbl1 := label.new(bar, price, self.tfName, style=(self.descending ? label.style_label_down : label.style_label_up), color=TRANS, textcolor=color.new(self.clr, 30), size=size.tiny)
+
+        // Transitions 4 & 5: Active TL — re-anchor or break
+        else
+            float proj = projPrice(self.a1p, self.a1b, self.a2p, self.a2b, bar)
+            bool onOrInside = self.descending ? (price <= proj) : (price >= proj)
+
+            if onOrInside
+                // Transition 4: Re-anchor — shift A2→A1, new→A2
+                self.lbl1 := delLabel(self.lbl1)
+                self.a1p := self.a2p
+                self.a1b := self.a2b
+                self.a2p := price
+                self.a2b := bar
+                self.lbl1 := self.lbl2
+                self.lbl2 := label.new(bar, price, self.tfName, style=(self.descending ? label.style_label_down : label.style_label_up), color=TRANS, textcolor=color.new(self.clr, 30), size=size.tiny)
+                if not na(self.activeTL)
+                    line.delete(self.activeTL)
+                self.activeTL := line.new(self.a1b, self.a1p, self.a2b, self.a2p, color=self.clr, width=tlWidth)
+                // Divergence check
+                if showDiv
+                    bool div = self.descending ? (self.a2p > self.a1p) : (self.a2p < self.a1p)
+                    if div
+                        string divTxt = self.tfName + (self.descending ? " ▼" : " ▲")
+                        label.new(bar, price, divTxt, style=(self.descending ? label.style_label_down : label.style_label_up), color=TRANS, textcolor=self.clr, size=size.small)
+            else
+                // Transition 5: Break — freeze, push to history, fresh A1
+                float projNow = projPrice(self.a1p, self.a1b, self.a2p, self.a2b, bar_index)
+                self.broken := true
+                line frozen = freezeTL(self.activeTL, self.clr, bar_index, projNow)
+                self.history.push(frozen)
+                trimHistory(self.history, maxHist)
+                styleHistory(self.history, self.clr)
+                // Dim old anchor labels
+                if not na(self.lbl1)
+                    label.set_textcolor(self.lbl1, color.new(self.clr, 75))
+                if not na(self.lbl2)
+                    label.set_textcolor(self.lbl2, color.new(self.clr, 75))
+                // Fresh A1
+                self.a1p := price
+                self.a1b := bar
+                self.a2p := na
+                self.a2b := 0
+                self.activeTL := na
+                self.lbl1 := label.new(bar, price, self.tfName, style=(self.descending ? label.style_label_down : label.style_label_up), color=TRANS, textcolor=color.new(self.clr, 30), size=size.tiny)
+                self.lbl2 := na
+        true
+
+method extendTL(TLState self, int barIdx) =>
+    if not na(self.activeTL) and not self.broken
+        line.set_x2(self.activeTL, barIdx)
+        float proj = projPrice(self.a1p, self.a1b, self.a2p, self.a2b, barIdx)
+        line.set_y2(self.activeTL, proj)
+    true
