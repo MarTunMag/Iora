@@ -1,0 +1,109 @@
+//@version=6
+indicator("Iora Pivot HL Trendlines", shorttitle="Pivot HL+TL", overlay=true, max_labels_count=500, max_lines_count=500)
+
+// ═══════════════════════════════════════════════════════════════
+// CONSTANTS
+// ═══════════════════════════════════════════════════════════════
+color TRANS = color.new(#000000, 100)
+
+// ═══════════════════════════════════════════════════════════════
+// INPUTS
+// ═══════════════════════════════════════════════════════════════
+string i_lv1 = input.string("M15", "Level 1", options=["Off","M1","M5","M15","M30","H1","H2","H3","H4","D1","W1","MN","3MN","6MN","12MN"], group="Pivot Levels")
+string i_lv2 = input.string("H1",  "Level 2", options=["Off","M1","M5","M15","M30","H1","H2","H3","H4","D1","W1","MN","3MN","6MN","12MN"], group="Pivot Levels")
+string i_lv3 = input.string("H4",  "Level 3", options=["Off","M1","M5","M15","M30","H1","H2","H3","H4","D1","W1","MN","3MN","6MN","12MN"], group="Pivot Levels")
+string i_lv4 = input.string("D1",  "Level 4", options=["Off","M1","M5","M15","M30","H1","H2","H3","H4","D1","W1","MN","3MN","6MN","12MN"], group="Pivot Levels")
+string i_lv5 = input.string("Off", "Level 5", options=["Off","M1","M5","M15","M30","H1","H2","H3","H4","D1","W1","MN","3MN","6MN","12MN"], group="Pivot Levels")
+string i_lv6 = input.string("Off", "Level 6", options=["Off","M1","M5","M15","M30","H1","H2","H3","H4","D1","W1","MN","3MN","6MN","12MN"], group="Pivot Levels")
+
+int    i_rightLen   = input.int(1, "Right Lookback", minval=0, maxval=5, group="Settings")
+int    i_confKeep   = input.int(3, "Confirmed History", minval=1, maxval=20, tooltip="Confirmed pivots to keep visible per level per side", group="Settings")
+int    i_tlHistory  = input.int(3, "TL History", minval=0, maxval=10, tooltip="Broken TLs to keep per TF per side. Auto-reduces to 2 when 5+ levels active", group="Settings")
+string i_breakType  = input.string("Close", "TL Break Detection", options=["Close", "Wick"], group="Settings")
+
+bool   i_showLbls   = input.bool(true, "Labels", group="Display")
+bool   i_showLines  = input.bool(true, "Lines", group="Display")
+bool   i_showTL     = input.bool(true, "Show Trendlines", group="Display")
+bool   i_showDiv    = input.bool(true, "Show Divergence", group="Display")
+int    i_tlWidth    = input.int(1, "TL Width", minval=1, maxval=4, group="Display")
+bool   i_showInfo   = input.bool(false, "Info Table", group="Display")
+
+color i_c1Hi = input.color(#ef5350, "Hi", inline="c1", group="L1 Colors")
+color i_c1Lo = input.color(#26a69a, "Lo", inline="c1", group="L1 Colors")
+color i_c2Hi = input.color(#ff9800, "Hi", inline="c2", group="L2 Colors")
+color i_c2Lo = input.color(#00897b, "Lo", inline="c2", group="L2 Colors")
+color i_c3Hi = input.color(#ab47bc, "Hi", inline="c3", group="L3 Colors")
+color i_c3Lo = input.color(#42a5f5, "Lo", inline="c3", group="L3 Colors")
+color i_c4Hi = input.color(#ec407a, "Hi", inline="c4", group="L4 Colors")
+color i_c4Lo = input.color(#26c6da, "Lo", inline="c4", group="L4 Colors")
+color i_c5Hi = input.color(#ffa726, "Hi", inline="c5", group="L5 Colors")
+color i_c5Lo = input.color(#66bb6a, "Lo", inline="c5", group="L5 Colors")
+color i_c6Hi = input.color(#8d6e63, "Hi", inline="c6", group="L6 Colors")
+color i_c6Lo = input.color(#78909c, "Lo", inline="c6", group="L6 Colors")
+
+// ═══════════════════════════════════════════════════════════════
+// TIMEFRAME MATH
+// ═══════════════════════════════════════════════════════════════
+tfToMin(string tf) =>
+    switch tf
+        "M1"   => 1
+        "M5"   => 5
+        "M15"  => 15
+        "M30"  => 30
+        "H1"   => 60
+        "H2"   => 120
+        "H3"   => 180
+        "H4"   => 240
+        "D1"   => 1440
+        "W1"   => 10080
+        "MN"   => 43200
+        "3MN"  => 129600
+        "6MN"  => 259200
+        "12MN" => 518400
+        => 0
+
+int _chartMin = math.max(1, timeframe.in_seconds(timeframe.period) / 60)
+
+int _maxLeft = 4999 - i_rightLen
+int left1 = math.min(_maxLeft, math.max(2, tfToMin(i_lv1) / _chartMin))
+int left2 = math.min(_maxLeft, math.max(2, tfToMin(i_lv2) / _chartMin))
+int left3 = math.min(_maxLeft, math.max(2, tfToMin(i_lv3) / _chartMin))
+int left4 = math.min(_maxLeft, math.max(2, tfToMin(i_lv4) / _chartMin))
+int left5 = math.min(_maxLeft, math.max(2, tfToMin(i_lv5) / _chartMin))
+int left6 = math.min(_maxLeft, math.max(2, tfToMin(i_lv6) / _chartMin))
+
+// ═══════════════════════════════════════════════════════════════
+// PIVOT DETECTION
+// ═══════════════════════════════════════════════════════════════
+max_bars_back(high, 5000)
+max_bars_back(low, 5000)
+
+float ph1 = i_lv1 != "Off" ? ta.pivothigh(high, left1, i_rightLen) : na
+float pl1 = i_lv1 != "Off" ? ta.pivotlow(low,   left1, i_rightLen) : na
+float ph2 = i_lv2 != "Off" ? ta.pivothigh(high, left2, i_rightLen) : na
+float pl2 = i_lv2 != "Off" ? ta.pivotlow(low,   left2, i_rightLen) : na
+float ph3 = i_lv3 != "Off" ? ta.pivothigh(high, left3, i_rightLen) : na
+float pl3 = i_lv3 != "Off" ? ta.pivotlow(low,   left3, i_rightLen) : na
+float ph4 = i_lv4 != "Off" ? ta.pivothigh(high, left4, i_rightLen) : na
+float pl4 = i_lv4 != "Off" ? ta.pivotlow(low,   left4, i_rightLen) : na
+float ph5 = i_lv5 != "Off" ? ta.pivothigh(high, left5, i_rightLen) : na
+float pl5 = i_lv5 != "Off" ? ta.pivotlow(low,   left5, i_rightLen) : na
+float ph6 = i_lv6 != "Off" ? ta.pivothigh(high, left6, i_rightLen) : na
+float pl6 = i_lv6 != "Off" ? ta.pivotlow(low,   left6, i_rightLen) : na
+
+// ═══════════════════════════════════════════════════════════════
+// AUTO-SCALING TL HISTORY
+// ═══════════════════════════════════════════════════════════════
+int _activeLevels = (i_lv1 != "Off" ? 1 : 0) + (i_lv2 != "Off" ? 1 : 0) + (i_lv3 != "Off" ? 1 : 0) + (i_lv4 != "Off" ? 1 : 0) + (i_lv5 != "Off" ? 1 : 0) + (i_lv6 != "Off" ? 1 : 0)
+int _maxTLHist = _activeLevels >= 5 ? math.min(i_tlHistory, 2) : i_tlHistory
+
+// ═══════════════════════════════════════════════════════════════
+// CLASSIFICATION
+// ═══════════════════════════════════════════════════════════════
+classifyHi(float price, float prev) =>
+    na(prev) ? "PH" : price > prev ? "HH" : "LH"
+
+classifyLo(float price, float prev) =>
+    na(prev) ? "PL" : price < prev ? "LL" : "HL"
+
+float _atrOff = ta.atr(14) * 0.3
