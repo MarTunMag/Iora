@@ -13,6 +13,22 @@ Iora is a multi-layer trading system with:
 
 The Python engine is the primary development focus. Pine indicators serve as reference implementations and visual validation tools.
 
+### Retest Entry System (Active Project)
+
+A 4-level data-first architecture for building a retest entry strategy:
+
+| Level | Module | Status | Purpose |
+|-------|--------|--------|---------|
+| 0 | Engine enhancements | Complete | Birth metadata, retest detection, replacement counting |
+| 1 | Zone Audit | Complete | Zone lifecycle: creation, retests, breaks per TF |
+| 2 | Bias Timeline | Complete | Per-bar bias state: daily/weekly alignment, transitions |
+| 3 | Opportunity Counter | Complete | Event classification: touch type, zone role, bias alignment |
+| 4 | Strategy Sweep | Pending | Cascade logic, entry/exit rules, trendline integration |
+
+**Analysis Gate:** Levels 1-3 data is analyzed in `docs/system/level1-3-data-analysis.md`. Level 4 design must use these findings.
+
+**Spec:** `docs/superpowers/specs/2026-04-02-retest-entry-system-design.md`
+
 ## Project Structure
 
 ```
@@ -29,6 +45,14 @@ src/iora/
     zone_engine.py                     Fractal zone engine (legacy)
     pipeline.py                        Unified pipeline: all engines in one bar loop
     signal_engine.py                   Signal layer: rules + position management
+  diagnostics/                         Data-first analysis modules (Levels 1-3)
+    zone_audit.py                      Level 1: zone lifecycle tracking per TF
+    zone_audit_runner.py               Level 1: runner with CLI output
+    bias_timeline.py                   Level 2: per-bar bias state computation
+    bias_timeline_runner.py            Level 2: runner with BiasTimelineResult
+    period_pattern.py                  Period pattern from tracker history
+    opportunity_counter.py             Level 3: touch/near-miss/break classification + event detection
+    opportunity_runner.py              Level 3: runner with OpportunityResult + matrix
   data/                                Data loading and alignment
     tf_alignment.py                    Multi-TF alignment (merge_asof, edge detection, period boundaries)
     parquet_storage.py                 Parquet file loader (data/raw/{SYMBOL}/{YEAR}/)
@@ -36,21 +60,30 @@ src/iora/
   indicators/                          Indicator computations (heikin_ashi, etc.)
   rules/                               Entry/exit signal rules
   features/                            Feature extraction from engine state
+  strategy/                            Trade conversion and position management
 
 tw_indicators/                         Pine Script v6 indicators
   iora_zones/                          Push zone indicators (reference implementations)
     iora_push_zones_v2.pine            Push zones with BOS/CHoCH (Python reference)
+  iora_structure/                      Structure indicators
+    iora_pivot_hl_trendlines.pine      Multi-TF pivot trendlines with break detection (Level 4+ ref)
   system/                              System indicators (structure, zones, BOS/CHoCH)
 
 docs/
   pinescriptv6/                        Full Pine v6 reference (68 files)
   system/                              Strategy rules, specs, and system documentation
+    level1-3-data-analysis.md          Cross-symbol Levels 1-3 findings for Level 4 design
   superpowers/specs/                   Design specs
   superpowers/plans/                   Implementation plans
 
+scripts/                               CLI tools for running diagnostics
+  run_zone_audit.py                    Level 1: zone audit across symbols
+  run_bias_timeline.py                 Level 2: bias timeline for a symbol
+  run_opportunity_count.py             Level 3: opportunity counter (--all-tfs for 8-pair coverage)
+
 data/raw/                              38 symbols in parquet format (MT5 export)
-scripts/                               Verification and utility scripts
-tests/                                 pytest test suite
+results/                               Generated CSV outputs from diagnostic runs
+tests/                                 pytest test suite (340+ tests)
 ```
 
 ### How to begin each session
