@@ -110,6 +110,67 @@ def nearest_zone_distance(
     return best_dist
 
 
+# Bias direction extraction
+_BULLISH_BIASES = {"HH_HL_bull_push"}
+_BEARISH_BIASES = {"LH_LL_bear_push"}
+
+
+def _bias_direction(bias: str) -> int:
+    """Return +1 for bullish, -1 for bearish, 0 for neutral/unknown."""
+    if bias in _BULLISH_BIASES:
+        return 1
+    if bias in _BEARISH_BIASES:
+        return -1
+    return 0
+
+
+def compute_d_to_w_relationship(
+    d_bias: str,
+    w_supply_dist: float,
+    w_demand_dist: float,
+) -> str:
+    """Classify daily-to-weekly structural relationship.
+
+    Returns: "inside_zone", "continuation", "pullback", "neutral".
+    """
+    if w_supply_dist < 0 or w_demand_dist < 0:
+        return "inside_zone"
+
+    direction = _bias_direction(d_bias)
+    if direction == 0:
+        return "neutral"
+
+    if w_supply_dist == inf and w_demand_dist == inf:
+        return "neutral"
+
+    if direction == 1:  # Bullish
+        if w_supply_dist < w_demand_dist:
+            return "pullback"
+        return "continuation"
+    else:  # Bearish
+        if w_demand_dist < w_supply_dist:
+            return "pullback"
+        return "continuation"
+
+
+def compute_tf_vs_daily(
+    tf_bias: str,
+    d_bias: str,
+) -> str:
+    """Classify whether a TF bias aligns with daily bias.
+
+    Returns: "with", "against", "neutral".
+    """
+    tf_dir = _bias_direction(tf_bias)
+    d_dir = _bias_direction(d_bias)
+
+    if tf_dir == 0 or d_dir == 0:
+        return "neutral"
+    if tf_dir == d_dir:
+        return "with"
+    return "against"
+
+
 @dataclass(slots=True)
 class BiasStateRecord:
     """Per-bar structural bias state."""

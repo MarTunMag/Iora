@@ -96,3 +96,71 @@ class TestBiasStateRecord:
         assert rec.d_bias == "unknown"
         assert rec.d_bias_strength == 0
         assert rec.is_bias_transition is False
+
+
+from math import inf
+from iora.diagnostics.bias_timeline import compute_d_to_w_relationship, compute_tf_vs_daily
+
+
+class TestDToWRelationship:
+    def test_inside_w_supply(self):
+        result = compute_d_to_w_relationship(
+            d_bias="HH_HL_bull_push", w_supply_dist=-0.5, w_demand_dist=5.0,
+        )
+        assert result == "inside_zone"
+
+    def test_inside_w_demand(self):
+        result = compute_d_to_w_relationship(
+            d_bias="LH_LL_bear_push", w_supply_dist=5.0, w_demand_dist=-0.5,
+        )
+        assert result == "inside_zone"
+
+    def test_bull_pushing_toward_w_supply(self):
+        result = compute_d_to_w_relationship(
+            d_bias="HH_HL_bull_push", w_supply_dist=2.0, w_demand_dist=8.0,
+        )
+        assert result == "pullback"
+
+    def test_bull_pushing_away_from_w_supply(self):
+        result = compute_d_to_w_relationship(
+            d_bias="HH_HL_bull_push", w_supply_dist=8.0, w_demand_dist=2.0,
+        )
+        assert result == "continuation"
+
+    def test_bear_pushing_toward_w_demand(self):
+        result = compute_d_to_w_relationship(
+            d_bias="LH_LL_bear_push", w_supply_dist=8.0, w_demand_dist=2.0,
+        )
+        assert result == "pullback"
+
+    def test_bear_pushing_away_from_w_demand(self):
+        result = compute_d_to_w_relationship(
+            d_bias="LH_LL_bear_push", w_supply_dist=2.0, w_demand_dist=8.0,
+        )
+        assert result == "continuation"
+
+    def test_neutral_bias(self):
+        result = compute_d_to_w_relationship(
+            d_bias="unknown", w_supply_dist=5.0, w_demand_dist=5.0,
+        )
+        assert result == "neutral"
+
+    def test_no_w_zones(self):
+        result = compute_d_to_w_relationship(
+            d_bias="HH_HL_bull_push", w_supply_dist=inf, w_demand_dist=inf,
+        )
+        assert result == "neutral"
+
+
+class TestTfVsDaily:
+    def test_same_direction_bullish(self):
+        assert compute_tf_vs_daily("HH_HL_bull_push", "HH_HL_bull_push") == "with"
+
+    def test_opposite_direction(self):
+        assert compute_tf_vs_daily("LH_LL_bear_push", "HH_HL_bull_push") == "against"
+
+    def test_neutral_on_unknown(self):
+        assert compute_tf_vs_daily("unknown", "HH_HL_bull_push") == "neutral"
+
+    def test_compression_vs_bull(self):
+        assert compute_tf_vs_daily("LH_HL_compression", "HH_HL_bull_push") == "neutral"
