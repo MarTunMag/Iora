@@ -1,0 +1,380 @@
+//@version=6
+indicator("Iora Push Zones (Self-TF)", overlay = true, max_boxes_count = 500, max_labels_count = 500, calc_bars_count = 2000)
+
+// =============================================================================
+// S1 — TYPES
+// =============================================================================
+
+type Zone
+    float   top       = 0.0
+    float   bottom    = 0.0
+    bool    is_supply = false
+    int     origin_time = 0
+    box     bx
+    bool    is_push   = false
+
+// =============================================================================
+// S1 — INPUTS
+// =============================================================================
+
+string GRP_ZONE  = "Zone Detection"
+float  i_doji    = input.float(5.0, "Doji Body %", group = GRP_ZONE, minval = 0.1, maxval = 50.0, tooltip = "Max body/range % to classify as doji candle")
+
+string GRP_TF    = "Timeframes"
+bool   i_tf0_on  = input.bool(false, "M5",     group = GRP_TF, inline = "t0")
+string i_tf0     = input.timeframe("5",   "",  group = GRP_TF, inline = "t0")
+bool   i_tf1_on  = input.bool(false, "M15",    group = GRP_TF, inline = "t1")
+string i_tf1     = input.timeframe("15",  "",  group = GRP_TF, inline = "t1")
+bool   i_tf2_on  = input.bool(false, "M30",    group = GRP_TF, inline = "t2")
+string i_tf2     = input.timeframe("30",  "",  group = GRP_TF, inline = "t2")
+bool   i_tf3_on  = input.bool(true,  "H1",     group = GRP_TF, inline = "t3")
+string i_tf3     = input.timeframe("60",  "",  group = GRP_TF, inline = "t3")
+bool   i_tf4_on  = input.bool(true,  "H4",     group = GRP_TF, inline = "t4")
+string i_tf4     = input.timeframe("240", "",  group = GRP_TF, inline = "t4")
+bool   i_tf5_on  = input.bool(false, "D",      group = GRP_TF, inline = "t5")
+string i_tf5     = input.timeframe("1D",  "",  group = GRP_TF, inline = "t5")
+bool   i_tf6_on  = input.bool(false, "W",      group = GRP_TF, inline = "t6")
+string i_tf6     = input.timeframe("1W",  "",  group = GRP_TF, inline = "t6")
+bool   i_tf7_on  = input.bool(false, "MN",     group = GRP_TF, inline = "t7")
+string i_tf7     = input.timeframe("1M",  "",  group = GRP_TF, inline = "t7")
+
+string GRP_AGE   = "Zone Age (max bars per TF)"
+int    i_age_m5  = input.int(50, "M5",  group = GRP_AGE, minval = 1)
+int    i_age_m15 = input.int(50, "M15", group = GRP_AGE, minval = 1)
+int    i_age_m30 = input.int(50, "M30", group = GRP_AGE, minval = 1)
+int    i_age_h1  = input.int(50, "H1",  group = GRP_AGE, minval = 1)
+int    i_age_h4  = input.int(50, "H4",  group = GRP_AGE, minval = 1)
+int    i_age_d   = input.int(50, "D",   group = GRP_AGE, minval = 1)
+int    i_age_w   = input.int(30, "W",   group = GRP_AGE, minval = 1)
+int    i_age_mn  = input.int(20, "MN",  group = GRP_AGE, minval = 1)
+
+string GRP_CLR   = "Colors"
+color  i_sup_bg  = input.color(color.new(#FF4444, 85), "Supply Fill",   group = GRP_CLR)
+color  i_sup_br  = input.color(color.new(#FF4444, 20), "Supply Border", group = GRP_CLR)
+color  i_dem_bg  = input.color(color.new(#2196F3, 85), "Demand Fill",   group = GRP_CLR)
+color  i_dem_br  = input.color(color.new(#2196F3, 20), "Demand Border", group = GRP_CLR)
+color  i_push_sup_bg = input.color(color.new(#FF4444, 70), "Push Supply Fill",   group = GRP_CLR)
+color  i_push_sup_br = input.color(color.new(#FF4444, 0),  "Push Supply Border", group = GRP_CLR)
+color  i_push_dem_bg = input.color(color.new(#2196F3, 70), "Push Demand Fill",   group = GRP_CLR)
+color  i_push_dem_br = input.color(color.new(#2196F3, 0),  "Push Demand Border", group = GRP_CLR)
+bool   i_labels  = input.bool(true, "Show Zone Labels", group = GRP_CLR)
+
+// =============================================================================
+// S2 — HELPERS
+// =============================================================================
+
+tf_max_age(string tf) =>
+    int sec = timeframe.in_seconds(tf)
+    int out = sec <= 300 ? i_age_m5 : sec <= 900 ? i_age_m15 : sec <= 1800 ? i_age_m30 : sec <= 3600 ? i_age_h1 : sec <= 14400 ? i_age_h4 : sec <= 86400 ? i_age_d : sec <= 604800 ? i_age_w : i_age_mn
+    out
+
+tf_label(string tf) =>
+    int sec = timeframe.in_seconds(tf)
+    string out = sec <= 300 ? "M5" : sec <= 900 ? "M15" : sec <= 1800 ? "M30" : sec <= 3600 ? "H1" : sec <= 14400 ? "H4" : sec <= 86400 ? "D" : sec <= 604800 ? "W" : "MN"
+    out
+
+// =============================================================================
+// S2 — HA ZONE DETECTION + SEQUENCE TRACKING
+// Runs on raw OHLC via request.security. HA candles computed manually.
+// Zone boundaries (ORIZ spec):
+//   Supply: top = OHLC high (structural extreme), bottom = HA low (order-block edge)
+//   Demand: top = HA high (order-block edge), bottom = OHLC low (structural extreme)
+// =============================================================================
+
+ha_detect(float doji_pct) =>
+    float haC = (open + high + low + close) / 4.0
+    float haO = float(na)
+    haO := na(haO[1]) ? (open + close) / 2.0 : (nz(haO[1]) + nz(haC[1])) / 2.0
+    float haH = math.max(high, math.max(haO, haC))
+    float haL = math.min(low, math.min(haO, haC))
+
+    bool is_blue = haC >= haO
+    bool is_red  = haC < haO
+
+    int max_run = math.min(50, bar_index)
+
+    var float prev_run_hi   = na
+    var float prev_run_lo   = na
+    var float seq_hh        = na
+    var float seq_ll        = na
+    var int   seq_hh_time   = na
+    var int   seq_ll_time   = na
+    var string hi1_txt      = ""
+    var string lo1_txt      = ""
+
+    bool  fire      = false
+    float ztop      = 0.0
+    float zbot      = 0.0
+    bool  is_sup    = false
+    int   zt_origin = time
+
+    // DEMAND: red -> blue — a red run just completed
+    if is_blue and is_red[1]
+        float run_lo_ohlc = low[1]
+        int   ext_time    = time[1]
+        int   k           = 2
+        while k < max_run and is_red[k]
+            if low[k] < run_lo_ohlc
+                run_lo_ohlc := low[k]
+                ext_time    := time[k]
+            k += 1
+
+        bool is_new_ll = na(prev_run_lo) or run_lo_ohlc < prev_run_lo
+        seq_ll      := run_lo_ohlc
+        seq_ll_time := ext_time
+        prev_run_lo := run_lo_ohlc
+        lo1_txt     := is_new_ll ? "LL" : "HL"
+
+        float body = math.abs(haC - haO)
+        float rng  = haH - haL
+        bool  doji = rng > 0.0 and (body / rng * 100.0) < doji_pct
+
+        ztop      := doji ? nz(haH, high) : nz(haH[1], high[1])
+        zbot      := nz(run_lo_ohlc, low[1])
+        zt_origin := nz(ext_time, time[1])
+        fire      := true
+
+    // SUPPLY: blue -> red — a blue run just completed
+    else if is_red and is_blue[1]
+        float run_hi_ohlc = high[1]
+        int   ext_time    = time[1]
+        int   k           = 2
+        while k < max_run and is_blue[k]
+            if high[k] > run_hi_ohlc
+                run_hi_ohlc := high[k]
+                ext_time    := time[k]
+            k += 1
+
+        bool is_new_hh = na(prev_run_hi) or run_hi_ohlc > prev_run_hi
+        seq_hh      := run_hi_ohlc
+        seq_hh_time := ext_time
+        prev_run_hi := run_hi_ohlc
+        hi1_txt     := is_new_hh ? "HH" : "LH"
+
+        float body = math.abs(haC - haO)
+        float rng  = haH - haL
+        bool  doji = rng > 0.0 and (body / rng * 100.0) < doji_pct
+
+        ztop      := nz(run_hi_ohlc, high[1])
+        zbot      := doji ? nz(haL, low) : nz(haL[1], low[1])
+        zt_origin := nz(ext_time, time[1])
+        fire      := true
+        is_sup    := true
+
+    [fire, ztop, zbot, is_sup, zt_origin, seq_hh, seq_ll, seq_hh_time, seq_ll_time, hi1_txt, lo1_txt]
+
+// =============================================================================
+// S3 — ZONE MANAGEMENT + PUSH DETECTION
+// Body-close break (wicks = liquidity sweep, not a break).
+// Push = last unbroken zone in direction of new HH/LL.
+// =============================================================================
+
+method delete_zone(array<Zone> zones, int idx) =>
+    Zone z = zones.get(idx)
+    if not na(z.bx)
+        box.delete(z.bx)
+    zones.remove(idx)
+
+method process(array<Zone> zones, bool fire, float ztop, float zbot, bool is_sup, int z_time, string hi_txt, string lo_txt, string tf_str, bool new_hh, bool new_ll) =>
+    int tf_ms  = timeframe.in_seconds(tf_str) * 1000
+    int max_ms = tf_max_age(tf_str) * tf_ms
+
+    // 1. Expire + break check
+    if zones.size() > 0
+        for i = zones.size() - 1 to 0
+            Zone z = zones.get(i)
+            bool expired = (time - z.origin_time) > max_ms
+            if expired
+                zones.delete_zone(i)
+                continue
+            bool broken = z.is_supply ? (close > z.top) : (close < z.bottom)
+            if broken
+                zones.delete_zone(i)
+
+    // 2. Create new zone
+    bool valid = not na(ztop) and not na(zbot) and not na(z_time) and ztop > zbot
+    if fire and (time - z_time) < max_ms and valid
+        string cls     = is_sup ? hi_txt : lo_txt
+        string lbl_txt = i_labels ? tf_label(tf_str) + (is_sup ? " S " : " D ") + cls : na
+        color  bg_clr  = is_sup ? i_sup_bg : i_dem_bg
+        color  br_clr  = is_sup ? i_sup_br : i_dem_br
+        color  tx_clr  = is_sup ? color.new(#FF4444, 0) : color.new(#2196F3, 0)
+        box new_box    = box.new(z_time, ztop, z_time + tf_ms * 6, zbot, xloc = xloc.bar_time, extend = extend.right, bgcolor = bg_clr, border_color = br_clr, border_width = 1, text = lbl_txt, text_size = size.tiny, text_color = tx_clr, text_halign = text.align_right, text_valign = text.align_top)
+        zones.push(Zone.new(ztop, zbot, is_sup, z_time, new_box, false))
+
+    // 3. Push zone tagging — on new HH or LL event
+    if (new_hh or new_ll) and zones.size() > 0
+        // Reset all existing push flags
+        for i = 0 to zones.size() - 1
+            Zone z = zones.get(i)
+            if z.is_push
+                z.is_push := false
+                color bg = z.is_supply ? i_sup_bg : i_dem_bg
+                color br = z.is_supply ? i_sup_br : i_dem_br
+                if not na(z.bx)
+                    z.bx.set_bgcolor(bg)
+                    z.bx.set_border_color(br)
+                    z.bx.set_border_width(1)
+                    string cls2 = z.is_supply ? hi_txt : lo_txt
+                    string rtxt = i_labels ? tf_label(tf_str) + (z.is_supply ? " S " : " D ") + cls2 : na
+                    z.bx.set_text(rtxt)
+
+    // Tag most recent unbroken demand zone on new HH
+    if new_hh and zones.size() > 0
+        for i = zones.size() - 1 to 0
+            Zone z = zones.get(i)
+            if not z.is_supply
+                z.is_push := true
+                if not na(z.bx)
+                    z.bx.set_bgcolor(i_push_dem_bg)
+                    z.bx.set_border_color(i_push_dem_br)
+                    z.bx.set_border_width(2)
+                    string ptxt = i_labels ? tf_label(tf_str) + " D PUSH" : na
+                    z.bx.set_text(ptxt)
+                break
+
+    // Tag most recent unbroken supply zone on new LL
+    if new_ll and zones.size() > 0
+        for i = zones.size() - 1 to 0
+            Zone z = zones.get(i)
+            if z.is_supply
+                z.is_push := true
+                if not na(z.bx)
+                    z.bx.set_bgcolor(i_push_sup_bg)
+                    z.bx.set_border_color(i_push_sup_br)
+                    z.bx.set_border_width(2)
+                    string ptxt = i_labels ? tf_label(tf_str) + " S PUSH" : na
+                    z.bx.set_text(ptxt)
+                break
+
+// =============================================================================
+// S4 — DATA REQUESTS (8 calls on raw OHLC)
+// =============================================================================
+
+string _base_sym = ticker.standard(syminfo.tickerid)
+
+[f0_raw, zt0, zb0, s0, tm0, hh0, ll0, hht0, llt0, h1s0, l1s0] = request.security(_base_sym, i_tf0, ha_detect(i_doji), calc_bars_count = 500)
+[f1_raw, zt1, zb1, s1, tm1, hh1, ll1, hht1, llt1, h1s1, l1s1] = request.security(_base_sym, i_tf1, ha_detect(i_doji), calc_bars_count = 500)
+[f2_raw, zt2, zb2, s2, tm2, hh2, ll2, hht2, llt2, h1s2, l1s2] = request.security(_base_sym, i_tf2, ha_detect(i_doji), calc_bars_count = 500)
+[f3_raw, zt3, zb3, s3, tm3, hh3, ll3, hht3, llt3, h1s3, l1s3] = request.security(_base_sym, i_tf3, ha_detect(i_doji), calc_bars_count = 500)
+[f4_raw, zt4, zb4, s4, tm4, hh4, ll4, hht4, llt4, h1s4, l1s4] = request.security(_base_sym, i_tf4, ha_detect(i_doji), calc_bars_count = 500)
+[f5_raw, zt5, zb5, s5, tm5, hh5, ll5, hht5, llt5, h1s5, l1s5] = request.security(_base_sym, i_tf5, ha_detect(i_doji), calc_bars_count = 500)
+[f6_raw, zt6, zb6, s6, tm6, hh6, ll6, hht6, llt6, h1s6, l1s6] = request.security(_base_sym, i_tf6, ha_detect(i_doji), calc_bars_count = 500)
+[f7_raw, zt7, zb7, s7, tm7, hh7, ll7, hht7, llt7, h1s7, l1s7] = request.security(_base_sym, i_tf7, ha_detect(i_doji), calc_bars_count = 500)
+
+// Edge-detect: fire only once per HTF event
+bool f0 = f0_raw and not f0_raw[1]
+bool f1 = f1_raw and not f1_raw[1]
+bool f2 = f2_raw and not f2_raw[1]
+bool f3 = f3_raw and not f3_raw[1]
+bool f4 = f4_raw and not f4_raw[1]
+bool f5 = f5_raw and not f5_raw[1]
+bool f6 = f6_raw and not f6_raw[1]
+bool f7 = f7_raw and not f7_raw[1]
+
+// =============================================================================
+// S4 — NEW HH/LL EDGE DETECTION
+// Detect when seq_hh/seq_ll changes AND classification is HH/LL
+// =============================================================================
+
+var float prev_hh0 = na
+bool new_hh0 = not na(hh0) and hh0 != prev_hh0 and h1s0 == "HH"
+if not na(hh0)
+    prev_hh0 := hh0
+var float prev_ll0 = na
+bool new_ll0 = not na(ll0) and ll0 != prev_ll0 and l1s0 == "LL"
+if not na(ll0)
+    prev_ll0 := ll0
+
+var float prev_hh1 = na
+bool new_hh1 = not na(hh1) and hh1 != prev_hh1 and h1s1 == "HH"
+if not na(hh1)
+    prev_hh1 := hh1
+var float prev_ll1 = na
+bool new_ll1 = not na(ll1) and ll1 != prev_ll1 and l1s1 == "LL"
+if not na(ll1)
+    prev_ll1 := ll1
+
+var float prev_hh2 = na
+bool new_hh2 = not na(hh2) and hh2 != prev_hh2 and h1s2 == "HH"
+if not na(hh2)
+    prev_hh2 := hh2
+var float prev_ll2 = na
+bool new_ll2 = not na(ll2) and ll2 != prev_ll2 and l1s2 == "LL"
+if not na(ll2)
+    prev_ll2 := ll2
+
+var float prev_hh3 = na
+bool new_hh3 = not na(hh3) and hh3 != prev_hh3 and h1s3 == "HH"
+if not na(hh3)
+    prev_hh3 := hh3
+var float prev_ll3 = na
+bool new_ll3 = not na(ll3) and ll3 != prev_ll3 and l1s3 == "LL"
+if not na(ll3)
+    prev_ll3 := ll3
+
+var float prev_hh4 = na
+bool new_hh4 = not na(hh4) and hh4 != prev_hh4 and h1s4 == "HH"
+if not na(hh4)
+    prev_hh4 := hh4
+var float prev_ll4 = na
+bool new_ll4 = not na(ll4) and ll4 != prev_ll4 and l1s4 == "LL"
+if not na(ll4)
+    prev_ll4 := ll4
+
+var float prev_hh5 = na
+bool new_hh5 = not na(hh5) and hh5 != prev_hh5 and h1s5 == "HH"
+if not na(hh5)
+    prev_hh5 := hh5
+var float prev_ll5 = na
+bool new_ll5 = not na(ll5) and ll5 != prev_ll5 and l1s5 == "LL"
+if not na(ll5)
+    prev_ll5 := ll5
+
+var float prev_hh6 = na
+bool new_hh6 = not na(hh6) and hh6 != prev_hh6 and h1s6 == "HH"
+if not na(hh6)
+    prev_hh6 := hh6
+var float prev_ll6 = na
+bool new_ll6 = not na(ll6) and ll6 != prev_ll6 and l1s6 == "LL"
+if not na(ll6)
+    prev_ll6 := ll6
+
+var float prev_hh7 = na
+bool new_hh7 = not na(hh7) and hh7 != prev_hh7 and h1s7 == "HH"
+if not na(hh7)
+    prev_hh7 := hh7
+var float prev_ll7 = na
+bool new_ll7 = not na(ll7) and ll7 != prev_ll7 and l1s7 == "LL"
+if not na(ll7)
+    prev_ll7 := ll7
+
+// =============================================================================
+// S5 — ZONE ARRAYS + EXECUTION
+// =============================================================================
+
+var array<Zone> zones0 = array.new<Zone>()
+var array<Zone> zones1 = array.new<Zone>()
+var array<Zone> zones2 = array.new<Zone>()
+var array<Zone> zones3 = array.new<Zone>()
+var array<Zone> zones4 = array.new<Zone>()
+var array<Zone> zones5 = array.new<Zone>()
+var array<Zone> zones6 = array.new<Zone>()
+var array<Zone> zones7 = array.new<Zone>()
+
+if i_tf0_on
+    zones0.process(f0, zt0, zb0, s0, tm0, h1s0, l1s0, i_tf0, new_hh0, new_ll0)
+if i_tf1_on
+    zones1.process(f1, zt1, zb1, s1, tm1, h1s1, l1s1, i_tf1, new_hh1, new_ll1)
+if i_tf2_on
+    zones2.process(f2, zt2, zb2, s2, tm2, h1s2, l1s2, i_tf2, new_hh2, new_ll2)
+if i_tf3_on
+    zones3.process(f3, zt3, zb3, s3, tm3, h1s3, l1s3, i_tf3, new_hh3, new_ll3)
+if i_tf4_on
+    zones4.process(f4, zt4, zb4, s4, tm4, h1s4, l1s4, i_tf4, new_hh4, new_ll4)
+if i_tf5_on
+    zones5.process(f5, zt5, zb5, s5, tm5, h1s5, l1s5, i_tf5, new_hh5, new_ll5)
+if i_tf6_on
+    zones6.process(f6, zt6, zb6, s6, tm6, h1s6, l1s6, i_tf6, new_hh6, new_ll6)
+if i_tf7_on
+    zones7.process(f7, zt7, zb7, s7, tm7, h1s7, l1s7, i_tf7, new_hh7, new_ll7)

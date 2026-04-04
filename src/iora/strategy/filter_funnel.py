@@ -7,6 +7,7 @@ Tracks how many candidates each filter removes.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from math import isnan
 
 import pandas as pd
 
@@ -100,6 +101,103 @@ def _make_replacement_filter(cfg: RetestConfig):
     return lambda c: c.event.replacement_count <= mx
 
 
+def _make_birth_pattern_filter(cfg: RetestConfig):
+    if cfg.birth_pattern_filter == "any":
+        return None
+    val = cfg.birth_pattern_filter
+    if val == "compression":
+        return lambda c: c.event.birth_period_pattern == "LH_HL"
+    if val == "trending":
+        return lambda c: c.event.birth_period_pattern in ("HH_HL", "LH_LL")
+    if val == "expansion":
+        return lambda c: c.event.birth_period_pattern == "HH_LL"
+    return None
+
+
+def _make_retest_number_filter(cfg: RetestConfig):
+    if cfg.retest_number_filter == "any":
+        return None
+    val = cfg.retest_number_filter
+    if val == "1-3":
+        return lambda c: 1 <= c.event.zone_test_count <= 3
+    if val == "4-10":
+        return lambda c: 4 <= c.event.zone_test_count <= 10
+    if val == "10+":
+        return lambda c: c.event.zone_test_count >= 10
+    return None
+
+
+def _make_time_since_creation_filter(cfg: RetestConfig):
+    if cfg.time_since_creation_filter == "any":
+        return None
+    val = cfg.time_since_creation_filter
+    # zone_age_bars is in context-TF bars; convert to approximate hours
+    # using the entry_tf context is tricky here — use raw age_bars * tf_seconds
+    # Instead, use the OpportunityEvent's zone_age_bars and zone_tf to compute hours
+    if val == "0-3h":
+        return lambda c: _age_hours(c) <= 3
+    if val == "3-12h":
+        return lambda c: 3 < _age_hours(c) <= 12
+    if val == "12h-3d":
+        return lambda c: 12 < _age_hours(c) <= 72
+    if val == "3d+":
+        return lambda c: _age_hours(c) > 72
+    return None
+
+
+def _age_hours(c: RetestCandidate) -> float:
+    """Compute zone age in hours from zone_age_bars and zone_tf."""
+    tf_secs = TF_SECONDS.get(c.event.zone_tf, 3600)
+    return c.event.zone_age_bars * tf_secs / 3600.0
+
+
+def _make_parent_tf_boundary_filter(cfg: RetestConfig):
+    if cfg.parent_tf_boundary_filter == "any":
+        return None
+    val = cfg.parent_tf_boundary_filter
+    # zone_tf → parent TF → parent TF seconds
+    # Zone age in parent-TF bars = zone_age_hours / (parent_TF_seconds / 3600)
+    _PARENT_TF: dict[str, str] = {
+        "M5": "M15", "M15": "H1", "H1": "H4", "H4": "D1", "D1": "W1",
+    }
+    if val == "0-1_parent_bars":
+        return lambda c: _parent_bars(c, _PARENT_TF) <= 1
+    if val == "1-2_parent_bars":
+        return lambda c: 1 < _parent_bars(c, _PARENT_TF) <= 2
+    if val == "2-4_parent_bars":
+        return lambda c: 2 < _parent_bars(c, _PARENT_TF) <= 4
+    if val == "4+_parent_bars":
+        return lambda c: _parent_bars(c, _PARENT_TF) > 4
+    return None
+
+
+def _parent_bars(c: RetestCandidate, parent_map: dict[str, str]) -> float:
+    """Zone age measured in parent-TF bars."""
+    zone_tf = c.event.zone_tf
+    parent_tf = parent_map.get(zone_tf, zone_tf)
+    parent_secs = TF_SECONDS.get(parent_tf, 3600)
+    zone_tf_secs = TF_SECONDS.get(zone_tf, 3600)
+    age_secs = c.event.zone_age_bars * zone_tf_secs
+    return age_secs / parent_secs if parent_secs > 0 else 0.0
+
+
+def _make_inside_w_zone_filter(cfg: RetestConfig):
+    if cfg.inside_w_zone_filter == "any":
+        return None
+    if cfg.inside_w_zone_filter == "inside":
+        return lambda c: c.inside_w_zone
+    if cfg.inside_w_zone_filter == "outside":
+        return lambda c: not c.inside_w_zone
+    return None
+
+
+def _make_d_to_w_filter(cfg: RetestConfig):
+    if cfg.d_to_w_filter == "any":
+        return None
+    val = cfg.d_to_w_filter
+    return lambda c: c.d_to_w_relationship == val
+
+
 def _make_session_filter(cfg: RetestConfig):
     if cfg.session_filter == "any":
         return None
@@ -121,6 +219,34 @@ def _in_session(hour: int, start: int, end: int) -> bool:
     return hour >= start or hour < end
 
 
+def _make_near_pdh_pdl_filter(cfg: RetestConfig):
+    if cfg.near_pdh_pdl == "any":
+        return None
+
+    def filt(c: RetestCandidate) -> bool:
+        if c.atr <= 0:
+            return True
+        dist_hi = abs(c.entry_price - c.period_hi) / c.atr
+        dist_lo = abs(c.entry_price - c.period_lo) / c.atr
+        return dist_hi < 0.5 or dist_lo < 0.5
+
+    return filt
+
+
+def _make_premium_discount_filter(cfg: RetestConfig):
+    if cfg.premium_discount == "any":
+        return None
+
+    def filt(c: RetestCandidate) -> bool:
+        if isnan(c.d1_range_midpoint):
+            return True
+        if c.direction == "long":
+            return c.entry_price < c.d1_range_midpoint
+        return c.entry_price > c.d1_range_midpoint
+
+    return filt
+
+
 _FILTER_FACTORIES = [
     ("touch_type", _make_touch_filter),
     ("direction", _make_direction_filter),
@@ -130,7 +256,15 @@ _FILTER_FACTORIES = [
     ("age_filter", _make_age_filter),
     ("test_count", _make_test_count_filter),
     ("replacement_count", _make_replacement_filter),
+    ("birth_pattern", _make_birth_pattern_filter),
+    ("retest_number", _make_retest_number_filter),
+    ("time_since_creation", _make_time_since_creation_filter),
+    ("parent_tf_boundary", _make_parent_tf_boundary_filter),
+    ("inside_w_zone", _make_inside_w_zone_filter),
+    ("d_to_w", _make_d_to_w_filter),
     ("session", _make_session_filter),
+    ("near_pdh_pdl", _make_near_pdh_pdl_filter),
+    ("premium_discount", _make_premium_discount_filter),
 ]
 
 
@@ -171,6 +305,36 @@ def apply_filters_with_cascade(
 
     # Build HTF event index
     htf_pairs = set(cfg.htf_pairs)
+
+    if cfg.cascade_filter == "require_inside_htf_zone":
+        # Special cascade: price must currently be inside an HTF zone
+        # (body_close event at same timestamp in an HTF pair)
+        htf_body_close_ts: set[tuple[pd.Timestamp, str]] = set()
+        for h in all_candidates:
+            if h.event.tf_pair in htf_pairs and h.event.touch_type == "body_close":
+                htf_body_close_ts.add((h.event.timestamp, h.direction))
+
+        input_count = len(funnel.passed)
+        passed = []
+        for c in funnel.passed:
+            ts = c.event.timestamp
+            if cfg.cascade_direction == "same":
+                if (ts, c.direction) in htf_body_close_ts:
+                    passed.append(c)
+            else:
+                # Any direction — check both
+                if ((ts, "long") in htf_body_close_ts
+                        or (ts, "short") in htf_body_close_ts):
+                    passed.append(c)
+
+        funnel.steps.append(FunnelStep(
+            name="cascade",
+            input_count=input_count,
+            output_count=len(passed),
+        ))
+        funnel.passed = passed
+        return funnel
+
     htf_events = sorted(
         [c for c in all_candidates
          if c.event.tf_pair in htf_pairs

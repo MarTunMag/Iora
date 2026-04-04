@@ -1,0 +1,329 @@
+//@version=6
+indicator("Iora Nested Zones", overlay = true, max_boxes_count = 100, max_labels_count = 100, calc_bars_count = 5000)
+
+// =============================================================================
+// S1 — TYPES
+// =============================================================================
+
+type ParentZone
+    float   top         = 0.0
+    float   bottom      = 0.0
+    bool    is_supply   = false
+    int     origin_time = 0
+    bool    is_broken   = true
+
+type ConfirmedZone
+    float   top         = na
+    float   bottom      = na
+    bool    is_supply   = false
+    int     origin_time = na
+    string  pair_label  = ""
+    box     bx          = na
+    label   lbl         = na
+    float   parent_top  = na
+    float   parent_bot  = na
+
+// =============================================================================
+// S2 — INPUTS
+// =============================================================================
+
+string GRP_PAIR = "Pairs"
+bool   i_p1_on  = input.bool(true,  "Pair 1",    group = GRP_PAIR, inline = "p1")
+string i_p1_tf  = input.string("1D", "",          group = GRP_PAIR, inline = "p1", options = ["1M", "1W", "1D", "240", "60", "15"])
+bool   i_p2_on  = input.bool(true,  "Pair 2",    group = GRP_PAIR, inline = "p2")
+string i_p2_tf  = input.string("240", "",         group = GRP_PAIR, inline = "p2", options = ["1M", "1W", "1D", "240", "60", "15"])
+bool   i_p3_on  = input.bool(false, "Pair 3",    group = GRP_PAIR, inline = "p3")
+string i_p3_tf  = input.string("60", "",          group = GRP_PAIR, inline = "p3", options = ["1M", "1W", "1D", "240", "60", "15"])
+
+string GRP_CLR = "Colors"
+color  i_p1_clr = input.color(#FFFFFF, "Pair 1",  group = GRP_CLR)
+color  i_p2_clr = input.color(#26C6DA, "Pair 2",  group = GRP_CLR)
+color  i_p3_clr = input.color(#FF6D00, "Pair 3",  group = GRP_CLR)
+
+string GRP_STY = "Style"
+float  i_doji_pct  = input.float(5.0, "Doji Body %",        group = GRP_STY, minval = 0.1, maxval = 50.0)
+int    i_max_zones = input.int(20,    "Max Confirmed Zones", group = GRP_STY, minval = 1, maxval = 50)
+
+// =============================================================================
+// S3 — HELPERS
+// =============================================================================
+
+tf_label(string tf) =>
+    switch tf
+        "1M"  => "MN"
+        "1W"  => "W"
+        "1D"  => "D"
+        "240" => "H4"
+        "60"  => "H1"
+        "15"  => "M15"
+        "5"   => "M5"
+        "1"   => "M1"
+        => tf
+
+grandchild_tf(string parent_tf) =>
+    switch parent_tf
+        "1M"  => "1D"
+        "1W"  => "240"
+        "1D"  => "60"
+        "240" => "15"
+        "60"  => "5"
+        "15"  => "1"
+        => na
+
+string p1_gc_tf = grandchild_tf(i_p1_tf)
+string p2_gc_tf = grandchild_tf(i_p2_tf)
+string p3_gc_tf = grandchild_tf(i_p3_tf)
+
+int chart_s = timeframe.in_seconds()
+
+bool p1_ok = i_p1_on and timeframe.in_seconds(i_p1_tf) > chart_s and (not na(p1_gc_tf) ? timeframe.in_seconds(p1_gc_tf) > chart_s : false)
+bool p2_ok = i_p2_on and timeframe.in_seconds(i_p2_tf) > chart_s and (not na(p2_gc_tf) ? timeframe.in_seconds(p2_gc_tf) > chart_s : false)
+bool p3_ok = i_p3_on and timeframe.in_seconds(i_p3_tf) > chart_s and (not na(p3_gc_tf) ? timeframe.in_seconds(p3_gc_tf) > chart_s : false)
+
+// =============================================================================
+// S4 — ZONE DETECTION
+// =============================================================================
+
+detect_zones(float doji_pct) =>
+    float haC = (open + high + low + close) / 4.0
+    float haO = float(na)
+    haO := na(haO[1]) ? (open + close) / 2.0 : (nz(haO[1]) + nz(haC[1])) / 2.0
+    float haH = math.max(high, math.max(haO, haC))
+    float haL = math.min(low, math.min(haO, haC))
+
+    bool is_blue = haC >= haO
+    bool is_red  = haC < haO
+
+    int max_run = math.min(50, bar_index)
+
+    var float last_ztop   = na
+    var float last_zbot   = na
+    var int   last_is_sup = 0
+    var int   last_origin = na
+
+    if is_blue and is_red[1]
+        float run_lo_ohlc = low[1]
+        int   ext_time    = time[1]
+        int   k           = 2
+        while k < max_run and is_red[k]
+            if low[k] < run_lo_ohlc
+                run_lo_ohlc := low[k]
+                ext_time    := time[k]
+            k += 1
+
+        float body = math.abs(haC - haO)
+        float rng  = haH - haL
+        bool  doji = rng > 0.0 and (body / rng * 100.0) < doji_pct
+
+        last_ztop   := doji ? nz(haH, high) : nz(haH[1], high[1])
+        last_zbot   := nz(run_lo_ohlc, low[1])
+        last_is_sup := -1
+        last_origin := nz(ext_time, time[1])
+
+    else if is_red and is_blue[1]
+        float run_hi_ohlc = high[1]
+        int   ext_time    = time[1]
+        int   k           = 2
+        while k < max_run and is_blue[k]
+            if high[k] > run_hi_ohlc
+                run_hi_ohlc := high[k]
+                ext_time    := time[k]
+            k += 1
+
+        float body = math.abs(haC - haO)
+        float rng  = haH - haL
+        bool  doji = rng > 0.0 and (body / rng * 100.0) < doji_pct
+
+        last_ztop   := nz(run_hi_ohlc, high[1])
+        last_zbot   := doji ? nz(haL, low) : nz(haL[1], low[1])
+        last_is_sup := 1
+        last_origin := nz(ext_time, time[1])
+
+    [last_ztop, last_zbot, last_is_sup, last_origin]
+
+// =============================================================================
+// S5 — DATA REQUESTS
+// =============================================================================
+
+string _base_sym = ticker.standard(syminfo.tickerid)
+
+[p1_zt, p1_zb, p1_sup, p1_tm] = request.security(_base_sym, i_p1_tf,  detect_zones(i_doji_pct))
+[g1_zt, g1_zb, g1_sup, g1_tm] = request.security(_base_sym, na(p1_gc_tf) ? "1" : p1_gc_tf,  detect_zones(i_doji_pct))
+[p2_zt, p2_zb, p2_sup, p2_tm] = request.security(_base_sym, i_p2_tf,  detect_zones(i_doji_pct))
+[g2_zt, g2_zb, g2_sup, g2_tm] = request.security(_base_sym, na(p2_gc_tf) ? "1" : p2_gc_tf,  detect_zones(i_doji_pct))
+[p3_zt, p3_zb, p3_sup, p3_tm] = request.security(_base_sym, i_p3_tf,  detect_zones(i_doji_pct))
+[g3_zt, g3_zb, g3_sup, g3_tm] = request.security(_base_sym, na(p3_gc_tf) ? "1" : p3_gc_tf,  detect_zones(i_doji_pct))
+
+// =============================================================================
+// S6 — EDGE DETECTION
+// =============================================================================
+
+bool p1_new = not na(p1_zt) and (na(p1_zt[1]) or p1_zt != p1_zt[1] or p1_zb != p1_zb[1])
+bool g1_new = not na(g1_zt) and (na(g1_zt[1]) or g1_zt != g1_zt[1] or g1_zb != g1_zb[1])
+bool p2_new = not na(p2_zt) and (na(p2_zt[1]) or p2_zt != p2_zt[1] or p2_zb != p2_zb[1])
+bool g2_new = not na(g2_zt) and (na(g2_zt[1]) or g2_zt != g2_zt[1] or g2_zb != g2_zb[1])
+bool p3_new = not na(p3_zt) and (na(p3_zt[1]) or p3_zt != p3_zt[1] or p3_zb != p3_zb[1])
+bool g3_new = not na(g3_zt) and (na(g3_zt[1]) or g3_zt != g3_zt[1] or g3_zb != g3_zb[1])
+
+// =============================================================================
+// S7 — NESTING ENGINE
+// =============================================================================
+
+method update_parent(ParentZone pz, float ztop, float zbot, int origin) =>
+    pz.top         := ztop
+    pz.bottom      := zbot
+    pz.origin_time := origin
+    pz.is_broken   := false
+
+create_confirmed(float ztop, float zbot, bool is_sup, int origin, string pair_lbl, color clr, float p_top, float p_bot, array<ConfirmedZone> arr, int max_z) =>
+    string arrow      = is_sup ? " ↘ S" : " ↗ D"
+    string full_label = pair_lbl + arrow
+    float  mid_price  = (ztop + zbot) / 2.0
+    box    bx  = box.new(time, ztop, time, zbot, xloc = xloc.bar_time, border_color = clr, border_width = 2, border_style = line.style_solid, bgcolor = color.new(clr, 85))
+    label  lbl = label.new(time, mid_price, full_label, xloc = xloc.bar_time, style = label.style_none, textcolor = clr, size = size.small)
+    ConfirmedZone cz = ConfirmedZone.new(ztop, zbot, is_sup, origin, pair_lbl, bx, lbl, p_top, p_bot)
+    arr.push(cz)
+    if arr.size() > max_z
+        ConfirmedZone old = arr.shift()
+        if not na(old.bx)
+            box.delete(old.bx)
+        if not na(old.lbl)
+            label.delete(old.lbl)
+
+// =============================================================================
+// S9 — STATE
+// =============================================================================
+
+var ParentZone p1_sup_z = ParentZone.new()
+var ParentZone p1_dem_z = ParentZone.new()
+var ParentZone p2_sup_z = ParentZone.new()
+var ParentZone p2_dem_z = ParentZone.new()
+var ParentZone p3_sup_z = ParentZone.new()
+var ParentZone p3_dem_z = ParentZone.new()
+var array<ConfirmedZone> confirmed = array.new<ConfirmedZone>()
+
+// =============================================================================
+// S7 — EXECUTION
+// =============================================================================
+
+// --- Pair 1 ---
+if p1_ok
+    if p1_new
+        if p1_sup > 0
+            p1_sup_z.update_parent(p1_zt, p1_zb, p1_tm)
+        else if p1_sup < 0
+            p1_dem_z.update_parent(p1_zt, p1_zb, p1_tm)
+    if g1_new
+        bool gc_is_sup = g1_sup > 0
+        bool gc_is_dem = g1_sup < 0
+        if gc_is_sup and not p1_sup_z.is_broken
+            if g1_zt <= p1_sup_z.top and g1_zb >= p1_sup_z.bottom
+                string lbl = tf_label(p1_gc_tf) + " ▶ " + tf_label(i_p1_tf)
+                create_confirmed(g1_zt, g1_zb, true, g1_tm, lbl, i_p1_clr, p1_sup_z.top, p1_sup_z.bottom, confirmed, i_max_zones)
+        if gc_is_dem and not p1_dem_z.is_broken
+            if g1_zt <= p1_dem_z.top and g1_zb >= p1_dem_z.bottom
+                string lbl = tf_label(p1_gc_tf) + " ▶ " + tf_label(i_p1_tf)
+                create_confirmed(g1_zt, g1_zb, false, g1_tm, lbl, i_p1_clr, p1_dem_z.top, p1_dem_z.bottom, confirmed, i_max_zones)
+
+// --- Pair 2 ---
+if p2_ok
+    if p2_new
+        if p2_sup > 0
+            p2_sup_z.update_parent(p2_zt, p2_zb, p2_tm)
+        else if p2_sup < 0
+            p2_dem_z.update_parent(p2_zt, p2_zb, p2_tm)
+    if g2_new
+        bool gc_is_sup = g2_sup > 0
+        bool gc_is_dem = g2_sup < 0
+        if gc_is_sup and not p2_sup_z.is_broken
+            if g2_zt <= p2_sup_z.top and g2_zb >= p2_sup_z.bottom
+                string lbl = tf_label(p2_gc_tf) + " ▶ " + tf_label(i_p2_tf)
+                create_confirmed(g2_zt, g2_zb, true, g2_tm, lbl, i_p2_clr, p2_sup_z.top, p2_sup_z.bottom, confirmed, i_max_zones)
+        if gc_is_dem and not p2_dem_z.is_broken
+            if g2_zt <= p2_dem_z.top and g2_zb >= p2_dem_z.bottom
+                string lbl = tf_label(p2_gc_tf) + " ▶ " + tf_label(i_p2_tf)
+                create_confirmed(g2_zt, g2_zb, false, g2_tm, lbl, i_p2_clr, p2_dem_z.top, p2_dem_z.bottom, confirmed, i_max_zones)
+
+// --- Pair 3 ---
+if p3_ok
+    if p3_new
+        if p3_sup > 0
+            p3_sup_z.update_parent(p3_zt, p3_zb, p3_tm)
+        else if p3_sup < 0
+            p3_dem_z.update_parent(p3_zt, p3_zb, p3_tm)
+    if g3_new
+        bool gc_is_sup = g3_sup > 0
+        bool gc_is_dem = g3_sup < 0
+        if gc_is_sup and not p3_sup_z.is_broken
+            if g3_zt <= p3_sup_z.top and g3_zb >= p3_sup_z.bottom
+                string lbl = tf_label(p3_gc_tf) + " ▶ " + tf_label(i_p3_tf)
+                create_confirmed(g3_zt, g3_zb, true, g3_tm, lbl, i_p3_clr, p3_sup_z.top, p3_sup_z.bottom, confirmed, i_max_zones)
+        if gc_is_dem and not p3_dem_z.is_broken
+            if g3_zt <= p3_dem_z.top and g3_zb >= p3_dem_z.bottom
+                string lbl = tf_label(p3_gc_tf) + " ▶ " + tf_label(i_p3_tf)
+                create_confirmed(g3_zt, g3_zb, false, g3_tm, lbl, i_p3_clr, p3_dem_z.top, p3_dem_z.bottom, confirmed, i_max_zones)
+
+// =============================================================================
+// S8 — BREAK MANAGEMENT
+// =============================================================================
+
+// Parent zone break checks
+if p1_ok
+    if not p1_sup_z.is_broken and close > p1_sup_z.top
+        p1_sup_z.is_broken := true
+    if not p1_dem_z.is_broken and close < p1_dem_z.bottom
+        p1_dem_z.is_broken := true
+if p2_ok
+    if not p2_sup_z.is_broken and close > p2_sup_z.top
+        p2_sup_z.is_broken := true
+    if not p2_dem_z.is_broken and close < p2_dem_z.bottom
+        p2_dem_z.is_broken := true
+if p3_ok
+    if not p3_sup_z.is_broken and close > p3_sup_z.top
+        p3_sup_z.is_broken := true
+    if not p3_dem_z.is_broken and close < p3_dem_z.bottom
+        p3_dem_z.is_broken := true
+
+// Confirmed zone break checks + parent cascade + box extension
+if confirmed.size() > 0
+    for j = confirmed.size() - 1 to 0
+        ConfirmedZone cz = confirmed.get(j)
+        bool cz_broken = false
+
+        // Body-close break on confirmed zone itself
+        if cz.is_supply and close > cz.top
+            cz_broken := true
+        else if not cz.is_supply and close < cz.bottom
+            cz_broken := true
+
+        // Parent invalidation: check if the parent zone that contained this confirmed zone is now broken
+        // Match by parent_top and parent_bot against all parent zones
+        if not cz_broken
+            if p1_ok
+                if cz.is_supply and p1_sup_z.is_broken and cz.parent_top == p1_sup_z.top and cz.parent_bot == p1_sup_z.bottom
+                    cz_broken := true
+                if not cz.is_supply and p1_dem_z.is_broken and cz.parent_top == p1_dem_z.top and cz.parent_bot == p1_dem_z.bottom
+                    cz_broken := true
+            if p2_ok and not cz_broken
+                if cz.is_supply and p2_sup_z.is_broken and cz.parent_top == p2_sup_z.top and cz.parent_bot == p2_sup_z.bottom
+                    cz_broken := true
+                if not cz.is_supply and p2_dem_z.is_broken and cz.parent_top == p2_dem_z.top and cz.parent_bot == p2_dem_z.bottom
+                    cz_broken := true
+            if p3_ok and not cz_broken
+                if cz.is_supply and p3_sup_z.is_broken and cz.parent_top == p3_sup_z.top and cz.parent_bot == p3_sup_z.bottom
+                    cz_broken := true
+                if not cz.is_supply and p3_dem_z.is_broken and cz.parent_top == p3_dem_z.top and cz.parent_bot == p3_dem_z.bottom
+                    cz_broken := true
+
+        if cz_broken
+            if not na(cz.bx)
+                box.delete(cz.bx)
+            if not na(cz.lbl)
+                label.delete(cz.lbl)
+            confirmed.remove(j)
+        else
+            // Extend box and reposition label to current bar
+            if not na(cz.bx)
+                box.set_right(cz.bx, time)
+            if not na(cz.lbl)
+                label.set_x(cz.lbl, time)

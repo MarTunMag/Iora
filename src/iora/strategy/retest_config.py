@@ -48,11 +48,29 @@ class RetestConfig:
     cascade_lookback: int = 20               # Entry-TF bars (converted to seconds for lookup)
     cascade_direction: str = "same"          # "same", "any"
 
+    # Entry mode
+    entry_mode: str = "market"              # "market" = close price, "limit" = zone edge
+
     # SL/TP
-    sl_mode: str = "zone"                    # "zone", "atr", "period"
-    tp_mode: str = "fixed_rr"               # "zone", "fixed_rr"
+    sl_mode: str = "zone"                    # "zone", "atr", "period", "structure"
+    tp_mode: str = "fixed_rr"               # "zone", "fixed_rr", "period"
     fixed_rr: float = 2.0                    # When tp_mode == "fixed_rr"
     sl_atr_mult: float = 1.5                # When sl_mode == "atr"
+
+    # Phase 2 filters
+    birth_pattern_filter: str = "any"        # "compression", "trending", "expansion", "any"
+    retest_number_filter: str = "any"        # "1-3", "4-10", "10+", "any"
+    time_since_creation_filter: str = "any"  # "0-3h", "3-12h", "12h-3d", "3d+", "any"
+    parent_tf_boundary_filter: str = "any"   # "0-1_parent_bars", "1-2_parent_bars",
+                                             # "2-4_parent_bars", "4+_parent_bars", "any"
+
+    # Phase 3 filters
+    inside_w_zone_filter: str = "any"        # "inside", "outside", "any"
+    d_to_w_filter: str = "any"               # "continuation", "pullback", "inside_zone", "neutral", "any"
+
+    # Phase 4 filters
+    near_pdh_pdl: str = "any"               # "near" = within 0.5 ATR of PDH or PDL, "any"
+    premium_discount: str = "any"           # "aligned" = longs in discount + shorts in premium, "any"
 
     # Touch policy (spec dimension: first_touch vs until_broken)
     touch_policy: str = "until_broken"       # "first_touch" = zone consumed after one entry;

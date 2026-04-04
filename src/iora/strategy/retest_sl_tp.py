@@ -8,6 +8,8 @@ TP: fixed R:R from SL distance, or opposing zone (future).
 """
 from __future__ import annotations
 
+from math import isnan
+
 from iora.strategy.retest_candidate import RetestCandidate
 
 _ZONE_BUFFER_ATR: float = 0.15  # Buffer beyond zone edge as ATR fraction
@@ -38,6 +40,16 @@ def compute_retest_sl(
             return c.period_lo - buf
         return c.period_hi + buf
 
+    if mode == "structure":
+        if not isnan(c.ltf_choch_zone_boundary):
+            if c.direction == "long":
+                return c.ltf_choch_zone_boundary - buf
+            return c.ltf_choch_zone_boundary + buf
+        # Fallback to ATR if no structural level available
+        if c.direction == "long":
+            return c.entry_price - atr_mult * c.atr
+        return c.entry_price + atr_mult * c.atr
+
     # Fallback to ATR
     if c.direction == "long":
         return c.entry_price - atr_mult * c.atr
@@ -50,16 +62,45 @@ def compute_retest_tp(
     mode: str = "fixed_rr",
     fixed_rr: float = 2.0,
 ) -> float:
-    """Compute take-profit for a retest entry."""
+    """Compute take-profit for a retest entry.
+
+    Modes:
+        fixed_rr: TP at fixed R:R multiple from SL distance
+        period: TP at period tracker extreme (hi for longs, lo for shorts)
+    """
     c = candidate
     risk = abs(c.entry_price - sl_price)
 
-    if mode == "fixed_rr":
+    if mode == "zone":
+        if not isnan(c.next_opposing_zone_price):
+            tp = c.next_opposing_zone_price
+            if c.direction == "long" and tp > c.entry_price:
+                return tp
+            if c.direction == "short" and tp < c.entry_price:
+                return tp
+        # Fallback to fixed_rr
         if c.direction == "long":
             return c.entry_price + fixed_rr * risk
         return c.entry_price - fixed_rr * risk
 
-    # Fallback to fixed_rr
+    if mode == "period":
+        # TP at period extreme on zone TF
+        if c.direction == "long":
+            tp = c.period_hi
+            # Period hi must be above entry for a valid long TP
+            if tp > c.entry_price:
+                return tp
+        else:
+            tp = c.period_lo
+            # Period lo must be below entry for a valid short TP
+            if tp < c.entry_price:
+                return tp
+        # Fallback to fixed_rr if period level is invalid
+        if c.direction == "long":
+            return c.entry_price + fixed_rr * risk
+        return c.entry_price - fixed_rr * risk
+
+    # fixed_rr (default)
     if c.direction == "long":
         return c.entry_price + fixed_rr * risk
     return c.entry_price - fixed_rr * risk

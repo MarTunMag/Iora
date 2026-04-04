@@ -281,6 +281,35 @@ def _simulate_with_bars(
             if config.touch_policy == "first_touch" and zone_key in consumed_zones:
                 pass  # Skip this entry
             else:
+                # Determine entry price based on entry_mode
+                use_limit = config.entry_mode == "limit"
+                if use_limit:
+                    limit_buf = 0.1 * candidate.atr
+                    if candidate.direction == "long":
+                        limit_price = candidate.zone_bottom + limit_buf
+                        filled = bar_low <= limit_price
+                    else:
+                        limit_price = candidate.zone_top - limit_buf
+                        filled = bar_high >= limit_price
+
+                    if not filled:
+                        continue  # Limit order not reached — no entry
+
+                    # Override entry price on candidate for SL/TP computation
+                    candidate = RetestCandidate(
+                        event=candidate.event,
+                        zone_top=candidate.zone_top,
+                        zone_bottom=candidate.zone_bottom,
+                        entry_price=limit_price,
+                        atr=candidate.atr,
+                        period_hi=candidate.period_hi,
+                        period_lo=candidate.period_lo,
+                        ltf_choch_zone_boundary=candidate.ltf_choch_zone_boundary,
+                        next_opposing_zone_price=candidate.next_opposing_zone_price,
+                        d_to_w_relationship=candidate.d_to_w_relationship,
+                        inside_w_zone=candidate.inside_w_zone,
+                    )
+
                 # Compute SL and TP
                 sl = compute_retest_sl(
                     candidate,

@@ -1,0 +1,1145 @@
+//@version=6
+indicator("Iora Cascade Zones", shorttitle = "CascZones", overlay = true, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
+
+// =============================================================================
+// S1 — INPUTS
+// =============================================================================
+
+string GRP_ENTRY = "Entry Zones"
+bool   i_show_h4     = input.bool(true, "H4 Zones",                 group = GRP_ENTRY)
+bool   i_show_h1     = input.bool(true, "H1 Zones",                 group = GRP_ENTRY)
+bool   i_show_m15    = input.bool(true, "M15 Zones (lines)",        group = GRP_ENTRY)
+int    i_h4_keep     = input.int(3, "H4 Zones Per Side",            group = GRP_ENTRY, minval = 1, maxval = 15)
+int    i_h1_keep     = input.int(3, "H1 Zones Per Side",            group = GRP_ENTRY, minval = 1, maxval = 10)
+int    i_m15_keep    = input.int(3, "M15 Zones Per Side",           group = GRP_ENTRY, minval = 1, maxval = 10)
+float  i_doji        = input.float(5.0, "Doji Body %",              group = GRP_ENTRY, minval = 0.1, maxval = 50.0)
+
+string GRP_CTR = "Counter-Trend Classification"
+bool   i_classify    = input.bool(true, "Classify CTR/WITH",        group = GRP_CTR)
+
+string GRP_INTRA = "Intraday Execution"
+bool   i_show_choch  = input.bool(true, "M15 CHoCH Markers",        group = GRP_INTRA)
+bool   i_show_h1_sl  = input.bool(true, "H1 SL Reference Lines",    group = GRP_INTRA)
+int    i_m15_min_rej = input.int(1, "M15 Min Rejection (0-2)",      group = GRP_INTRA, minval = 0, maxval = 2, tooltip = "0=wick+body, threshold for showing M15 CHoCH")
+
+string GRP_TL = "Trendlines"
+bool   i_show_tl     = input.bool(true, "Show Trendlines",          group = GRP_TL)
+int    i_tl_hist     = input.int(2, "TL History",                   group = GRP_TL, minval = 0, maxval = 5)
+int    i_tl_width    = input.int(1, "TL Width",                     group = GRP_TL, minval = 1, maxval = 3)
+color  i_tl_desc_clr = input.color(color.new(#EF5350, 30), "Desc TL",  group = GRP_TL)
+color  i_tl_asc_clr  = input.color(color.new(#26A69A, 30), "Asc TL",   group = GRP_TL)
+
+string GRP_M5 = "M5 Precision"
+bool   i_show_m5     = input.bool(true, "M5 CHoCH Markers",         group = GRP_M5)
+int    i_m5_min_rej  = input.int(2, "M5 Min Rejection (0-3)",       group = GRP_M5, minval = 0, maxval = 3, tooltip = "wick+body+follow-through; only show inside H4 zones")
+color  i_m5_bull_clr = input.color(color.new(#00E676, 0), "M5 Bull",   group = GRP_M5)
+color  i_m5_bear_clr = input.color(color.new(#FF5252, 0), "M5 Bear",   group = GRP_M5)
+
+string GRP_BRK = "Breaker Zones"
+bool   i_show_brk    = input.bool(true, "Mark Breaker Zones",       group = GRP_BRK)
+
+string GRP_CASCADE = "Cascade Signals"
+bool   i_show_cascade = input.bool(true, "Cascade Transition",      group = GRP_CASCADE)
+bool   i_show_parent  = input.bool(false, "Parent TF Boundaries",   group = GRP_CASCADE)
+
+string GRP_DASH = "Dashboard"
+bool   i_show_dash   = input.bool(true, "Show Dashboard",           group = GRP_DASH)
+string i_dash_pos    = input.string("Bottom Right", "Position",     group = GRP_DASH, options = ["Top Left", "Top Right", "Bottom Left", "Bottom Right"])
+
+string GRP_CLR = "Colors"
+color  i_h4_sup_bg   = input.color(color.new(#FF4444, 82), "H4 Supply Fill",       group = GRP_CLR)
+color  i_h4_sup_br   = input.color(color.new(#FF4444, 20), "H4 Supply Border",     group = GRP_CLR)
+color  i_h4_dem_bg   = input.color(color.new(#2196F3, 82), "H4 Demand Fill",       group = GRP_CLR)
+color  i_h4_dem_br   = input.color(color.new(#2196F3, 20), "H4 Demand Border",     group = GRP_CLR)
+color  i_ctr_bg      = input.color(color.new(#FF9800, 85), "CTR Zone Fill",        group = GRP_CLR)
+color  i_ctr_br      = input.color(color.new(#FF9800, 15), "CTR Zone Border",      group = GRP_CLR)
+color  i_h1_sup_bg   = input.color(color.new(#EF5350, 95), "H1 Supply Fill",       group = GRP_CLR)
+color  i_h1_sup_br   = input.color(color.new(#EF5350, 40), "H1 Supply Border",     group = GRP_CLR)
+color  i_h1_dem_bg   = input.color(color.new(#42A5F5, 95), "H1 Demand Fill",       group = GRP_CLR)
+color  i_h1_dem_br   = input.color(color.new(#42A5F5, 40), "H1 Demand Border",     group = GRP_CLR)
+color  i_m15_sup_clr = input.color(color.new(#E57373, 55), "M15 Supply Line",      group = GRP_CLR)
+color  i_m15_dem_clr = input.color(color.new(#64B5F6, 55), "M15 Demand Line",      group = GRP_CLR)
+color  i_sl_clr      = input.color(color.new(#FFD700, 30), "SL Reference",         group = GRP_CLR)
+color  i_choch_bull  = input.color(color.new(#26A69A, 0),  "CHoCH Bull",           group = GRP_CLR)
+color  i_choch_bear  = input.color(color.new(#EF5350, 0),  "CHoCH Bear",           group = GRP_CLR)
+
+string GRP_AGE = "Zone Age (max TF bars)"
+int    i_age_h4  = input.int(50, "H4",  group = GRP_AGE, minval = 5, maxval = 200)
+int    i_age_h1  = input.int(60, "H1",  group = GRP_AGE, minval = 5, maxval = 200)
+int    i_age_m15 = input.int(80, "M15", group = GRP_AGE, minval = 5, maxval = 300)
+
+// =============================================================================
+// S2 — ZONE UDT
+// =============================================================================
+
+type CascadeZone
+    float   top          = 0.0
+    float   bottom       = 0.0
+    bool    is_supply    = false
+    int     origin_time  = 0
+    box     bx                      // box-mode (H4, H1)
+    line    ln_top                  // line-mode top boundary (M15)
+    line    ln_bot                  // line-mode bottom boundary (M15)
+    label   lbl                     // line-mode text label (M15)
+    bool    is_push      = false
+    bool    is_reversal  = false
+    string  struct_cls   = ""       // BOS, CHoCH
+    string  swing_cls    = ""       // HH, LH, LL, HL
+    string  ctr_cls      = ""       // CTR-S, CTR-D, WITH-S, WITH-D
+    string  tf_label     = ""       // H4, H1, M15
+    bool    is_breaker   = false
+
+// =============================================================================
+// S3 — HA ZONE DETECTION (from push_zones_v2)
+// =============================================================================
+
+ha_detect(float doji_pct) =>
+    float haC = (open + high + low + close) / 4.0
+    float haO = float(na)
+    haO := na(haO[1]) ? (open + close) / 2.0 : (nz(haO[1]) + nz(haC[1])) / 2.0
+    float haH = math.max(high, math.max(haO, haC))
+    float haL = math.min(low, math.min(haO, haC))
+
+    bool is_blue = haC >= haO
+    bool is_red  = haC < haO
+
+    int max_run = math.min(50, bar_index)
+
+    var float prev_run_hi   = na
+    var float prev_run_lo   = na
+    var float seq_hh        = na
+    var float seq_ll        = na
+    var int   seq_hh_time   = na
+    var int   seq_ll_time   = na
+    var string hi1_txt      = ""
+    var string lo1_txt      = ""
+
+    bool  fire      = false
+    float ztop      = 0.0
+    float zbot      = 0.0
+    bool  is_sup    = false
+    int   zt_origin = time
+
+    if is_blue and is_red[1]
+        float run_lo_ohlc = low[1]
+        int   ext_time    = time[1]
+        int   k           = 2
+        while k < max_run and is_red[k]
+            if low[k] < run_lo_ohlc
+                run_lo_ohlc := low[k]
+                ext_time    := time[k]
+            k += 1
+
+        bool is_new_ll = na(prev_run_lo) or run_lo_ohlc < prev_run_lo
+        seq_ll      := run_lo_ohlc
+        seq_ll_time := ext_time
+        prev_run_lo := run_lo_ohlc
+        lo1_txt     := is_new_ll ? "LL" : "HL"
+
+        float body = math.abs(haC - haO)
+        float rng  = haH - haL
+        bool  doji = rng > 0.0 and (body / rng * 100.0) < doji_pct
+
+        ztop      := doji ? nz(haH, high) : nz(haH[1], high[1])
+        zbot      := nz(run_lo_ohlc, low[1])
+        zt_origin := nz(ext_time, time[1])
+        fire      := true
+
+    else if is_red and is_blue[1]
+        float run_hi_ohlc = high[1]
+        int   ext_time    = time[1]
+        int   k           = 2
+        while k < max_run and is_blue[k]
+            if high[k] > run_hi_ohlc
+                run_hi_ohlc := high[k]
+                ext_time    := time[k]
+            k += 1
+
+        bool is_new_hh = na(prev_run_hi) or run_hi_ohlc > prev_run_hi
+        seq_hh      := run_hi_ohlc
+        seq_hh_time := ext_time
+        prev_run_hi := run_hi_ohlc
+        hi1_txt     := is_new_hh ? "HH" : "LH"
+
+        float body = math.abs(haC - haO)
+        float rng  = haH - haL
+        bool  doji = rng > 0.0 and (body / rng * 100.0) < doji_pct
+
+        ztop      := nz(run_hi_ohlc, high[1])
+        zbot      := doji ? nz(haL, low) : nz(haL[1], low[1])
+        zt_origin := nz(ext_time, time[1])
+        fire      := true
+        is_sup    := true
+
+    [fire, ztop, zbot, is_sup, zt_origin, seq_hh, seq_ll, seq_hh_time, seq_ll_time, hi1_txt, lo1_txt]
+
+// =============================================================================
+// S4 — PERIOD TRACKING (from push_zones_v2)
+// =============================================================================
+
+track_period(string tf) =>
+    bool new_period = ta.change(time(tf)) != 0
+
+    var float cur_hi   = na
+    var int   cur_hi_t = na
+    var float cur_lo   = na
+    var int   cur_lo_t = na
+    var float prev_hi   = na
+    var int   prev_hi_t = na
+    var float prev_lo   = na
+    var int   prev_lo_t = na
+    var int   hi_brk_t  = na
+    var int   lo_brk_t  = na
+
+    if new_period
+        prev_hi   := cur_hi
+        prev_hi_t := cur_hi_t
+        prev_lo   := cur_lo
+        prev_lo_t := cur_lo_t
+        cur_hi    := high
+        cur_hi_t  := time
+        cur_lo    := low
+        cur_lo_t  := time
+        hi_brk_t  := na
+        lo_brk_t  := na
+    else
+        if high >= nz(cur_hi)
+            cur_hi   := high
+            cur_hi_t := time
+        if low <= nz(cur_lo, 1e18)
+            cur_lo   := low
+            cur_lo_t := time
+
+    if na(hi_brk_t) and not na(prev_hi) and high > prev_hi
+        hi_brk_t := time
+    if na(lo_brk_t) and not na(prev_lo) and low < prev_lo
+        lo_brk_t := time
+
+    [prev_hi, prev_hi_t, prev_lo, prev_lo_t, hi_brk_t, lo_brk_t]
+
+// =============================================================================
+// S5 — TRENDLINE UDT & HELPERS (ported from iora_pivot_hl_trendlines)
+// =============================================================================
+
+color _TL_TRANS = color.new(#000000, 100)
+
+type TLState
+    bool        descending = true
+    color       clr        = #ef5350
+    string      tfName     = ""
+    float       a1p        = na
+    int         a1b        = 0
+    float       a2p        = na
+    int         a2b        = 0
+    line        activeTL   = na
+    bool        broken     = false
+    label       lbl1       = na
+    label       lbl2       = na
+    array<line> history    = na
+
+projPrice(float p1, int b1, float p2, int b2, int atBar) =>
+    int dBars = b2 - b1
+    float slope = dBars != 0 ? (p2 - p1) / dBars : 0.0
+    float result = p2 + slope * (atBar - b2)
+    result
+
+freezeTL(line tl, color clr, int breakBar, float breakPrice) =>
+    if not na(tl)
+        line.set_style(tl, line.style_dashed)
+        line.set_color(tl, color.new(clr, 65))
+        line.set_extend(tl, extend.none)
+        line.set_x2(tl, breakBar)
+        line.set_y2(tl, breakPrice)
+    tl
+
+trimHistory(array<line> arr, int maxKeep) =>
+    while arr.size() > maxKeep
+        line old = arr.shift()
+        if not na(old)
+            line.delete(old)
+    true
+
+styleHistory(array<line> arr, color clr) =>
+    int sz = arr.size()
+    if sz > 0
+        for i = 0 to sz - 1
+            line ln = arr.get(i)
+            if not na(ln)
+                int age = sz - 1 - i
+                if age == 0
+                    line.set_style(ln, line.style_dashed)
+                    line.set_color(ln, color.new(clr, 65))
+                else
+                    line.set_style(ln, line.style_dotted)
+                    line.set_color(ln, color.new(clr, 80))
+    true
+
+delLabel(label lbl) =>
+    if not na(lbl)
+        label.delete(lbl)
+    label(na)
+
+method checkBreak(TLState self, float breakPrice, int barIdx, int maxHist) =>
+    bool just_broke = false
+    if not na(self.a2p) and not self.broken
+        float proj = projPrice(self.a1p, self.a1b, self.a2p, self.a2b, barIdx)
+        bool broke = self.descending ? (breakPrice > proj) : (breakPrice < proj)
+        if broke
+            self.broken := true
+            just_broke  := true
+            line frozen = freezeTL(self.activeTL, self.clr, barIdx, proj)
+            self.history.push(frozen)
+            trimHistory(self.history, maxHist)
+            styleHistory(self.history, self.clr)
+    just_broke
+
+method addAnchor(TLState self, float price, int bar, int maxHist, int tlWidth) =>
+    if na(price)
+        false
+    else
+        if na(self.a1p)
+            self.a1p := price
+            self.a1b := bar
+            self.lbl1 := label.new(bar, price, self.tfName, style = (self.descending ? label.style_label_down : label.style_label_up), color = _TL_TRANS, textcolor = color.new(self.clr, 40), size = size.tiny)
+
+        else if na(self.a2p)
+            self.a2p := price
+            self.a2b := bar
+            self.broken := false
+            self.activeTL := line.new(self.a1b, self.a1p, self.a2b, self.a2p, color = self.clr, width = tlWidth)
+            self.lbl2 := label.new(bar, price, self.tfName, style = (self.descending ? label.style_label_down : label.style_label_up), color = _TL_TRANS, textcolor = color.new(self.clr, 40), size = size.tiny)
+
+        else if self.broken
+            self.lbl1 := delLabel(self.lbl1)
+            self.lbl2 := delLabel(self.lbl2)
+            self.a1p := price
+            self.a1b := bar
+            self.a2p := na
+            self.a2b := 0
+            self.broken := false
+            self.activeTL := na
+            self.lbl1 := label.new(bar, price, self.tfName, style = (self.descending ? label.style_label_down : label.style_label_up), color = _TL_TRANS, textcolor = color.new(self.clr, 40), size = size.tiny)
+
+        else
+            float proj = projPrice(self.a1p, self.a1b, self.a2p, self.a2b, bar)
+            bool onOrInside = self.descending ? (price <= proj) : (price >= proj)
+
+            if onOrInside
+                self.lbl1 := delLabel(self.lbl1)
+                self.a1p := self.a2p
+                self.a1b := self.a2b
+                self.a2p := price
+                self.a2b := bar
+                self.lbl1 := self.lbl2
+                self.lbl2 := label.new(bar, price, self.tfName, style = (self.descending ? label.style_label_down : label.style_label_up), color = _TL_TRANS, textcolor = color.new(self.clr, 40), size = size.tiny)
+                if not na(self.activeTL)
+                    line.delete(self.activeTL)
+                self.activeTL := line.new(self.a1b, self.a1p, self.a2b, self.a2p, color = self.clr, width = tlWidth)
+            else
+                float projNow = projPrice(self.a1p, self.a1b, self.a2p, self.a2b, bar_index)
+                self.broken := true
+                line frozen = freezeTL(self.activeTL, self.clr, bar_index, projNow)
+                self.history.push(frozen)
+                trimHistory(self.history, maxHist)
+                styleHistory(self.history, self.clr)
+                if not na(self.lbl1)
+                    label.set_textcolor(self.lbl1, color.new(self.clr, 75))
+                if not na(self.lbl2)
+                    label.set_textcolor(self.lbl2, color.new(self.clr, 75))
+                self.a1p := price
+                self.a1b := bar
+                self.a2p := na
+                self.a2b := 0
+                self.activeTL := na
+                self.lbl1 := label.new(bar, price, self.tfName, style = (self.descending ? label.style_label_down : label.style_label_up), color = _TL_TRANS, textcolor = color.new(self.clr, 40), size = size.tiny)
+                self.lbl2 := na
+        true
+
+method extendTL(TLState self, int barIdx) =>
+    if not na(self.activeTL) and not self.broken
+        line.set_x2(self.activeTL, barIdx)
+        float proj = projPrice(self.a1p, self.a1b, self.a2p, self.a2b, barIdx)
+        line.set_y2(self.activeTL, proj)
+    true
+
+// =============================================================================
+// S6 — DATA REQUESTS
+// 5 request.security() calls: D1, H4, H1, M15, M5
+// =============================================================================
+
+string _sym = ticker.standard(syminfo.tickerid)
+
+[d1_fire_raw, d1_zt, d1_zb, d1_sup, d1_tm, d1_hh, d1_ll, d1_hht, d1_llt, d1_hi_txt, d1_lo_txt] = request.security(_sym, "1D", ha_detect(i_doji))
+[h4_fire_raw, h4_zt, h4_zb, h4_sup, h4_tm, h4_hh, h4_ll, h4_hht, h4_llt, h4_hi_txt, h4_lo_txt] = request.security(_sym, "240", ha_detect(i_doji))
+[h1_fire_raw, h1_zt, h1_zb, h1_sup, h1_tm, h1_hh, h1_ll, h1_hht, h1_llt, h1_hi_txt, h1_lo_txt] = request.security(_sym, "60", ha_detect(i_doji))
+[m15_fire_raw, m15_zt, m15_zb, m15_sup, m15_tm, m15_hh, m15_ll, m15_hht, m15_llt, m15_hi_txt, m15_lo_txt] = request.security(_sym, "15", ha_detect(i_doji))
+[m5_fire_raw, m5_zt, m5_zb, m5_sup, m5_tm, m5_hh, m5_ll, m5_hht, m5_llt, m5_hi_txt, m5_lo_txt] = request.security(_sym, "5", ha_detect(i_doji))
+
+// Period tracking on chart TF
+[d1_tp_hi, d1_tp_hi_t, d1_tp_lo, d1_tp_lo_t, d1_hi_brk, d1_lo_brk] = track_period("1D")
+[h4_tp_hi, h4_tp_hi_t, h4_tp_lo, h4_tp_lo_t, h4_hi_brk, h4_lo_brk] = track_period("240")
+[h1_tp_hi, h1_tp_hi_t, h1_tp_lo, h1_tp_lo_t, h1_hi_brk, h1_lo_brk] = track_period("60")
+[m15_tp_hi, m15_tp_hi_t, m15_tp_lo, m15_tp_lo_t, m15_hi_brk, m15_lo_brk] = track_period("15")
+[m5_tp_hi, m5_tp_hi_t, m5_tp_lo, m5_tp_lo_t, m5_hi_brk, m5_lo_brk] = track_period("5")
+
+// =============================================================================
+// S7 — EDGE DETECTION & TREND STATE
+// =============================================================================
+
+bool d1_fire  = d1_fire_raw and not d1_fire_raw[1]
+bool h4_fire  = h4_fire_raw and not h4_fire_raw[1]
+bool h1_fire  = h1_fire_raw and not h1_fire_raw[1]
+bool m15_fire = m15_fire_raw and not m15_fire_raw[1]
+bool m5_fire  = m5_fire_raw and not m5_fire_raw[1]
+
+var int d1_trend = 0
+if not na(d1_hi_brk) and na(d1_hi_brk[1])
+    d1_trend := 1
+if not na(d1_lo_brk) and na(d1_lo_brk[1])
+    d1_trend := -1
+
+var int h4_trend = 0
+if not na(h4_hi_brk) and na(h4_hi_brk[1])
+    h4_trend := 1
+if not na(h4_lo_brk) and na(h4_lo_brk[1])
+    h4_trend := -1
+
+var int h1_trend = 0
+if not na(h1_hi_brk) and na(h1_hi_brk[1])
+    h1_trend := 1
+if not na(h1_lo_brk) and na(h1_lo_brk[1])
+    h1_trend := -1
+
+var int m15_trend = 0
+if not na(m15_hi_brk) and na(m15_hi_brk[1])
+    m15_trend := 1
+if not na(m15_lo_brk) and na(m15_lo_brk[1])
+    m15_trend := -1
+
+var int m5_trend = 0
+if not na(m5_hi_brk) and na(m5_hi_brk[1])
+    m5_trend := 1
+if not na(m5_lo_brk) and na(m5_lo_brk[1])
+    m5_trend := -1
+
+// =============================================================================
+// S8 — D1 BIAS STATE
+// =============================================================================
+
+var string d1_last_hi = ""
+var string d1_last_lo = ""
+
+if d1_fire
+    if d1_sup
+        d1_last_hi := d1_hi_txt
+    else
+        d1_last_lo := d1_lo_txt
+
+bool d1_bias_bull = (d1_last_hi == "HH" and d1_last_lo == "HL") or d1_trend == 1
+bool d1_bias_bear = (d1_last_hi == "LH" and d1_last_lo == "LL") or d1_trend == -1
+
+var float d1_nearest_sup_top = na
+var float d1_nearest_sup_bot = na
+var float d1_nearest_dem_top = na
+var float d1_nearest_dem_bot = na
+
+if d1_fire
+    if d1_sup
+        d1_nearest_sup_top := d1_zt
+        d1_nearest_sup_bot := d1_zb
+    else
+        d1_nearest_dem_top := d1_zt
+        d1_nearest_dem_bot := d1_zb
+
+// =============================================================================
+// S9 — M15 CHoCH DETECTION + REJECTION QUALITY (wick + body, 0-2 score)
+// =============================================================================
+
+var string m15_prev_hi_cls = ""
+var string m15_prev_lo_cls = ""
+var int    m15_choch_bar   = na
+var int    m15_choch_dir   = 0
+
+bool m15_choch_bull_now = false
+bool m15_choch_bear_now = false
+
+if m15_fire
+    if m15_sup
+        if m15_prev_hi_cls == "HH" and m15_hi_txt == "LH"
+            m15_choch_bear_now := true
+            m15_choch_bar      := bar_index
+            m15_choch_dir      := -1
+        m15_prev_hi_cls := m15_hi_txt
+    else
+        if m15_prev_lo_cls == "LL" and m15_lo_txt == "HL"
+            m15_choch_bull_now := true
+            m15_choch_bar      := bar_index
+            m15_choch_dir      := 1
+        m15_prev_lo_cls := m15_lo_txt
+
+// Rejection quality at fire bar (wick + body, 0-2)
+bool m15_choch_bull_show = false
+bool m15_choch_bear_show = false
+int  m15_rej_q = 0
+
+if m15_choch_bull_now or m15_choch_bear_now
+    float rng_m = high - low
+    if rng_m > 0
+        float wick_m = m15_choch_bull_now ? ((math.max(open, close) - low) / rng_m) : ((high - math.min(open, close)) / rng_m)
+        float body_m = math.abs(close - open) / rng_m
+        if wick_m > 0.5
+            m15_rej_q += 1
+        if body_m > 0.4
+            m15_rej_q += 1
+    if m15_rej_q >= i_m15_min_rej
+        m15_choch_bull_show := m15_choch_bull_now
+        m15_choch_bear_show := m15_choch_bear_now
+
+// CHoCH labels (only when rejection quality passes threshold)
+if m15_choch_bull_show and i_show_choch
+    label.new(bar_index, low - (high - low) * 0.3, "M15 ▲ Q" + str.tostring(m15_rej_q), style = label.style_label_up, color = color.new(i_choch_bull, 20), textcolor = i_choch_bull, size = size.tiny)
+if m15_choch_bear_show and i_show_choch
+    label.new(bar_index, high + (high - low) * 0.3, "M15 ▼ Q" + str.tostring(m15_rej_q), style = label.style_label_down, color = color.new(i_choch_bear, 20), textcolor = i_choch_bear, size = size.tiny)
+
+int _chart_sec = math.max(1, timeframe.in_seconds(timeframe.period))
+int _choch_lookback = math.max(3, 3 * (900 / _chart_sec))
+bool m15_choch_recent = not na(m15_choch_bar) and (bar_index - m15_choch_bar) <= _choch_lookback
+
+// =============================================================================
+// S10 — M5 CHoCH RAW DETECTION + REJECTION PENDING STATE
+// Compute wick+body at fire bar, store for follow-through check next bar.
+// =============================================================================
+
+var string m5_prev_hi_cls = ""
+var string m5_prev_lo_cls = ""
+var int    m5_choch_bar   = na
+var int    m5_choch_dir   = 0
+
+bool m5_choch_bull_raw = false
+bool m5_choch_bear_raw = false
+
+if m5_fire
+    if m5_sup
+        if m5_prev_hi_cls == "HH" and m5_hi_txt == "LH"
+            m5_choch_bear_raw := true
+            m5_choch_dir      := -1
+        m5_prev_hi_cls := m5_hi_txt
+    else
+        if m5_prev_lo_cls == "LL" and m5_lo_txt == "HL"
+            m5_choch_bull_raw := true
+            m5_choch_dir      := 1
+        m5_prev_lo_cls := m5_lo_txt
+
+// Pending rejection state (awaits follow-through confirmation next bar)
+var int   m5_rej_bar   = na
+var bool  m5_rej_bull  = false
+var float m5_rej_wick  = 0.0
+var float m5_rej_body  = 0.0
+
+if m5_choch_bull_raw or m5_choch_bear_raw
+    float rng5 = high - low
+    m5_rej_wick := 0.0
+    m5_rej_body := 0.0
+    if rng5 > 0
+        m5_rej_wick := m5_choch_bull_raw ? ((math.max(open, close) - low) / rng5) : ((high - math.min(open, close)) / rng5)
+        m5_rej_body := math.abs(close - open) / rng5
+    m5_rej_bull := m5_choch_bull_raw
+    m5_rej_bar  := bar_index
+
+// =============================================================================
+// S11 — ZONE MANAGEMENT HELPERS
+// =============================================================================
+
+delete_cz(array<CascadeZone> zones, int idx) =>
+    CascadeZone z = zones.get(idx)
+    if not na(z.bx)
+        box.delete(z.bx)
+    if not na(z.ln_top)
+        line.delete(z.ln_top)
+    if not na(z.ln_bot)
+        line.delete(z.ln_bot)
+    if not na(z.lbl)
+        label.delete(z.lbl)
+    zones.remove(idx)
+
+count_cz_side(array<CascadeZone> zones, bool is_supply) =>
+    int cnt = 0
+    if zones.size() > 0
+        for i = 0 to zones.size() - 1
+            CascadeZone z = zones.get(i)
+            if z.is_supply == is_supply
+                cnt += 1
+    cnt
+
+cap_cz_side(array<CascadeZone> zones, bool is_supply, int max_count) =>
+    int cnt = count_cz_side(zones, is_supply)
+    if cnt > max_count and zones.size() > 0
+        for i = 0 to zones.size() - 1
+            CascadeZone z = zones.get(i)
+            if z.is_supply == is_supply
+                delete_cz(zones, i)
+                break
+    true
+
+classify_ctr(bool is_supply, bool bias_bull, bool bias_bear) =>
+    string result = ""
+    if bias_bull
+        result := is_supply ? "CTR-S" : "WITH-D"
+    else if bias_bear
+        result := is_supply ? "WITH-S" : "CTR-D"
+    result
+
+// =============================================================================
+// S12 — PROCESS ZONES (generic for H4, H1, M15)
+// as_lines: M15 uses horizontal lines instead of filled boxes
+// base_bw:  base border width (H4=2, H1=1, M15 ignored)
+// show_swing: include HH/LH/HL/LL in label (H4 only)
+// =============================================================================
+
+process_zones(array<CascadeZone> zones, bool fire, float ztop, float zbot, bool is_sup, int z_time, string hi_txt, string lo_txt, float seq_hh_val, float seq_ll_val, int trend_val, string tf_str, int max_age_bars, int keep_per_side, color sup_bg, color sup_br, color dem_bg, color dem_br, bool do_classify, bool bias_bull, bool bias_bear, bool as_lines, int base_bw, bool show_swing) =>
+    int tf_sec = tf_str == "240" ? 14400 : tf_str == "60" ? 3600 : tf_str == "15" ? 900 : 3600
+    int tf_ms  = tf_sec * 1000
+    int max_ms = max_age_bars * tf_ms
+
+    string tf_lbl = tf_str == "240" ? "H4" : tf_str == "60" ? "H1" : tf_str == "15" ? "M15" : tf_str
+
+    // 1. Break + age expiry
+    if zones.size() > 0
+        for i = zones.size() - 1 to 0
+            CascadeZone z = zones.get(i)
+            bool expired = (time - z.origin_time) > max_ms
+            bool broken = z.is_supply ? (close > z.top) : (close < z.bottom)
+            if expired or broken
+                delete_cz(zones, i)
+
+    // 2. Create new zone on fire
+    bool valid = not na(ztop) and not na(zbot) and not na(z_time) and ztop > zbot
+    if fire and valid
+        string cls = is_sup ? hi_txt : lo_txt
+        string ctr = do_classify ? classify_ctr(is_sup, bias_bull, bias_bear) : ""
+        bool is_ctr = str.contains(ctr, "CTR")
+
+        color bg_clr = is_ctr ? i_ctr_bg : (is_sup ? sup_bg : dem_bg)
+        color br_clr = is_ctr ? i_ctr_br : (is_sup ? sup_br : dem_br)
+        color tx_clr = is_ctr ? color.new(#FF9800, 0) : (is_sup ? color.new(#FF4444, 0) : color.new(#2196F3, 0))
+
+        if as_lines
+            // Line-mode: top + bottom boundary lines only (M15)
+            color ln_clr = is_ctr ? i_ctr_br : (is_sup ? sup_br : dem_br)
+            line lt = line.new(z_time, ztop, z_time + tf_ms * 6, ztop, xloc = xloc.bar_time, extend = extend.right, color = ln_clr, width = 1, style = line.style_solid)
+            line lb = line.new(z_time, zbot, z_time + tf_ms * 6, zbot, xloc = xloc.bar_time, extend = extend.right, color = ln_clr, width = 1, style = line.style_solid)
+            label zn_lbl = label.new(z_time, ztop, "", xloc = xloc.bar_time, style = label.style_none, textcolor = tx_clr, size = size.tiny)
+            zones.push(CascadeZone.new(ztop, zbot, is_sup, z_time, box(na), lt, lb, zn_lbl, false, false, "", cls, ctr, tf_lbl, false))
+        else
+            // Box-mode: filled box with solid border (H4, H1)
+            int bw = is_ctr ? math.max(base_bw, 2) : base_bw
+            box new_box = box.new(z_time, ztop, z_time + tf_ms * 6, zbot, xloc = xloc.bar_time, extend = extend.right, bgcolor = bg_clr, border_color = br_clr, border_width = bw, text = "", text_size = size.tiny, text_color = tx_clr, text_halign = text.align_right, text_valign = text.align_top)
+            zones.push(CascadeZone.new(ztop, zbot, is_sup, z_time, new_box, line(na), line(na), label(na), false, false, "", cls, ctr, tf_lbl, false))
+
+    // 3. Push validation
+    if fire and valid
+        if is_sup and hi_txt == "HH" and zones.size() > 1
+            for j = zones.size() - 2 to 0
+                CascadeZone zd = zones.get(j)
+                if not zd.is_supply
+                    zd.is_push := true
+                    zd.struct_cls := trend_val == 1 ? "BOS" : (trend_val == -1 ? "CHoCH" : "")
+                    if not na(zd.bx)
+                        zd.bx.set_border_width(math.max(base_bw, 2))
+                    if not na(zd.ln_top)
+                        zd.ln_top.set_width(2)
+                    if not na(zd.ln_bot)
+                        zd.ln_bot.set_width(2)
+                    break
+            CascadeZone zlast = zones.get(zones.size() - 1)
+            zlast.is_reversal := true
+
+        if not is_sup and lo_txt == "LL" and zones.size() > 1
+            for j = zones.size() - 2 to 0
+                CascadeZone zs = zones.get(j)
+                if zs.is_supply
+                    zs.is_push := true
+                    zs.struct_cls := trend_val == -1 ? "BOS" : (trend_val == 1 ? "CHoCH" : "")
+                    if not na(zs.bx)
+                        zs.bx.set_border_width(math.max(base_bw, 2))
+                    if not na(zs.ln_top)
+                        zs.ln_top.set_width(2)
+                    if not na(zs.ln_bot)
+                        zs.ln_bot.set_width(2)
+                    break
+            CascadeZone zlast = zones.get(zones.size() - 1)
+            zlast.is_reversal := true
+
+    // 4. Cap per side
+    cap_cz_side(zones, true, keep_per_side)
+    cap_cz_side(zones, false, keep_per_side)
+
+    // 5. Short labels: "{TF} {prefix}{S/D} {swing?}" — max ~12 chars
+    //    Drop PUSH/BOS/CHoCH/REV. Swing only when show_swing=true (H4).
+    if zones.size() > 0
+        for i = 0 to zones.size() - 1
+            CascadeZone z = zones.get(i)
+            string side_str = z.is_supply ? "S" : "D"
+            string prefix = ""
+            if z.is_breaker
+                prefix := "BRK-"
+            else if z.ctr_cls != ""
+                prefix := str.contains(z.ctr_cls, "CTR") ? "CTR-" : "WITH-"
+            string swing_part = show_swing and z.swing_cls != "" ? (" " + z.swing_cls) : ""
+            string final_txt = z.tf_label + " " + prefix + side_str + swing_part
+            if not na(z.bx)
+                z.bx.set_text(final_txt)
+            if not na(z.lbl)
+                z.lbl.set_text(final_txt)
+    true
+
+// =============================================================================
+// S13 — ZONE ARRAYS & PROCESSING
+// H4: filled boxes, 2px border, swing labels
+// H1: thin boxes, 1px border, no swing labels
+// M15: horizontal lines only, no swing labels
+// =============================================================================
+
+var array<CascadeZone> h4_zones  = array.new<CascadeZone>()
+var array<CascadeZone> h1_zones  = array.new<CascadeZone>()
+var array<CascadeZone> m15_zones = array.new<CascadeZone>()
+
+if i_show_h4
+    process_zones(h4_zones, h4_fire, h4_zt, h4_zb, h4_sup, h4_tm, h4_hi_txt, h4_lo_txt, h4_hh, h4_ll, h4_trend, "240", i_age_h4, i_h4_keep, i_h4_sup_bg, i_h4_sup_br, i_h4_dem_bg, i_h4_dem_br, i_classify, d1_bias_bull, d1_bias_bear, false, 2, true)
+
+if i_show_h1
+    process_zones(h1_zones, h1_fire, h1_zt, h1_zb, h1_sup, h1_tm, h1_hi_txt, h1_lo_txt, h1_hh, h1_ll, h1_trend, "60", i_age_h1, i_h1_keep, i_h1_sup_bg, i_h1_sup_br, i_h1_dem_bg, i_h1_dem_br, i_classify, d1_bias_bull, d1_bias_bear, false, 1, false)
+
+if i_show_m15
+    process_zones(m15_zones, m15_fire, m15_zt, m15_zb, m15_sup, m15_tm, m15_hi_txt, m15_lo_txt, m15_hh, m15_ll, m15_trend, "15", i_age_m15, i_m15_keep, i_m15_sup_clr, i_m15_sup_clr, i_m15_dem_clr, i_m15_dem_clr, i_classify, d1_bias_bull, d1_bias_bear, true, 1, false)
+
+// =============================================================================
+// S14 — BREAKER ZONE DETECTION
+// =============================================================================
+
+var string h4_prev_hi_swing = ""
+var string h4_prev_lo_swing = ""
+var string h1_prev_hi_swing = ""
+var string h1_prev_lo_swing = ""
+
+mark_breaker(array<CascadeZone> zones, bool want_supply) =>
+    if zones.size() > 0
+        for i = zones.size() - 1 to 0
+            CascadeZone z = zones.get(i)
+            if z.is_supply == want_supply and not z.is_breaker
+                z.is_breaker := true
+                if not na(z.bx)
+                    z.bx.set_border_color(color.new(#FF9800, 15))
+                    z.bx.set_border_width(2)
+                if not na(z.ln_top)
+                    z.ln_top.set_style(line.style_dashed)
+                if not na(z.ln_bot)
+                    z.ln_bot.set_style(line.style_dashed)
+                break
+    true
+
+if i_show_brk
+    if h4_fire
+        if h4_sup
+            if h4_prev_hi_swing == "HH" and h4_hi_txt == "LH"
+                mark_breaker(h4_zones, false)
+            h4_prev_hi_swing := h4_hi_txt
+        else
+            if h4_prev_lo_swing == "LL" and h4_lo_txt == "HL"
+                mark_breaker(h4_zones, true)
+            h4_prev_lo_swing := h4_lo_txt
+
+    if h1_fire
+        if h1_sup
+            if h1_prev_hi_swing == "HH" and h1_hi_txt == "LH"
+                mark_breaker(h1_zones, false)
+            h1_prev_hi_swing := h1_hi_txt
+        else
+            if h1_prev_lo_swing == "LL" and h1_lo_txt == "HL"
+                mark_breaker(h1_zones, true)
+            h1_prev_lo_swing := h1_lo_txt
+
+    if m15_choch_bear_now
+        mark_breaker(m15_zones, false)
+    if m15_choch_bull_now
+        mark_breaker(m15_zones, true)
+
+// =============================================================================
+// S15 — TRENDLINE ANCHORING & BREAK DETECTION
+// =============================================================================
+
+var TLState h4_hi_tl = TLState.new(true, i_tl_desc_clr, "H4↘", na, 0, na, 0, na, false, na, na, array.new<line>())
+var TLState h4_lo_tl = TLState.new(false, i_tl_asc_clr, "H4↗", na, 0, na, 0, na, false, na, na, array.new<line>())
+var TLState h1_hi_tl = TLState.new(true, i_tl_desc_clr, "H1↘", na, 0, na, 0, na, false, na, na, array.new<line>())
+var TLState h1_lo_tl = TLState.new(false, i_tl_asc_clr, "H1↗", na, 0, na, 0, na, false, na, na, array.new<line>())
+
+var int h4_desc_brk_bar = na
+var int h4_asc_brk_bar  = na
+var int h1_desc_brk_bar = na
+var int h1_asc_brk_bar  = na
+
+if i_show_tl
+    if h4_fire
+        if h4_sup and not na(h4_hh)
+            h4_hi_tl.addAnchor(h4_hh, bar_index, i_tl_hist, i_tl_width)
+        if not h4_sup and not na(h4_ll)
+            h4_lo_tl.addAnchor(h4_ll, bar_index, i_tl_hist, i_tl_width)
+
+    if h1_fire
+        if h1_sup and not na(h1_hh)
+            h1_hi_tl.addAnchor(h1_hh, bar_index, i_tl_hist, i_tl_width)
+        if not h1_sup and not na(h1_ll)
+            h1_lo_tl.addAnchor(h1_ll, bar_index, i_tl_hist, i_tl_width)
+
+    bool h4d_brk = h4_hi_tl.checkBreak(close, bar_index, i_tl_hist)
+    bool h4a_brk = h4_lo_tl.checkBreak(close, bar_index, i_tl_hist)
+    bool h1d_brk = h1_hi_tl.checkBreak(close, bar_index, i_tl_hist)
+    bool h1a_brk = h1_lo_tl.checkBreak(close, bar_index, i_tl_hist)
+
+    if h4d_brk
+        h4_desc_brk_bar := bar_index
+        label.new(bar_index, low - (high - low) * 0.5, "TL BRK ▲", style = label.style_label_up, color = color.new(i_tl_asc_clr, 20), textcolor = i_tl_asc_clr, size = size.tiny)
+    if h4a_brk
+        h4_asc_brk_bar := bar_index
+        label.new(bar_index, high + (high - low) * 0.5, "TL BRK ▼", style = label.style_label_down, color = color.new(i_tl_desc_clr, 20), textcolor = i_tl_desc_clr, size = size.tiny)
+    if h1d_brk
+        h1_desc_brk_bar := bar_index
+        label.new(bar_index, low - (high - low) * 0.4, "TL BRK ▲", style = label.style_label_up, color = color.new(i_tl_asc_clr, 30), textcolor = i_tl_asc_clr, size = size.tiny)
+    if h1a_brk
+        h1_asc_brk_bar := bar_index
+        label.new(bar_index, high + (high - low) * 0.4, "TL BRK ▼", style = label.style_label_down, color = color.new(i_tl_desc_clr, 30), textcolor = i_tl_desc_clr, size = size.tiny)
+
+    h4_hi_tl.extendTL(bar_index)
+    h4_lo_tl.extendTL(bar_index)
+    h1_hi_tl.extendTL(bar_index)
+    h1_lo_tl.extendTL(bar_index)
+
+// =============================================================================
+// S16 — M5 CHoCH CONFIRMATION (follow-through + rejection + H4 zone filter)
+// Fires 1 bar after raw CHoCH: checks follow-through, computes 0-3 score,
+// validates inside H4 zone only (strongest filter).
+// =============================================================================
+
+bool m5_conf_bull = false
+bool m5_conf_bear = false
+int  m5_rej_score = 0
+var int m5_conf_bar = na
+
+if not na(m5_rej_bar) and bar_index > m5_rej_bar and i_show_m5
+    bool ft5 = m5_rej_bull ? (close > close[1]) : (close < close[1])
+    if m5_rej_wick > 0.5
+        m5_rej_score += 1
+    if m5_rej_body > 0.4
+        m5_rej_score += 1
+    if ft5
+        m5_rej_score += 1
+
+    if m5_rej_score >= i_m5_min_rej
+        // H4-zone-only validation: bull CHoCH inside demand, bear inside supply
+        if m5_rej_bull and h4_zones.size() > 0
+            for i = h4_zones.size() - 1 to 0
+                CascadeZone z = h4_zones.get(i)
+                if not z.is_supply and close >= z.bottom and close <= z.top
+                    m5_conf_bull := true
+                    break
+        if not m5_rej_bull and h4_zones.size() > 0
+            for i = h4_zones.size() - 1 to 0
+                CascadeZone z = h4_zones.get(i)
+                if z.is_supply and close >= z.bottom and close <= z.top
+                    m5_conf_bear := true
+                    break
+    m5_rej_bar := na
+
+if m5_conf_bull or m5_conf_bear
+    m5_conf_bar := bar_index
+
+// M5 CHoCH labels (only confirmed, high-quality entries)
+if m5_conf_bull
+    label.new(bar_index, low - (high - low) * 0.15, "M5 ▲ Q" + str.tostring(m5_rej_score), style = label.style_label_up, color = color.new(i_m5_bull_clr, 10), textcolor = i_m5_bull_clr, size = size.small)
+if m5_conf_bear
+    label.new(bar_index, high + (high - low) * 0.15, "M5 ▼ Q" + str.tostring(m5_rej_score), style = label.style_label_down, color = color.new(i_m5_bear_clr, 10), textcolor = i_m5_bear_clr, size = size.small)
+
+// =============================================================================
+// S17 — H1 STRUCTURAL SL REFERENCE INSIDE H4 ZONES
+// =============================================================================
+
+var line  sl_ref_line = na
+var label sl_ref_lbl  = na
+
+if i_show_h1_sl and h4_zones.size() > 0
+    bool  in_h4 = false
+    float h4_top = na
+    float h4_bot = na
+    bool  h4_sup_sl = false
+
+    for i = h4_zones.size() - 1 to 0
+        CascadeZone z = h4_zones.get(i)
+        if close <= z.top and close >= z.bottom
+            in_h4  := true
+            h4_top := z.top
+            h4_bot := z.bottom
+            h4_sup_sl := z.is_supply
+            break
+
+    if in_h4 and h1_zones.size() > 0
+        float sl_level = na
+        for i = h1_zones.size() - 1 to 0
+            CascadeZone h1z = h1_zones.get(i)
+            bool inside = h1z.top <= h4_top and h1z.bottom >= h4_bot
+            if inside
+                if h4_sup_sl and not h1z.is_supply
+                    sl_level := h1z.top
+                    break
+                if not h4_sup_sl and h1z.is_supply
+                    sl_level := h1z.bottom
+                    break
+
+        if not na(sl_level)
+            if not na(sl_ref_line)
+                line.delete(sl_ref_line)
+            if not na(sl_ref_lbl)
+                label.delete(sl_ref_lbl)
+            sl_ref_line := line.new(bar_index - 5, sl_level, bar_index + 20, sl_level, color = i_sl_clr, width = 1, style = line.style_dashed)
+            sl_ref_lbl  := label.new(bar_index + 20, sl_level, "SL", style = label.style_none, textcolor = i_sl_clr, size = size.tiny)
+        else
+            if not na(sl_ref_line)
+                line.delete(sl_ref_line)
+                sl_ref_line := na
+            if not na(sl_ref_lbl)
+                label.delete(sl_ref_lbl)
+                sl_ref_lbl := na
+    else
+        if not na(sl_ref_line)
+            line.delete(sl_ref_line)
+            sl_ref_line := na
+        if not na(sl_ref_lbl)
+            label.delete(sl_ref_lbl)
+            sl_ref_lbl := na
+
+// =============================================================================
+// S18 — CASCADE TRANSITION DETECTION
+// =============================================================================
+
+var label cascade_lbl = na
+
+bool in_d1_sup_zone = not na(d1_nearest_sup_top) and not na(d1_nearest_sup_bot) and close >= d1_nearest_sup_bot and close <= d1_nearest_sup_top
+bool in_d1_dem_zone = not na(d1_nearest_dem_top) and not na(d1_nearest_dem_bot) and close >= d1_nearest_dem_bot and close <= d1_nearest_dem_top
+bool at_d1 = in_d1_sup_zone or in_d1_dem_zone
+
+if i_show_cascade
+    bool h4_last_is_ctr = false
+    if h4_zones.size() > 0
+        CascadeZone h4_last = h4_zones.get(h4_zones.size() - 1)
+        h4_last_is_ctr := str.contains(h4_last.ctr_cls, "CTR")
+
+    bool choch_at_d1_bull = m15_choch_bull_now and in_d1_dem_zone and d1_bias_bull
+    bool choch_at_d1_bear = m15_choch_bear_now and in_d1_sup_zone and d1_bias_bear
+
+    bool cascade_signal = ((in_d1_sup_zone or in_d1_dem_zone) and h4_last_is_ctr) or choch_at_d1_bull or choch_at_d1_bear
+
+    var bool prev_cascade = false
+    if cascade_signal and not prev_cascade
+        if not na(cascade_lbl)
+            label.delete(cascade_lbl)
+        string dir_txt = choch_at_d1_bull or choch_at_d1_bear ? "CASCADE CONFIRMED" : (in_d1_sup_zone ? "AT D1 SUPPLY" : "AT D1 DEMAND")
+        color  cas_clr = choch_at_d1_bull or choch_at_d1_bear ? color.new(#00E676, 10) : color.new(#FFD700, 10)
+        bool   above   = in_d1_sup_zone
+        cascade_lbl := label.new(bar_index, above ? high + (high - low) * 0.4 : low - (high - low) * 0.4, dir_txt, style = above ? label.style_label_down : label.style_label_up, color = cas_clr, textcolor = color.new(#1a1a2e, 0), size = size.small)
+    prev_cascade := cascade_signal
+
+// =============================================================================
+// S19 — CONFLUENCE SCORING (0-6)
+// =============================================================================
+
+bool at_h4 = false
+bool at_h1 = false
+bool at_m15 = false
+bool at_breaker = false
+
+if h4_zones.size() > 0
+    for i = 0 to h4_zones.size() - 1
+        CascadeZone z = h4_zones.get(i)
+        if close >= z.bottom and close <= z.top
+            at_h4 := true
+            if z.is_breaker
+                at_breaker := true
+            break
+
+if h1_zones.size() > 0
+    for i = 0 to h1_zones.size() - 1
+        CascadeZone z = h1_zones.get(i)
+        if close >= z.bottom and close <= z.top
+            at_h1 := true
+            if z.is_breaker
+                at_breaker := true
+            break
+
+if m15_zones.size() > 0
+    for i = 0 to m15_zones.size() - 1
+        CascadeZone z = m15_zones.get(i)
+        if close >= z.bottom and close <= z.top
+            at_m15 := true
+            if z.is_breaker
+                at_breaker := true
+            break
+
+bool at_any_zone = at_h4 or at_h1 or at_m15
+
+int tl_lookback = math.max(5, 5 * (3600 / _chart_sec))
+bool tl_brk_bull_recent = (not na(h4_desc_brk_bar) and (bar_index - h4_desc_brk_bar) <= tl_lookback) or (not na(h1_desc_brk_bar) and (bar_index - h1_desc_brk_bar) <= tl_lookback)
+bool tl_brk_bear_recent = (not na(h4_asc_brk_bar) and (bar_index - h4_asc_brk_bar) <= tl_lookback) or (not na(h1_asc_brk_bar) and (bar_index - h1_asc_brk_bar) <= tl_lookback)
+bool tl_brk_recent = tl_brk_bull_recent or tl_brk_bear_recent
+
+int m5_lookback = math.max(3, 3 * (300 / _chart_sec))
+bool m5_choch_recent = not na(m5_conf_bar) and (bar_index - m5_conf_bar) <= m5_lookback
+
+int confluence = 0
+if at_any_zone
+    confluence += 1
+bool bias_aligned = (m15_trend == 1 and d1_bias_bull) or (m15_trend == -1 and d1_bias_bear)
+if bias_aligned
+    confluence += 1
+if m15_choch_recent
+    confluence += 1
+if tl_brk_recent
+    confluence += 1
+if m5_choch_recent
+    confluence += 1
+if at_breaker
+    confluence += 1
+
+// =============================================================================
+// S20 — PLOTCHAR MARKERS (global scope)
+// M15 CHoCH: ★ (only when rejection quality passes)
+// M5 CHoCH: ★ (only confirmed + high rejection + inside H4 zone)
+// =============================================================================
+
+bool choch_up_plot = i_show_choch and m15_choch_bull_show
+bool choch_dn_plot = i_show_choch and m15_choch_bear_show
+plotchar(choch_up_plot, "M15 CHoCH Bull", "★", location.belowbar, i_choch_bull, size = size.small)
+plotchar(choch_dn_plot, "M15 CHoCH Bear", "★", location.abovebar, i_choch_bear, size = size.small)
+
+bool m5_up_plot = i_show_m5 and m5_conf_bull
+bool m5_dn_plot = i_show_m5 and m5_conf_bear
+plotchar(m5_up_plot, "M5 iCHoCH Bull", "★", location.belowbar, i_m5_bull_clr, size = size.small)
+plotchar(m5_dn_plot, "M5 iCHoCH Bear", "★", location.abovebar, i_m5_bear_clr, size = size.small)
+
+// =============================================================================
+// S21 — PARENT TF BOUNDARY MARKERS
+// =============================================================================
+
+bool new_h4 = ta.change(time("240")) != 0
+bool new_d1 = ta.change(time("1D")) != 0
+bool show_h4_mark = i_show_parent and new_h4
+bool show_d1_mark = i_show_parent and new_d1
+plotshape(show_h4_mark, "H4 Open", shape.circle,  location.belowbar, color.new(#808080, 60), size = size.tiny)
+plotshape(show_d1_mark, "D1 Open", shape.diamond, location.belowbar, color.new(#FFD700, 40), size = size.tiny)
+
+// =============================================================================
+// S22 — DASHBOARD
+// =============================================================================
+
+dash_pos(string pos) =>
+    string out = pos == "Top Left" ? position.top_left : pos == "Top Right" ? position.top_right : pos == "Bottom Right" ? position.bottom_right : position.bottom_left
+    out
+
+if i_show_dash and barstate.islast
+    var table dash = table.new(dash_pos(i_dash_pos), 6, 5, bgcolor = color.new(#1a1a2e, 10), border_color = color.new(#ffffff, 80), border_width = 1, frame_color = color.new(#ffffff, 80), frame_width = 1)
+
+    table.cell(dash, 0, 0, "Layer",  text_size = size.tiny, text_color = color.white)
+    table.cell(dash, 1, 0, "Bias",   text_size = size.tiny, text_color = color.white)
+    table.cell(dash, 2, 0, "Zones",  text_size = size.tiny, text_color = color.white)
+    table.cell(dash, 3, 0, "TL",     text_size = size.tiny, text_color = color.white)
+    table.cell(dash, 4, 0, "Conf",   text_size = size.tiny, text_color = color.white)
+    table.cell(dash, 5, 0, "Status", text_size = size.tiny, text_color = color.white)
+
+    bool m15_push_with_d1 = (m15_trend == 1 and d1_bias_bull) or (m15_trend == -1 and d1_bias_bear)
+    bool m15_push_against_d1 = (m15_trend == 1 and d1_bias_bear) or (m15_trend == -1 and d1_bias_bull)
+
+    string status_txt = "NO SETUP"
+    color  status_clr = color.gray
+    if at_d1
+        status_txt := "AT D1 ZONE"
+        status_clr := color.yellow
+    else if m15_choch_recent
+        status_txt := "CHoCH PEND"
+        status_clr := color.new(#FFD700, 0)
+    else if m15_push_with_d1
+        status_txt := "RIDING PUSH"
+        status_clr := color.green
+    else if m15_push_against_d1
+        status_txt := "RIDING CTR"
+        status_clr := color.new(#FF9800, 0)
+
+    color conf_clr = confluence >= 5 ? color.new(#00E676, 0) : confluence >= 3 ? color.green : confluence >= 1 ? color.yellow : color.gray
+    string conf_txt = str.tostring(confluence) + "/6"
+
+    string m15_bias_txt = m15_trend == 1 ? "BULL" : m15_trend == -1 ? "BEAR" : "FLAT"
+    color  m15_bias_clr = m15_trend == 1 ? color.green : m15_trend == -1 ? color.red : color.gray
+
+    // D1 row
+    string d1_bias_txt = d1_bias_bull ? "BULL" : d1_bias_bear ? "BEAR" : "FLAT"
+    color  d1_bias_clr = d1_bias_bull ? color.green : d1_bias_bear ? color.red : color.gray
+    string d1_st_txt = at_d1 ? "AT ZONE" : "ACTIVE"
+    color  d1_st_clr = at_d1 ? color.yellow : color.gray
+    table.cell(dash, 0, 1, "D1",        text_size = size.tiny, text_color = color.white)
+    table.cell(dash, 1, 1, d1_bias_txt,  text_size = size.tiny, text_color = d1_bias_clr)
+    table.cell(dash, 2, 1, "-",          text_size = size.tiny, text_color = color.gray)
+    table.cell(dash, 3, 1, "-",          text_size = size.tiny, text_color = color.gray)
+    table.cell(dash, 4, 1, "-",          text_size = size.tiny, text_color = color.gray)
+    table.cell(dash, 5, 1, d1_st_txt,    text_size = size.tiny, text_color = d1_st_clr)
+
+    // H4 row
+    string h4_dir_txt = h4_trend == 1 ? "BULL" : h4_trend == -1 ? "BEAR" : "FLAT"
+    color  h4_dir_clr = h4_trend == 1 ? color.green : h4_trend == -1 ? color.red : color.gray
+    int h4_s = count_cz_side(h4_zones, true)
+    int h4_d = count_cz_side(h4_zones, false)
+    string h4_cnt = str.tostring(h4_s) + "S " + str.tostring(h4_d) + "D"
+    string h4_st_txt = at_h4 ? "AT ZONE" : "CLEAR"
+    color  h4_st_clr = at_h4 ? color.yellow : color.gray
+    string h4_tl_txt = (not na(h4_desc_brk_bar) and (bar_index - h4_desc_brk_bar) <= tl_lookback) ? "BRK▲" : ((not na(h4_asc_brk_bar) and (bar_index - h4_asc_brk_bar) <= tl_lookback) ? "BRK▼" : "-")
+    table.cell(dash, 0, 2, "H4",        text_size = size.tiny, text_color = color.white)
+    table.cell(dash, 1, 2, h4_dir_txt,   text_size = size.tiny, text_color = h4_dir_clr)
+    table.cell(dash, 2, 2, h4_cnt,       text_size = size.tiny, text_color = color.white)
+    table.cell(dash, 3, 2, h4_tl_txt,    text_size = size.tiny, text_color = h4_tl_txt != "-" ? color.yellow : color.gray)
+    table.cell(dash, 4, 2, "-",          text_size = size.tiny, text_color = color.gray)
+    table.cell(dash, 5, 2, h4_st_txt,    text_size = size.tiny, text_color = h4_st_clr)
+
+    // H1 row
+    string h1_dir_txt = h1_trend == 1 ? "BULL" : h1_trend == -1 ? "BEAR" : "FLAT"
+    color  h1_dir_clr = h1_trend == 1 ? color.green : h1_trend == -1 ? color.red : color.gray
+    int h1_s = count_cz_side(h1_zones, true)
+    int h1_d = count_cz_side(h1_zones, false)
+    string h1_cnt = str.tostring(h1_s) + "S " + str.tostring(h1_d) + "D"
+    string h1_tl_txt = (not na(h1_desc_brk_bar) and (bar_index - h1_desc_brk_bar) <= tl_lookback) ? "BRK▲" : ((not na(h1_asc_brk_bar) and (bar_index - h1_asc_brk_bar) <= tl_lookback) ? "BRK▼" : "-")
+    table.cell(dash, 0, 3, "H1",        text_size = size.tiny, text_color = color.white)
+    table.cell(dash, 1, 3, h1_dir_txt,   text_size = size.tiny, text_color = h1_dir_clr)
+    table.cell(dash, 2, 3, h1_cnt,       text_size = size.tiny, text_color = color.white)
+    table.cell(dash, 3, 3, h1_tl_txt,    text_size = size.tiny, text_color = h1_tl_txt != "-" ? color.yellow : color.gray)
+    table.cell(dash, 4, 3, "-",          text_size = size.tiny, text_color = color.gray)
+    table.cell(dash, 5, 3, "-",          text_size = size.tiny, text_color = color.gray)
+
+    // M15 + Status row
+    int m15_s = count_cz_side(m15_zones, true)
+    int m15_d = count_cz_side(m15_zones, false)
+    string m15_cnt = str.tostring(m15_s) + "S " + str.tostring(m15_d) + "D"
+    table.cell(dash, 0, 4, "M15",       text_size = size.tiny, text_color = color.white)
+    table.cell(dash, 1, 4, m15_bias_txt,  text_size = size.tiny, text_color = m15_bias_clr)
+    table.cell(dash, 2, 4, m15_cnt,      text_size = size.tiny, text_color = color.white)
+    table.cell(dash, 3, 4, m15_bias_txt,  text_size = size.tiny, text_color = m15_bias_clr)
+    table.cell(dash, 4, 4, conf_txt,     text_size = size.tiny, text_color = conf_clr)
+    table.cell(dash, 5, 4, status_txt,    text_size = size.tiny, text_color = status_clr)
+
+// =============================================================================
+// S23 — INFO PLOTS (data window only)
+// =============================================================================
+
+float bias_val = d1_bias_bull ? 1.0 : d1_bias_bear ? -1.0 : 0.0
+plot(bias_val, "D1 Bias", display = display.data_window, color = color.new(color.white, 100))
+plot(h4_trend == 1 ? 1.0 : h4_trend == -1 ? -1.0 : 0.0, "H4 Trend", display = display.data_window, color = color.new(color.white, 100))
+plot(m15_trend == 1 ? 1.0 : m15_trend == -1 ? -1.0 : 0.0, "M15 Trend", display = display.data_window, color = color.new(color.white, 100))
+plot(m15_choch_dir == 1 ? 1.0 : m15_choch_dir == -1 ? -1.0 : 0.0, "M15 CHoCH Dir", display = display.data_window, color = color.new(color.white, 100))
+plot(m5_choch_dir == 1 ? 1.0 : m5_choch_dir == -1 ? -1.0 : 0.0, "M5 CHoCH Dir", display = display.data_window, color = color.new(color.white, 100))
+plot(confluence * 1.0, "Confluence", display = display.data_window, color = color.new(color.white, 100))
+plot(m15_rej_q * 1.0, "M15 Rej Q", display = display.data_window, color = color.new(color.white, 100))
+plot(m5_rej_score * 1.0, "M5 Rej Q", display = display.data_window, color = color.new(color.white, 100))

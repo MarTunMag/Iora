@@ -1,0 +1,900 @@
+//@version=6
+indicator("Iora Intraday", overlay = true, max_labels_count = 500, max_lines_count = 500, calc_bars_count = 5000)
+
+// =============================================================================
+// S1 — TYPES
+// =============================================================================
+
+type LightZone
+    float   top         = 0.0
+    float   bottom      = 0.0
+    bool    is_supply   = false
+    bool    is_hh_or_ll = false
+    string  label_txt   = ""
+    int     origin_time = 0
+    bool    is_broken   = false
+    int     break_time  = 0
+
+type TFState
+    int     bias            = 0
+    int     prev_bias       = 0
+    float   last_sup_top    = na
+    float   last_sup_bot    = na
+    float   last_dem_top    = na
+    float   last_dem_bot    = na
+    string  last_sup_cls    = ""
+    string  last_dem_cls    = ""
+    float   prev_sup_top    = na
+    float   prev_dem_bot    = na
+    string  last_event      = ""
+    int     last_event_dir  = 0
+    int     last_event_time = na
+    int     zone_count      = 0
+
+// =============================================================================
+// S2 — INPUTS
+// =============================================================================
+
+string GRP_ZONE = "Zone Detection"
+float  i_doji   = input.float(5.0, "Doji Body %", group = GRP_ZONE, minval = 0.1, maxval = 50.0)
+
+string GRP_AGE   = "Zone Age (max bars per TF)"
+int    i_age_m1  = input.int(50, "M1",  group = GRP_AGE, minval = 1)
+int    i_age_m5  = input.int(50, "M5",  group = GRP_AGE, minval = 1)
+int    i_age_m15 = input.int(50, "M15", group = GRP_AGE, minval = 1)
+int    i_age_h1  = input.int(50, "H1",  group = GRP_AGE, minval = 1)
+int    i_age_h4  = input.int(50, "H4",  group = GRP_AGE, minval = 1)
+int    i_age_d   = input.int(50, "D",   group = GRP_AGE, minval = 1)
+
+string GRP_DISP  = "Display"
+bool   i_dash    = input.bool(true, "Show Dashboard", group = GRP_DISP)
+string i_dash_pos = input.string("Top Right", "Dashboard Position", options = ["Top Right", "Top Left", "Bottom Right", "Bottom Left"], group = GRP_DISP)
+bool   i_signals = input.bool(true, "Show Entry Signals", group = GRP_DISP)
+bool   i_roles   = input.bool(true, "Show Zone Roles", group = GRP_DISP)
+
+// =============================================================================
+// S2b — HELPERS
+// =============================================================================
+
+tf_max_age(string tf) =>
+    int sec = timeframe.in_seconds(tf)
+    int out = sec <= 60 ? i_age_m1 : sec <= 300 ? i_age_m5 : sec <= 900 ? i_age_m15 : sec <= 3600 ? i_age_h1 : sec <= 14400 ? i_age_h4 : i_age_d
+    out
+
+tf_label(string tf) =>
+    int sec = timeframe.in_seconds(tf)
+    string out = sec <= 60 ? "M1" : sec <= 300 ? "M5" : sec <= 900 ? "M15" : sec <= 3600 ? "H1" : sec <= 14400 ? "H4" : "D"
+    out
+
+// =============================================================================
+// S3 — HA ZONE DETECTION
+// =============================================================================
+
+ha_detect(float doji_pct) =>
+    float haC = (open + high + low + close) / 4.0
+    float haO = float(na)
+    haO := na(haO[1]) ? (open + close) / 2.0 : (nz(haO[1]) + nz(haC[1])) / 2.0
+    float haH = math.max(high, math.max(haO, haC))
+    float haL = math.min(low, math.min(haO, haC))
+
+    bool is_blue = haC >= haO
+    bool is_red  = haC < haO
+
+    int max_run = math.min(50, bar_index)
+
+    var float prev_run_hi   = na
+    var float prev_run_lo   = na
+    var float  hi1_lvl      = na
+    var int    hi1_time     = na
+    var string hi1_txt      = ""
+    var float  lo1_lvl      = na
+    var int    lo1_time     = na
+    var string lo1_txt      = ""
+    var float out_prev_sup = na
+    var float out_prev_dem = na
+    // max_bars_back on all var series (required inside request.security)
+    max_bars_back(prev_run_hi, 5000)
+    max_bars_back(prev_run_lo, 5000)
+    max_bars_back(hi1_lvl, 5000)
+    max_bars_back(hi1_time, 5000)
+    max_bars_back(lo1_lvl, 5000)
+    max_bars_back(lo1_time, 5000)
+    max_bars_back(out_prev_sup, 5000)
+    max_bars_back(out_prev_dem, 5000)
+
+    bool  fire      = false
+    float ztop      = 0.0
+    float zbot      = 0.0
+    bool  is_sup    = false
+    int   zt_origin = time
+
+    // DEMAND: red -> blue
+    if is_blue and is_red[1]
+        float run_lo_ohlc = low[1]
+        int   ext_time    = time[1]
+        int   k           = 2
+        while k < max_run and is_red[k]
+            if low[k] < run_lo_ohlc
+                run_lo_ohlc := low[k]
+                ext_time    := time[k]
+            k += 1
+
+        bool is_new_ll = na(prev_run_lo) or run_lo_ohlc < prev_run_lo
+        out_prev_dem := prev_run_lo
+        prev_run_lo := run_lo_ohlc
+        lo1_lvl  := run_lo_ohlc
+        lo1_time := ext_time
+        lo1_txt  := is_new_ll ? "LL" : "HL"
+
+        float body = math.abs(haC - haO)
+        float rng  = haH - haL
+        bool  doji = rng > 0.0 and (body / rng * 100.0) < doji_pct
+
+        ztop      := doji ? nz(haH, high) : nz(haH[1], high[1])
+        zbot      := nz(run_lo_ohlc, low[1])
+        zt_origin := nz(ext_time, time[1])
+        fire      := true
+
+    // SUPPLY: blue -> red
+    else if is_red and is_blue[1]
+        float run_hi_ohlc = high[1]
+        int   ext_time    = time[1]
+        int   k           = 2
+        while k < max_run and is_blue[k]
+            if high[k] > run_hi_ohlc
+                run_hi_ohlc := high[k]
+                ext_time    := time[k]
+            k += 1
+
+        bool is_new_hh = na(prev_run_hi) or run_hi_ohlc > prev_run_hi
+        out_prev_sup := prev_run_hi
+        prev_run_hi := run_hi_ohlc
+        hi1_lvl  := run_hi_ohlc
+        hi1_time := ext_time
+        hi1_txt  := is_new_hh ? "HH" : "LH"
+
+        float body = math.abs(haC - haO)
+        float rng  = haH - haL
+        bool  doji = rng > 0.0 and (body / rng * 100.0) < doji_pct
+
+        ztop      := nz(run_hi_ohlc, high[1])
+        zbot      := doji ? nz(haL, low) : nz(haL[1], low[1])
+        zt_origin := nz(ext_time, time[1])
+        fire      := true
+        is_sup    := true
+
+    [fire, ztop, zbot, is_sup, zt_origin, hi1_txt, lo1_txt, out_prev_sup, out_prev_dem]
+
+// =============================================================================
+// S3 — DATA REQUESTS (6 calls)
+// =============================================================================
+
+string _base_sym = ticker.standard(syminfo.tickerid)
+
+[fd_raw,  ztd,  zbd,  sd,  tmd,  hid,  lod,  psd,  pdd]  = request.security(_base_sym, "1D",  ha_detect(i_doji))
+[fh4_raw, zth4, zbh4, sh4, tmh4, hih4, loh4, psh4, pdh4] = request.security(_base_sym, "240", ha_detect(i_doji))
+[fh1_raw, zth1, zbh1, sh1, tmh1, hih1, loh1, psh1, pdh1] = request.security(_base_sym, "60",  ha_detect(i_doji))
+[fm15_raw,ztm15,zbm15,sm15,tmm15,him15,lom15,psm15,pdm15] = request.security(_base_sym, "15",  ha_detect(i_doji))
+[fm5_raw, ztm5, zbm5, sm5, tmm5, him5, lom5, psm5, pdm5]  = request.security(_base_sym, "5",   ha_detect(i_doji))
+[fm1_raw, ztm1, zbm1, sm1, tmm1, him1, lom1, psm1, pdm1]  = request.security(_base_sym, "1",   ha_detect(i_doji))
+
+// Edge detection — fire only once per HTF event
+bool fd   = fd_raw   and not fd_raw[1]
+bool fh4  = fh4_raw  and not fh4_raw[1]
+bool fh1  = fh1_raw  and not fh1_raw[1]
+bool fm15 = fm15_raw and not fm15_raw[1]
+bool fm5  = fm5_raw  and not fm5_raw[1]
+bool fm1  = fm1_raw  and not fm1_raw[1]
+
+// =============================================================================
+// S4 — ZONE STATE MANAGEMENT
+// =============================================================================
+
+method manage_zones(array<LightZone> zones, bool fire, float ztop, float zbot, bool is_sup, int z_time, string hi_txt, string lo_txt, string tf_str) =>
+    int tf_ms  = timeframe.in_seconds(tf_str) * 1000
+    int max_ms = tf_max_age(tf_str) * tf_ms
+    int lookback = 20
+
+    bool did_break = false
+    bool brk_is_supply = false
+    bool brk_is_hh_or_ll = false
+    string brk_label = ""
+    float brk_price = 0.0
+    int brk_origin = 0
+    float brk_top = 0.0
+    float brk_bot = 0.0
+
+    if zones.size() > 0
+        for i = zones.size() - 1 to 0
+            LightZone z = zones.get(i)
+            bool expired = (time - z.origin_time) > max_ms
+            if expired
+                zones.remove(i)
+                continue
+            // Body-close break only
+            bool broken = z.is_supply ? (close > z.top) : (close < z.bottom)
+            if broken
+                z.is_broken := true
+                z.break_time := time
+                if not did_break
+                    did_break := true
+                    brk_is_supply := z.is_supply
+                    brk_is_hh_or_ll := z.is_hh_or_ll
+                    brk_label := z.label_txt
+                    brk_price := z.is_supply ? z.top : z.bottom
+                    brk_origin := z.origin_time
+                    brk_top := z.top
+                    brk_bot := z.bottom
+
+    bool valid = not na(ztop) and not na(zbot) and not na(z_time) and ztop > zbot
+    if fire and (time - z_time) < max_ms and valid
+        string cls_txt = is_sup ? hi_txt : lo_txt
+        bool is_hh_ll = (cls_txt == "HH" or cls_txt == "LL")
+        zones.push(LightZone.new(ztop, zbot, is_sup, is_hh_ll, cls_txt, z_time, false, 0))
+
+        int sup_count = 0
+        int dem_count = 0
+        for j = 0 to zones.size() - 1
+            LightZone zj = zones.get(j)
+            if zj.is_supply
+                sup_count += 1
+            else
+                dem_count += 1
+        while sup_count > lookback
+            for j = 0 to zones.size() - 1
+                LightZone zj = zones.get(j)
+                if zj.is_supply
+                    zones.remove(j)
+                    sup_count -= 1
+                    break
+        while dem_count > lookback
+            for j = 0 to zones.size() - 1
+                LightZone zj = zones.get(j)
+                if not zj.is_supply
+                    zones.remove(j)
+                    dem_count -= 1
+                    break
+
+    [did_break, brk_is_supply, brk_is_hh_or_ll, brk_label, brk_price, brk_origin, brk_top, brk_bot]
+
+method remove_broken(array<LightZone> zones) =>
+    if zones.size() > 0
+        for i = zones.size() - 1 to 0
+            LightZone z = zones.get(i)
+            if z.is_broken
+                zones.remove(i)
+
+check_external_break(array<LightZone> parent_zones) =>
+    bool did_break = false
+    bool brk_is_supply = false
+    bool brk_is_hh_or_ll = false
+    string brk_label = ""
+    float brk_price = 0.0
+    int brk_origin = 0
+    float brk_top = 0.0
+    float brk_bot = 0.0
+
+    if parent_zones.size() > 0
+        for i = parent_zones.size() - 1 to 0
+            LightZone z = parent_zones.get(i)
+            if z.is_broken and z.break_time != time
+                continue
+            bool broken = z.is_broken ? (z.break_time == time) : (z.is_supply ? (close > z.top) : (close < z.bottom))
+            if broken and not did_break
+                z.is_broken := true
+                z.break_time := time
+                did_break := true
+                brk_is_supply := z.is_supply
+                brk_is_hh_or_ll := z.is_hh_or_ll
+                brk_label := z.label_txt
+                brk_price := z.is_supply ? z.top : z.bottom
+                brk_origin := z.origin_time
+                brk_top := z.top
+                brk_bot := z.bottom
+                break
+
+    [did_break, brk_is_supply, brk_is_hh_or_ll, brk_label, brk_price, brk_origin, brk_top, brk_bot]
+
+// Zone arrays
+var array<LightZone> zones_d   = array.new<LightZone>()
+var array<LightZone> zones_h4  = array.new<LightZone>()
+var array<LightZone> zones_h1  = array.new<LightZone>()
+var array<LightZone> zones_m15 = array.new<LightZone>()
+var array<LightZone> zones_m5  = array.new<LightZone>()
+var array<LightZone> zones_m1  = array.new<LightZone>()
+
+// TFState instances
+var TFState st_d   = TFState.new()
+var TFState st_h4  = TFState.new()
+var TFState st_h1  = TFState.new()
+var TFState st_m15 = TFState.new()
+var TFState st_m5  = TFState.new()
+var TFState st_m1  = TFState.new()
+
+// TFState population on zone fire events
+if fd
+    if sd
+        st_d.prev_sup_top := st_d.last_sup_top
+        st_d.last_sup_top := ztd
+        st_d.last_sup_bot := zbd
+        st_d.last_sup_cls := hid
+    else
+        st_d.prev_dem_bot := st_d.last_dem_bot
+        st_d.last_dem_top := ztd
+        st_d.last_dem_bot := zbd
+        st_d.last_dem_cls := lod
+    st_d.zone_count += 1
+
+if fh4
+    if sh4
+        st_h4.prev_sup_top := st_h4.last_sup_top
+        st_h4.last_sup_top := zth4
+        st_h4.last_sup_bot := zbh4
+        st_h4.last_sup_cls := hih4
+    else
+        st_h4.prev_dem_bot := st_h4.last_dem_bot
+        st_h4.last_dem_top := zth4
+        st_h4.last_dem_bot := zbh4
+        st_h4.last_dem_cls := loh4
+    st_h4.zone_count += 1
+
+if fh1
+    if sh1
+        st_h1.prev_sup_top := st_h1.last_sup_top
+        st_h1.last_sup_top := zth1
+        st_h1.last_sup_bot := zbh1
+        st_h1.last_sup_cls := hih1
+    else
+        st_h1.prev_dem_bot := st_h1.last_dem_bot
+        st_h1.last_dem_top := zth1
+        st_h1.last_dem_bot := zbh1
+        st_h1.last_dem_cls := loh1
+    st_h1.zone_count += 1
+
+if fm15
+    if sm15
+        st_m15.prev_sup_top := st_m15.last_sup_top
+        st_m15.last_sup_top := ztm15
+        st_m15.last_sup_bot := zbm15
+        st_m15.last_sup_cls := him15
+    else
+        st_m15.prev_dem_bot := st_m15.last_dem_bot
+        st_m15.last_dem_top := ztm15
+        st_m15.last_dem_bot := zbm15
+        st_m15.last_dem_cls := lom15
+    st_m15.zone_count += 1
+
+if fm5
+    if sm5
+        st_m5.prev_sup_top := st_m5.last_sup_top
+        st_m5.last_sup_top := ztm5
+        st_m5.last_sup_bot := zbm5
+        st_m5.last_sup_cls := him5
+    else
+        st_m5.prev_dem_bot := st_m5.last_dem_bot
+        st_m5.last_dem_top := ztm5
+        st_m5.last_dem_bot := zbm5
+        st_m5.last_dem_cls := lom5
+    st_m5.zone_count += 1
+
+if fm1
+    if sm1
+        st_m1.prev_sup_top := st_m1.last_sup_top
+        st_m1.last_sup_top := ztm1
+        st_m1.last_sup_bot := zbm1
+        st_m1.last_sup_cls := him1
+    else
+        st_m1.prev_dem_bot := st_m1.last_dem_bot
+        st_m1.last_dem_top := ztm1
+        st_m1.last_dem_bot := zbm1
+        st_m1.last_dem_cls := lom1
+    st_m1.zone_count += 1
+
+// manage_zones() execution for all 6 TFs
+[brkd,   brkd_sup,   brkd_hh,   brkd_lbl,   brkd_px,   brkd_org,   brkd_t,   brkd_b]   = zones_d.manage_zones(fd,   ztd,   zbd,   sd,   tmd,   hid,   lod,   "1D")
+[brkh4,  brkh4_sup,  brkh4_hh,  brkh4_lbl,  brkh4_px,  brkh4_org,  brkh4_t,  brkh4_b]  = zones_h4.manage_zones(fh4,  zth4,  zbh4,  sh4,  tmh4,  hih4,  loh4,  "240")
+[brkh1,  brkh1_sup,  brkh1_hh,  brkh1_lbl,  brkh1_px,  brkh1_org,  brkh1_t,  brkh1_b]  = zones_h1.manage_zones(fh1,  zth1,  zbh1,  sh1,  tmh1,  hih1,  loh1,  "60")
+[brkm15, brkm15_sup, brkm15_hh, brkm15_lbl, brkm15_px, brkm15_org, brkm15_t, brkm15_b] = zones_m15.manage_zones(fm15, ztm15, zbm15, sm15, tmm15, him15, lom15, "15")
+[brkm5,  brkm5_sup,  brkm5_hh,  brkm5_lbl,  brkm5_px,  brkm5_org,  brkm5_t,  brkm5_b]  = zones_m5.manage_zones(fm5,  ztm5,  zbm5,  sm5,  tmm5,  him5,  lom5,  "5")
+[brkm1,  brkm1_sup,  brkm1_hh,  brkm1_lbl,  brkm1_px,  brkm1_org,  brkm1_t,  brkm1_b]  = zones_m1.manage_zones(fm1,  ztm1,  zbm1,  sm1,  tmm1,  him1,  lom1,  "1")
+
+// =============================================================================
+// S5 — BIAS + STRUCTURE DETECTION
+// =============================================================================
+
+// Counter declarations (used in S5 resets and incremented in S6)
+var int h4_impulse_count    = 0
+var int h4_correction_count = 0
+var int h1_impulse_count    = 0
+var int h1_correction_count = 0
+
+// --- Internal breaks: update bias from own-TF zone breaks ---
+if brkd
+    st_d.prev_bias := st_d.bias
+    int d_dir = brkd_sup ? 1 : -1
+    st_d.last_event := (st_d.prev_bias == 0 or d_dir == st_d.prev_bias) ? "iBOS" : "iCHoCH"
+    st_d.last_event_dir := d_dir
+    st_d.last_event_time := time
+    st_d.bias := d_dir
+
+if brkh4
+    st_h4.prev_bias := st_h4.bias
+    int h4_dir = brkh4_sup ? 1 : -1
+    st_h4.last_event := (st_h4.prev_bias == 0 or h4_dir == st_h4.prev_bias) ? "iBOS" : "iCHoCH"
+    st_h4.last_event_dir := h4_dir
+    st_h4.last_event_time := time
+    st_h4.bias := h4_dir
+
+if brkh1
+    st_h1.prev_bias := st_h1.bias
+    int h1_dir = brkh1_sup ? 1 : -1
+    st_h1.last_event := (st_h1.prev_bias == 0 or h1_dir == st_h1.prev_bias) ? "iBOS" : "iCHoCH"
+    st_h1.last_event_dir := h1_dir
+    st_h1.last_event_time := time
+    st_h1.bias := h1_dir
+
+if brkm15
+    st_m15.prev_bias := st_m15.bias
+    int m15_dir = brkm15_sup ? 1 : -1
+    st_m15.last_event := (st_m15.prev_bias == 0 or m15_dir == st_m15.prev_bias) ? "iBOS" : "iCHoCH"
+    st_m15.last_event_dir := m15_dir
+    st_m15.last_event_time := time
+    st_m15.bias := m15_dir
+
+if brkm5
+    st_m5.prev_bias := st_m5.bias
+    int m5_dir = brkm5_sup ? 1 : -1
+    st_m5.last_event := (st_m5.prev_bias == 0 or m5_dir == st_m5.prev_bias) ? "iBOS" : "iCHoCH"
+    st_m5.last_event_dir := m5_dir
+    st_m5.last_event_time := time
+    st_m5.bias := m5_dir
+
+if brkm1
+    st_m1.prev_bias := st_m1.bias
+    int m1_dir = brkm1_sup ? 1 : -1
+    st_m1.last_event := (st_m1.prev_bias == 0 or m1_dir == st_m1.prev_bias) ? "iBOS" : "iCHoCH"
+    st_m1.last_event_dir := m1_dir
+    st_m1.last_event_time := time
+    st_m1.bias := m1_dir
+
+// --- External breaks: child checks parent zones ---
+[ebrkm1,  ebrkm1_sup,  ebrkm1_hh,  ebrkm1_lbl, ebrkm1_px, ebrkm1_org, ebrkm1_t, ebrkm1_b] = check_external_break(zones_m5)
+[ebrkm5,  ebrkm5_sup,  ebrkm5_hh,  ebrkm5_lbl, ebrkm5_px, ebrkm5_org, ebrkm5_t, ebrkm5_b] = check_external_break(zones_m15)
+[ebrkm15, ebrkm15_sup, ebrkm15_hh, ebrkm15_lbl,ebrkm15_px,ebrkm15_org,ebrkm15_t,ebrkm15_b] = check_external_break(zones_h1)
+[ebrkh1,  ebrkh1_sup,  ebrkh1_hh,  ebrkh1_lbl, ebrkh1_px, ebrkh1_org, ebrkh1_t, ebrkh1_b] = check_external_break(zones_h4)
+[ebrkh4,  ebrkh4_sup,  ebrkh4_hh,  ebrkh4_lbl, ebrkh4_px, ebrkh4_org, ebrkh4_t, ebrkh4_b] = check_external_break(zones_d)
+
+if ebrkm1
+    int dir = ebrkm1_sup ? 1 : -1
+    st_m1.prev_bias := st_m1.bias
+    st_m1.last_event := (st_m1.prev_bias == 0 or dir == st_m1.prev_bias) ? "eBOS" : "eCHoCH"
+    st_m1.last_event_dir := dir
+    st_m1.last_event_time := time
+    st_m1.bias := dir
+    st_m1.zone_count := 0
+
+if ebrkm5
+    int dir = ebrkm5_sup ? 1 : -1
+    st_m5.prev_bias := st_m5.bias
+    st_m5.last_event := (st_m5.prev_bias == 0 or dir == st_m5.prev_bias) ? "eBOS" : "eCHoCH"
+    st_m5.last_event_dir := dir
+    st_m5.last_event_time := time
+    st_m5.bias := dir
+    st_m5.zone_count := 0
+
+if ebrkm15
+    int dir = ebrkm15_sup ? 1 : -1
+    st_m15.prev_bias := st_m15.bias
+    st_m15.last_event := (st_m15.prev_bias == 0 or dir == st_m15.prev_bias) ? "eBOS" : "eCHoCH"
+    st_m15.last_event_dir := dir
+    st_m15.last_event_time := time
+    st_m15.bias := dir
+    st_m15.zone_count := 0
+
+if ebrkh1
+    int dir = ebrkh1_sup ? 1 : -1
+    st_h1.prev_bias := st_h1.bias
+    st_h1.last_event := (st_h1.prev_bias == 0 or dir == st_h1.prev_bias) ? "eBOS" : "eCHoCH"
+    st_h1.last_event_dir := dir
+    st_h1.last_event_time := time
+    st_h1.bias := dir
+    st_h1.zone_count := 0
+    h1_impulse_count := 0
+    h1_correction_count := 0
+
+if ebrkh4
+    int dir = ebrkh4_sup ? 1 : -1
+    st_h4.prev_bias := st_h4.bias
+    st_h4.last_event := (st_h4.prev_bias == 0 or dir == st_h4.prev_bias) ? "eBOS" : "eCHoCH"
+    st_h4.last_event_dir := dir
+    st_h4.last_event_time := time
+    st_h4.bias := dir
+    st_h4.zone_count := 0
+    h4_impulse_count := 0
+    h4_correction_count := 0
+
+// --- Cross-TF propagation: H1 zone fires → check against H4 boundaries ---
+// HH/LL = BOS (trend continues), LH/HL = CHoCH (reversal signal)
+if fh1 and not na(st_h4.prev_sup_top) and not na(st_h4.prev_dem_bot)
+    if sh1
+        // H1 supply fired — compare top to prev H4 supply top
+        if zth1 > st_h4.prev_sup_top
+            // H4 HH detected early — structural, updates bias
+            st_h4.prev_bias := st_h4.bias
+            int h4_dir = 1
+            st_h4.last_event := (st_h4.prev_bias == 0 or h4_dir == st_h4.prev_bias) ? "iBOS" : "iCHoCH"
+            st_h4.last_event_dir := h4_dir
+            st_h4.last_event_time := time
+            st_h4.bias := h4_dir
+            st_h1.zone_count := 0
+            h1_impulse_count := 0
+            h1_correction_count := 0
+        else
+            // H4 LH detected early — corrective, does NOT update bias or prev_bias
+            st_h4.last_event_dir := 1
+            st_h4.last_event_time := time
+    else
+        // H1 demand fired — compare bot to prev H4 demand bot
+        if zbh1 < st_h4.prev_dem_bot
+            // H4 LL detected early — structural, updates bias
+            st_h4.prev_bias := st_h4.bias
+            int h4_dir = -1
+            st_h4.last_event := (st_h4.prev_bias == 0 or h4_dir == st_h4.prev_bias) ? "iBOS" : "iCHoCH"
+            st_h4.last_event_dir := h4_dir
+            st_h4.last_event_time := time
+            st_h4.bias := h4_dir
+            st_h1.zone_count := 0
+            h1_impulse_count := 0
+            h1_correction_count := 0
+        else
+            // H4 HL detected early — corrective, does NOT update bias or prev_bias
+            st_h4.last_event_dir := -1
+            st_h4.last_event_time := time
+
+// Same pattern for H4→D propagation
+if fh4 and not na(st_d.prev_sup_top) and not na(st_d.prev_dem_bot)
+    if sh4
+        if zth4 > st_d.prev_sup_top
+            st_d.prev_bias := st_d.bias
+            int d_dir = 1
+            st_d.last_event := (st_d.prev_bias == 0 or d_dir == st_d.prev_bias) ? "iBOS" : "iCHoCH"
+            st_d.last_event_dir := d_dir
+            st_d.last_event_time := time
+            st_d.bias := d_dir
+            st_h4.zone_count := 0
+            h4_impulse_count := 0
+            h4_correction_count := 0
+        else
+            st_d.last_event_dir := 1
+            st_d.last_event_time := time
+    else
+        if zbh4 < st_d.prev_dem_bot
+            st_d.prev_bias := st_d.bias
+            int d_dir = -1
+            st_d.last_event := (st_d.prev_bias == 0 or d_dir == st_d.prev_bias) ? "iBOS" : "iCHoCH"
+            st_d.last_event_dir := d_dir
+            st_d.last_event_time := time
+            st_d.bias := d_dir
+            st_h4.zone_count := 0
+            h4_impulse_count := 0
+            h4_correction_count := 0
+        else
+            st_d.last_event_dir := -1
+            st_d.last_event_time := time
+
+// =============================================================================
+// S6 — ZONE COUNTERS + EXHAUSTION CLOCK
+// =============================================================================
+
+// --- H4 zone counter (relative to D bias) ---
+if fh4
+    if st_d.bias == -1
+        if sh4
+            h4_impulse_count += 1
+        else
+            h4_correction_count += 1
+    else if st_d.bias == 1
+        if not sh4
+            h4_impulse_count += 1
+        else
+            h4_correction_count += 1
+
+int h4_zone_count = h4_impulse_count + h4_correction_count
+
+// --- H1 zone counter (relative to H4 bias) ---
+if fh1
+    if st_h4.bias == -1
+        if sh1
+            h1_impulse_count += 1
+        else
+            h1_correction_count += 1
+    else if st_h4.bias == 1
+        if not sh1
+            h1_impulse_count += 1
+        else
+            h1_correction_count += 1
+
+int h1_zone_count = h1_impulse_count + h1_correction_count
+
+// --- H1 phase detection ---
+var string h1_phase = ""
+
+bool h1_is_bos   = st_h1.last_event == "iBOS" or st_h1.last_event == "eBOS"
+bool h1_is_choch = st_h1.last_event == "iCHoCH" or st_h1.last_event == "eCHoCH"
+
+if h1_is_bos and st_h1.last_event_dir == st_h4.bias
+    h1_phase := "impulse"
+else if h1_is_bos and st_h1.last_event_dir != st_h4.bias
+    h1_phase := "correction"
+else if h1_is_choch and st_h1.last_event_dir == st_h4.bias
+    h1_phase := "impulse"
+else if h1_is_choch and st_h1.last_event_dir != st_h4.bias
+    h1_phase := "correction"
+
+// --- Terminal detection ---
+bool h1_terminal = h1_zone_count >= 8 or (h1_impulse_count >= 5 and h1_correction_count >= 3)
+
+// --- Counter-zone proximity ---
+bool at_counter_zone = false
+if h1_zone_count >= 6
+    if st_h4.bias == -1 and not na(st_h4.last_dem_bot) and not na(st_d.last_dem_bot)
+        at_counter_zone := st_h4.last_dem_bot < st_d.last_dem_bot and close >= st_h4.last_dem_bot and close <= st_h4.last_dem_top
+    else if st_h4.bias == 1 and not na(st_h4.last_sup_top) and not na(st_d.last_sup_top)
+        at_counter_zone := st_h4.last_sup_top > st_d.last_sup_top and close >= st_h4.last_sup_bot and close <= st_h4.last_sup_top
+
+// =============================================================================
+// S7 — CONTEXT MODE
+// =============================================================================
+
+// No `var` — recomputed every bar from the state tuple
+string context_mode = "SKIP"
+int    context_dir  = 0
+
+// FLIP (highest priority — terminal exhaustion overrides everything)
+bool flip_conditions = h1_terminal and at_counter_zone and (st_h1.last_event == "iCHoCH" or st_h1.last_event == "eCHoCH") and st_h1.last_event_dir != st_h4.bias
+if flip_conditions
+    context_mode := "FLIP"
+    context_dir  := st_h4.bias == -1 ? 1 : -1
+
+// RIDE (with-trend — D and H4 aligned, H4 not exhausted, H1 correcting)
+else if st_d.bias != 0 and st_h4.bias == st_d.bias and h4_zone_count <= 5 and h1_phase == "correction"
+    context_mode := "RIDE"
+    context_dir  := st_d.bias
+
+// SCALP (counter-trend hedge — H1 BOS sweep just fired, within 4-hour window)
+else if (st_h1.last_event == "iBOS" or st_h1.last_event == "eBOS") and not na(st_h1.last_event_time) and (time - st_h1.last_event_time) < 3600000 * 4
+    context_mode := "SCALP"
+    context_dir  := st_h1.last_event_dir * -1
+
+// SKIP (default — layers not aligned or ambiguous)
+// context_mode already "SKIP", context_dir already 0
+
+// =============================================================================
+// S8 — ENTRY CASCADE
+// =============================================================================
+
+is_inside(float price, float zone_bot, float zone_top) =>
+    not na(price) and not na(zone_bot) and not na(zone_top) and price >= zone_bot and price <= zone_top
+
+// Cascade state
+var int    cascade_step = 0
+var string cascade_mode = ""
+var int    cascade_dir  = 0
+var string prev_context = "SKIP"
+
+// Reset cascade on mode change
+if context_mode != prev_context
+    cascade_step := 0
+    cascade_mode := ""
+    cascade_dir  := 0
+prev_context := context_mode
+
+// --- RIDE SHORT Cascade (5 steps) ---
+if context_mode == "RIDE" and context_dir == -1
+    if cascade_step == 0 and fh1 and sh1 and st_h1.last_sup_cls == "LH" and h1_phase == "correction"
+        cascade_step := 1
+        cascade_mode := "RIDE"
+        cascade_dir  := -1
+    if cascade_step == 1 and is_inside(st_h1.last_sup_top, st_h4.last_sup_bot, st_h4.last_sup_top)
+        cascade_step := 2
+    if cascade_step == 2 and fm15 and sm15 and st_m15.last_sup_cls == "LH" and is_inside(st_m15.last_sup_top, st_h1.last_sup_bot, st_h1.last_sup_top)
+        cascade_step := 3
+    if cascade_step == 3 and fm5 and sm5 and st_m5.last_sup_cls == "LH" and is_inside(st_m5.last_sup_top, st_m15.last_dem_bot, st_m15.last_dem_top)
+        cascade_step := 4
+    if cascade_step == 4 and fm1 and sm1 and st_m1.last_sup_cls == "LH" and is_inside(st_m1.last_sup_top, st_m5.last_dem_bot, st_m5.last_dem_top)
+        cascade_step := 5
+
+// --- RIDE LONG Cascade (5 steps) ---
+if context_mode == "RIDE" and context_dir == 1
+    if cascade_step == 0 and fh1 and not sh1 and st_h1.last_dem_cls == "HL" and h1_phase == "correction"
+        cascade_step := 1
+        cascade_mode := "RIDE"
+        cascade_dir  := 1
+    if cascade_step == 1 and is_inside(st_h1.last_dem_bot, st_h4.last_dem_bot, st_h4.last_dem_top)
+        cascade_step := 2
+    if cascade_step == 2 and fm15 and not sm15 and st_m15.last_dem_cls == "HL" and is_inside(st_m15.last_dem_bot, st_h1.last_dem_bot, st_h1.last_dem_top)
+        cascade_step := 3
+    if cascade_step == 3 and fm5 and not sm5 and st_m5.last_dem_cls == "HL" and is_inside(st_m5.last_dem_bot, st_m15.last_sup_bot, st_m15.last_sup_top)
+        cascade_step := 4
+    if cascade_step == 4 and fm1 and not sm1 and st_m1.last_dem_cls == "HL" and is_inside(st_m1.last_dem_bot, st_m5.last_sup_bot, st_m5.last_sup_top)
+        cascade_step := 5
+
+// --- FLIP LONG Cascade (5 steps) ---
+if context_mode == "FLIP" and context_dir == 1
+    if cascade_step == 0 and fh1 and not sh1 and st_h1.last_dem_cls == "HL" and at_counter_zone
+        cascade_step := 1
+        cascade_mode := "FLIP"
+        cascade_dir  := 1
+    if cascade_step == 1 and (st_h1.last_event == "iBOS" or st_h1.last_event == "eBOS") and st_h1.last_event_dir == 1
+        cascade_step := 2
+    if cascade_step == 2 and fm15 and not sm15 and st_m15.last_dem_cls == "HL" and is_inside(st_m15.last_dem_bot, st_h1.last_dem_bot, st_h1.last_dem_top)
+        cascade_step := 3
+    if cascade_step == 3 and fm5 and not sm5 and st_m5.last_dem_cls == "HL" and is_inside(st_m5.last_dem_bot, st_m15.last_sup_bot, st_m15.last_sup_top)
+        cascade_step := 4
+    if cascade_step == 4 and fm1 and not sm1 and st_m1.last_dem_cls == "HL" and is_inside(st_m1.last_dem_bot, st_m5.last_sup_bot, st_m5.last_sup_top)
+        cascade_step := 5
+
+// --- FLIP SHORT Cascade (5 steps) ---
+if context_mode == "FLIP" and context_dir == -1
+    if cascade_step == 0 and fh1 and sh1 and st_h1.last_sup_cls == "LH" and at_counter_zone
+        cascade_step := 1
+        cascade_mode := "FLIP"
+        cascade_dir  := -1
+    if cascade_step == 1 and (st_h1.last_event == "iBOS" or st_h1.last_event == "eBOS") and st_h1.last_event_dir == -1
+        cascade_step := 2
+    if cascade_step == 2 and fm15 and sm15 and st_m15.last_sup_cls == "LH" and is_inside(st_m15.last_sup_top, st_h1.last_sup_bot, st_h1.last_sup_top)
+        cascade_step := 3
+    if cascade_step == 3 and fm5 and sm5 and st_m5.last_sup_cls == "LH" and is_inside(st_m5.last_sup_top, st_m15.last_dem_bot, st_m15.last_dem_top)
+        cascade_step := 4
+    if cascade_step == 4 and fm1 and sm1 and st_m1.last_sup_cls == "LH" and is_inside(st_m1.last_sup_top, st_m5.last_dem_bot, st_m5.last_dem_top)
+        cascade_step := 5
+
+// --- SCALP Cascade (3 steps) ---
+if context_mode == "SCALP"
+    int scalp_dir = context_dir
+    if cascade_step == 0
+        cascade_step := 1
+        cascade_mode := "SCALP"
+        cascade_dir  := scalp_dir
+    if cascade_step == 1
+        bool in_zone = scalp_dir == -1 ? is_inside(close, st_h1.last_dem_bot, st_h1.last_dem_top) : is_inside(close, st_h1.last_sup_bot, st_h1.last_sup_top)
+        if in_zone
+            cascade_step := 2
+    if cascade_step == 2 and fm1
+        bool m1_trigger = scalp_dir == -1 ? (sm1 and st_m1.last_sup_cls == "LH") : (not sm1 and st_m1.last_dem_cls == "HL")
+        if m1_trigger
+            cascade_step := 3
+
+// --- Entry signal output ---
+// IMPORTANT: max_step must be at global scope — it is referenced by the dashboard (S9)
+int max_step = cascade_mode == "SCALP" ? 3 : 5
+bool entry_fire = cascade_step >= max_step
+
+// Capture cascade display state BEFORE reset (for dashboard S9)
+int cascade_step_display = cascade_step
+
+var int    entry_dir   = 0
+var float  entry_price = na
+var string entry_mode  = ""
+
+if entry_fire
+    entry_dir   := cascade_dir
+    entry_price := cascade_dir == 1 ? st_m1.last_dem_top : st_m1.last_sup_bot
+    entry_mode  := cascade_mode
+    cascade_step := 0
+
+plotshape(i_signals and entry_fire and entry_dir == 1,  "Long Entry",  shape.triangleup,   location.belowbar, color.new(#4CAF50, 0), size = size.small)
+plotshape(i_signals and entry_fire and entry_dir == -1, "Short Entry", shape.triangledown, location.abovebar, color.new(#F44336, 0), size = size.small)
+
+// --- Exit signals (Phase 1 — informational) ---
+bool m15_opposing = (st_m15.last_event == "iCHoCH" or st_m15.last_event == "eCHoCH") and st_m15.last_event_dir != st_h1.bias
+bool m15_inside_h1 = st_h1.bias == -1 ? is_inside(close, st_h1.last_dem_bot, st_h1.last_dem_top) : is_inside(close, st_h1.last_sup_bot, st_h1.last_sup_top)
+bool exit_m15 = m15_opposing and m15_inside_h1
+
+bool exit_exhaust = h1_impulse_count >= 5 and h1_phase == "correction"
+
+plotshape(i_signals and exit_m15,     "M15 Exit",     shape.xcross, location.abovebar, color.new(#FFD600, 0), size = size.tiny)
+plotshape(i_signals and exit_exhaust, "Exhaust Exit",  shape.xcross, location.abovebar, color.new(#F44336, 0), size = size.tiny)
+
+// =============================================================================
+// S9 — DASHBOARD TABLE
+// =============================================================================
+
+bias_text(int b) =>
+    string out = b == 1 ? "BULL ▲" : (b == -1 ? "BEAR ▼" : "—")
+    out
+
+bias_color(int b) =>
+    color out = b == 1 ? color.new(#4CAF50, 0) : (b == -1 ? color.new(#F44336, 0) : color.new(#9E9E9E, 0))
+    out
+
+var table dash = na
+
+if i_dash
+    string pos = switch i_dash_pos
+        "Top Right"    => position.top_right
+        "Top Left"     => position.top_left
+        "Bottom Right" => position.bottom_right
+        "Bottom Left"  => position.bottom_left
+        => position.top_right
+
+    if na(dash)
+        dash := table.new(pos, 4, 8, border_width = 1)
+
+    if barstate.islast and not na(dash)
+        // Header
+        table.cell(dash, 0, 0, "Layer", bgcolor = color.new(#424242, 0), text_color = color.white, text_size = size.tiny)
+        table.cell(dash, 1, 0, "Bias",  bgcolor = color.new(#424242, 0), text_color = color.white, text_size = size.tiny)
+        table.cell(dash, 2, 0, "Count", bgcolor = color.new(#424242, 0), text_color = color.white, text_size = size.tiny)
+        table.cell(dash, 3, 0, "Phase", bgcolor = color.new(#424242, 0), text_color = color.white, text_size = size.tiny)
+
+        // D row
+        table.cell(dash, 0, 1, "D",   text_size = size.tiny)
+        table.cell(dash, 1, 1, bias_text(st_d.bias),  text_color = bias_color(st_d.bias), text_size = size.tiny)
+        table.cell(dash, 2, 1, "—",   text_size = size.tiny)
+        table.cell(dash, 3, 1, "—",   text_size = size.tiny)
+
+        // H4 row
+        table.cell(dash, 0, 2, "H4",  text_size = size.tiny)
+        table.cell(dash, 1, 2, bias_text(st_h4.bias), text_color = bias_color(st_h4.bias), text_size = size.tiny)
+        table.cell(dash, 2, 2, str.tostring(h4_zone_count) + "/8", text_size = size.tiny)
+        string h4_phase = h4_zone_count >= 8 ? "terminal" : (st_h4.last_event_dir == st_d.bias ? "impulse" : "correction")
+        table.cell(dash, 3, 2, h4_phase, text_size = size.tiny)
+
+        // H1 row
+        table.cell(dash, 0, 3, "H1",  text_size = size.tiny)
+        table.cell(dash, 1, 3, bias_text(st_h1.bias), text_color = bias_color(st_h1.bias), text_size = size.tiny)
+        table.cell(dash, 2, 3, str.tostring(h1_impulse_count) + "i+" + str.tostring(h1_correction_count) + "c", text_size = size.tiny)
+        string h1_disp = h1_terminal ? "TERMINAL" : h1_phase
+        color h1_phase_clr = h1_terminal ? color.new(#FF6D00, 0) : color.white
+        table.cell(dash, 3, 3, h1_disp, text_color = h1_phase_clr, text_size = size.tiny)
+
+        // M15 row
+        bool m15_nested = is_inside(st_m15.last_sup_top, st_h1.last_sup_bot, st_h1.last_sup_top) or is_inside(st_m15.last_dem_bot, st_h1.last_dem_bot, st_h1.last_dem_top)
+        table.cell(dash, 0, 4, "M15", text_size = size.tiny)
+        table.cell(dash, 1, 4, bias_text(st_m15.bias), text_color = bias_color(st_m15.bias), text_size = size.tiny)
+        table.cell(dash, 2, 4, "—",   text_size = size.tiny)
+        table.cell(dash, 3, 4, m15_nested ? "nested" : "—", text_size = size.tiny)
+
+        // M5 row
+        table.cell(dash, 0, 5, "M5",  text_size = size.tiny)
+        table.cell(dash, 1, 5, bias_text(st_m5.bias), text_color = bias_color(st_m5.bias), text_size = size.tiny)
+        table.cell(dash, 2, 5, "—",   text_size = size.tiny)
+        table.cell(dash, 3, 5, "—",   text_size = size.tiny)
+
+        // M1 row
+        string m1_phase = cascade_step_display >= max_step ? "TRIGGER" : "waiting"
+        color m1_clr = m1_phase == "TRIGGER" ? color.new(#FFD600, 0) : color.white
+        table.cell(dash, 0, 6, "M1",  text_size = size.tiny)
+        table.cell(dash, 1, 6, bias_text(st_m1.bias), text_color = bias_color(st_m1.bias), text_size = size.tiny)
+        table.cell(dash, 2, 6, "—",   text_size = size.tiny)
+        table.cell(dash, 3, 6, m1_phase, text_color = m1_clr, text_size = size.tiny)
+
+        // MODE row
+        string mode_txt = context_mode
+        if context_mode == "RIDE"
+            mode_txt := context_dir == 1 ? "RIDE LONG" : "RIDE SHORT"
+        else if context_mode == "FLIP"
+            mode_txt := context_dir == 1 ? "FLIP LONG" : "FLIP SHORT"
+        else if context_mode == "SCALP"
+            mode_txt := context_dir == 1 ? "SCALP LONG" : "SCALP SHORT"
+
+        color mode_bg = switch context_mode
+            "RIDE"  => color.new(#4CAF50, 70)
+            "FLIP"  => color.new(#FF6D00, 70)
+            "SCALP" => color.new(#26C6DA, 70)
+            => color.new(#9E9E9E, 70)
+
+        table.cell(dash, 0, 7, "MODE", bgcolor = mode_bg, text_size = size.tiny)
+        table.cell(dash, 1, 7, mode_txt, bgcolor = mode_bg, text_size = size.tiny)
+        table.cell(dash, 2, 7, "", bgcolor = mode_bg, text_size = size.tiny)
+        string step_txt = cascade_step_display > 0 ? (str.tostring(cascade_step_display) + "/" + str.tostring(max_step)) : "—"
+        table.cell(dash, 3, 7, step_txt, bgcolor = mode_bg, text_size = size.tiny)
+
+// Broken zone cleanup
+zones_d.remove_broken()
+zones_h4.remove_broken()
+zones_h1.remove_broken()
+zones_m15.remove_broken()
+zones_m5.remove_broken()
+zones_m1.remove_broken()

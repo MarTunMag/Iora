@@ -1,0 +1,238 @@
+//@version=6
+indicator("Iora External Structure", overlay = true, max_boxes_count = 200, max_labels_count = 200, calc_bars_count = 5000)
+
+// =============================================================================
+// S1 — TYPES
+// =============================================================================
+
+type ExtZone
+    box     bx       = na
+    label   lbl      = na
+    float   top      = na
+    float   bottom   = na
+    int     origin   = na
+
+// =============================================================================
+// S2 — INPUTS
+// =============================================================================
+
+string GRP_TF    = "Structure Timeframe"
+string i_tf      = input.timeframe("60", "Analyze On", group = GRP_TF, tooltip = "TF to detect iCHoCH sequences on")
+
+string GRP_EXT   = "External Structure Zones"
+color  i_sup_bg  = input.color(color.new(#FF4444, 85), "Supply Fill",   group = GRP_EXT)
+color  i_sup_br  = input.color(color.new(#FF4444, 20), "Supply Border", group = GRP_EXT)
+color  i_dem_bg  = input.color(color.new(#2196F3, 85), "Demand Fill",   group = GRP_EXT)
+color  i_dem_br  = input.color(color.new(#2196F3, 20), "Demand Border", group = GRP_EXT)
+
+string GRP_PUSH  = "Push Zones (iCHoCH)"
+bool   i_push_on = input.bool(true, "Show Push Zones", group = GRP_PUSH, tooltip = "The LH/HL flip candle zone that pushed price to make the last LL/HH. Price pulls back into this zone before reversing to push again.")
+color  i_push_sup_bg = input.color(color.new(#FF9800, 80), "Push Supply Fill (LH)",   group = GRP_PUSH)
+color  i_push_sup_br = input.color(color.new(#FF9800, 10), "Push Supply Border",      group = GRP_PUSH)
+color  i_push_dem_bg = input.color(color.new(#26C6DA, 80), "Push Demand Fill (HL)",   group = GRP_PUSH)
+color  i_push_dem_br = input.color(color.new(#26C6DA, 10), "Push Demand Border",      group = GRP_PUSH)
+
+string GRP_LBL   = "Labels"
+bool   i_labels  = input.bool(true, "Show Labels", group = GRP_LBL)
+
+// =============================================================================
+// S3 — RAW OHLC ZONE DETECTION
+// Per spec (03_internal_external_structure_spec_lines.md):
+//   Zone = flip candle high to low (first candle of new color)
+//   Classification = run extreme vs previous run extreme (HH/LH/HL/LL)
+//   Swing level = run extreme (structural high/low for ext structure)
+//
+// Returns 8 values:
+//   fire, swing_lvl, flip_hi, flip_lo, is_sup, swing_tm, hi_txt, lo_txt
+// =============================================================================
+
+ohlc_detect() =>
+    bool is_green = close >= open
+    bool is_red   = close < open
+    int max_run   = math.min(50, bar_index)
+
+    var float prev_run_hi = na
+    var float prev_run_lo = na
+    var string hi1_txt    = ""
+    var string lo1_txt    = ""
+
+    bool  fire      = false
+    float swing_lvl = 0.0
+    float flip_hi   = 0.0
+    float flip_lo   = 0.0
+    bool  is_sup    = false
+    int   swing_tm  = time
+
+    // DEMAND: red → green — red run just completed
+    if is_green and is_red[1]
+        float run_lo   = low[1]
+        int   ext_time = time[1]
+        int   k        = 2
+        while k < max_run and is_red[k]
+            if low[k] < run_lo
+                run_lo   := low[k]
+                ext_time := time[k]
+            k += 1
+
+        bool is_new_ll = na(prev_run_lo) or run_lo < prev_run_lo
+        prev_run_lo := run_lo
+        lo1_txt     := is_new_ll ? "LL" : "HL"
+
+        swing_lvl := run_lo
+        flip_hi   := high
+        flip_lo   := low
+        swing_tm  := nz(ext_time, time[1])
+        fire      := true
+
+    // SUPPLY: green → red — green run just completed
+    else if is_red and is_green[1]
+        float run_hi   = high[1]
+        int   ext_time = time[1]
+        int   k        = 2
+        while k < max_run and is_green[k]
+            if high[k] > run_hi
+                run_hi   := high[k]
+                ext_time := time[k]
+            k += 1
+
+        bool is_new_hh = na(prev_run_hi) or run_hi > prev_run_hi
+        prev_run_hi := run_hi
+        hi1_txt     := is_new_hh ? "HH" : "LH"
+
+        swing_lvl := run_hi
+        flip_hi   := high
+        flip_lo   := low
+        swing_tm  := nz(ext_time, time[1])
+        fire      := true
+        is_sup    := true
+
+    [fire, swing_lvl, flip_hi, flip_lo, is_sup, swing_tm, hi1_txt, lo1_txt]
+
+// =============================================================================
+// S4 — DATA REQUEST
+// =============================================================================
+
+string _base_sym = ticker.standard(syminfo.tickerid)
+
+[f_raw, swing_lvl, flip_hi, flip_lo, is_sup, swing_tm, hi_txt, lo_txt] = request.security(_base_sym, i_tf, ohlc_detect())
+
+// Edge-detect: fire only once per HTF event
+bool fire = f_raw and not f_raw[1]
+
+// =============================================================================
+// S5 — HELPERS
+// =============================================================================
+
+tf_label(string tf) =>
+    int sec = timeframe.in_seconds(tf)
+    string out = sec <= 60 ? "M1" : sec <= 300 ? "M5" : sec <= 900 ? "M15" : sec <= 3600 ? "H1" : sec <= 14400 ? "H4" : sec <= 86400 ? "D" : sec <= 604800 ? "W" : "MN"
+    out
+
+string tf_lbl = tf_label(i_tf)
+
+// =============================================================================
+// S6 — STATE MACHINE
+//
+// 4 persistent zones:
+//   Ext Demand  (LH swing → LL swing)    — full bearish external range
+//   Ext Supply  (HL swing → HH swing)    — full bullish external range
+//   Push Supply (LH flip candle zone)     — WHERE the push originated (price returns here)
+//   Push Demand (HL flip candle zone)     — WHERE the push originated (price returns here)
+//
+// Per 04_htf_ltf_layered_structure.md:
+//   Push zone = behind price, drove last BOS, price pulls back into it
+//   Magnet    = ahead of price, unbroken, price moves toward it
+//
+// The ext zones show the RANGE of the move.
+// The push zones show WHERE price reverses within that range.
+// =============================================================================
+
+// --- Demand tracking ---
+var float  dem_lh_swing   = na
+var float  dem_lh_flip_hi = na
+var float  dem_lh_flip_lo = na
+var int    dem_lh_time    = na
+var bool   dem_waiting    = false
+
+// --- Supply tracking ---
+var float  sup_hl_swing   = na
+var float  sup_hl_flip_hi = na
+var float  sup_hl_flip_lo = na
+var int    sup_hl_time    = na
+var bool   sup_waiting    = false
+
+// --- Active zones (persist until replaced) ---
+var ExtZone dem_zone  = ExtZone.new()
+var ExtZone sup_zone  = ExtZone.new()
+var ExtZone push_sup  = ExtZone.new()
+var ExtZone push_dem  = ExtZone.new()
+
+// =============================================================================
+// S7 — ZONE DRAW HELPERS
+// =============================================================================
+
+method replace_zone(ExtZone ez, float new_top, float new_bot, int origin, bool is_supply, string lbl_text, color bg, color br, int border_w) =>
+    if not na(ez.bx)
+        box.delete(ez.bx)
+    if not na(ez.lbl)
+        label.delete(ez.lbl)
+    ez.top    := new_top
+    ez.bottom := new_bot
+    ez.origin := origin
+    ez.bx  := box.new(origin, new_top, time, new_bot, xloc = xloc.bar_time, extend = extend.right, bgcolor = bg, border_color = br, border_width = border_w)
+    if i_labels
+        float mid = (new_top + new_bot) / 2.0
+        ez.lbl := label.new(origin, mid, lbl_text, xloc = xloc.bar_time, style = label.style_none, textcolor = br, size = size.small)
+
+// =============================================================================
+// S8 — SEQUENCE DETECTION + PUSH ZONES + SWING MARKS
+//
+// On each swing event:
+//   LH → persistent push supply zone (extend right) + start demand sequence
+//   HL → persistent push demand zone (extend right) + start supply sequence
+//   HH → small mark + complete supply sequence if waiting
+//   LL → small mark + complete demand sequence if waiting
+// =============================================================================
+
+if fire
+    if is_sup
+        // ─── Supply swing fired ───
+        if hi_txt == "LH"
+            // iCHoCH bearish: LH pushed price down → this IS the push zone
+            dem_lh_swing   := swing_lvl
+            dem_lh_flip_hi := flip_hi
+            dem_lh_flip_lo := flip_lo
+            dem_lh_time    := swing_tm
+            dem_waiting    := true
+            // Draw persistent push supply zone at LH flip candle
+            if i_push_on
+                string push_lbl = tf_lbl + " Push Supply (LH)"
+                push_sup.replace_zone(flip_hi, flip_lo, time, true, push_lbl, i_push_sup_bg, i_push_sup_br, 2)
+
+        else if hi_txt == "HH"
+            if sup_waiting
+                // HH after HL iCHoCH → ext supply confirmed
+                string lbl_str = tf_lbl + " Ext Supply  HL → HH"
+                sup_zone.replace_zone(swing_lvl, sup_hl_swing, sup_hl_time, true, lbl_str, i_sup_bg, i_sup_br, 2)
+                sup_waiting := false
+
+    else
+        // ─── Demand swing fired ───
+        if lo_txt == "HL"
+            // iCHoCH bullish: HL pushed price up → this IS the push zone
+            sup_hl_swing   := swing_lvl
+            sup_hl_flip_hi := flip_hi
+            sup_hl_flip_lo := flip_lo
+            sup_hl_time    := swing_tm
+            sup_waiting    := true
+            // Draw persistent push demand zone at HL flip candle
+            if i_push_on
+                string push_lbl = tf_lbl + " Push Demand (HL)"
+                push_dem.replace_zone(flip_hi, flip_lo, time, false, push_lbl, i_push_dem_bg, i_push_dem_br, 2)
+
+        else if lo_txt == "LL"
+            if dem_waiting
+                // LL after LH iCHoCH → ext demand confirmed
+                string lbl_str = tf_lbl + " Ext Demand  LH → LL"
+                dem_zone.replace_zone(dem_lh_swing, swing_lvl, dem_lh_time, false, lbl_str, i_dem_bg, i_dem_br, 2)
+                dem_waiting := false

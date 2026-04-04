@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fractal Push/Pull Trading System — Automation Spec</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --bg-raised: #12121a;
+    --bg-card: #161622;
+    --border: #1e1e2e;
+    --border-accent: #2a2a3e;
+    --text: #c8c8d4;
+    --text-dim: #6e6e82;
+    --text-bright: #e8e8f0;
+    --heading: #f0f0f8;
+    --accent-supply: #ff4444;
+    --accent-supply-dim: #ff444430;
+    --accent-demand: #2196f3;
+    --accent-demand-dim: #2196f330;
+    --accent-push: #4caf50;
+    --accent-push-dim: #4caf5030;
+    --accent-cont: #ff9800;
+    --accent-cont-dim: #ff980030;
+    --accent-pullback: #9c27b0;
+    --accent-pullback-dim: #9c27b030;
+    --accent-reversal: #e91e63;
+    --accent-reversal-dim: #e91e6330;
+    --accent-trendline: #ffeb3b;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    font-size: 15px;
+  }
+
+  .container {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 40px 24px 120px;
+  }
+
+  /* Header */
+  .spec-header {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 32px;
+    margin-bottom: 48px;
+  }
+  .spec-header h1 {
+    font-family: var(--mono);
+    font-size: 28px;
+    font-weight: 600;
+    color: var(--heading);
+    letter-spacing: -0.5px;
+    margin-bottom: 8px;
+  }
+  .spec-header .subtitle {
+    font-size: 14px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .spec-header .meta {
+    margin-top: 16px;
+    font-size: 12px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .spec-header .meta span {
+    display: inline-block;
+    margin-right: 24px;
+  }
+
+  /* Version badge */
+  .version {
+    display: inline-block;
+    background: var(--accent-push-dim);
+    color: var(--accent-push);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 3px;
+    margin-left: 12px;
+    vertical-align: middle;
+  }
+
+  /* Status badges */
+  .status {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 3px;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .status-draft { background: #ff980030; color: #ff9800; }
+  .status-locked { background: #4caf5030; color: #4caf50; }
+  .status-pending { background: #9c27b030; color: #9c27b0; }
+
+  /* TOC */
+  .toc {
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 24px 28px;
+    margin-bottom: 48px;
+  }
+  .toc h2 {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 16px;
+  }
+  .toc ol {
+    list-style: none;
+    counter-reset: toc-counter;
+  }
+  .toc ol li {
+    counter-increment: toc-counter;
+    margin-bottom: 6px;
+  }
+  .toc ol li a {
+    color: var(--text);
+    text-decoration: none;
+    font-size: 14px;
+    transition: color 0.15s;
+  }
+  .toc ol li a::before {
+    content: counter(toc-counter, decimal-leading-zero) " ";
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-right: 8px;
+  }
+  .toc ol li a:hover { color: var(--heading); }
+  .toc ol li.sub { padding-left: 32px; }
+  .toc ol li.sub a::before {
+    content: "— ";
+    color: var(--border-accent);
+  }
+
+  /* Sections */
+  section {
+    margin-bottom: 56px;
+  }
+  section h2 {
+    font-family: var(--mono);
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--heading);
+    margin-bottom: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    padding-top: 24px;
+  }
+  section h2 .section-num {
+    color: var(--text-dim);
+    font-size: 14px;
+    margin-right: 12px;
+  }
+  section h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-bright);
+    margin-top: 28px;
+    margin-bottom: 12px;
+  }
+  section h4 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-bright);
+    margin-top: 20px;
+    margin-bottom: 8px;
+    font-family: var(--mono);
+  }
+  section p {
+    margin-bottom: 14px;
+  }
+
+  /* Definition blocks */
+  .def-block {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--text-dim);
+    border-radius: 4px;
+    padding: 16px 20px;
+    margin: 16px 0;
+  }
+  .def-block.push { border-left-color: var(--accent-push); }
+  .def-block.continuation { border-left-color: var(--accent-cont); }
+  .def-block.pullback { border-left-color: var(--accent-pullback); }
+  .def-block.reversal { border-left-color: var(--accent-reversal); }
+  .def-block.supply { border-left-color: var(--accent-supply); }
+  .def-block.demand { border-left-color: var(--accent-demand); }
+  .def-block.rule { border-left-color: var(--accent-trendline); }
+
+  .def-block .def-title {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+  .def-block.push .def-title { color: var(--accent-push); }
+  .def-block.continuation .def-title { color: var(--accent-cont); }
+  .def-block.pullback .def-title { color: var(--accent-pullback); }
+  .def-block.reversal .def-title { color: var(--accent-reversal); }
+  .def-block.supply .def-title { color: var(--accent-supply); }
+  .def-block.demand .def-title { color: var(--accent-demand); }
+  .def-block.rule .def-title { color: var(--accent-trendline); }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 14px;
+  }
+  th {
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-accent);
+  }
+  td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+
+  /* Code / mechanical rules */
+  code {
+    font-family: var(--mono);
+    font-size: 13px;
+    background: var(--bg-raised);
+    color: var(--text-bright);
+    padding: 2px 6px;
+    border-radius: 3px;
+  }
+  pre {
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 16px 20px;
+    overflow-x: auto;
+    margin: 16px 0;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-bright);
+  }
+
+  /* Cascade diagram */
+  .cascade {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 20px 0;
+  }
+  .cascade-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+  .cascade-tf {
+    font-family: var(--mono);
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--heading);
+    min-width: 36px;
+  }
+  .cascade-role {
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  .cascade-arrow {
+    color: var(--text-dim);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding-left: 20px;
+  }
+
+  /* Example callouts */
+  .example {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin: 16px 0;
+  }
+  .example-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent-demand);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 8px;
+  }
+
+  /* Inline color tags */
+  .tag {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+  .tag-supply { background: var(--accent-supply-dim); color: var(--accent-supply); }
+  .tag-demand { background: var(--accent-demand-dim); color: var(--accent-demand); }
+  .tag-push { background: var(--accent-push-dim); color: var(--accent-push); }
+  .tag-cont { background: var(--accent-cont-dim); color: var(--accent-cont); }
+  .tag-pullback { background: var(--accent-pullback-dim); color: var(--accent-pullback); }
+  .tag-reversal { background: var(--accent-reversal-dim); color: var(--accent-reversal); }
+
+  /* Note blocks */
+  .note {
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 12px 16px;
+    margin: 16px 0;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  .note strong { color: var(--text); }
+
+  /* Sequence flow */
+  .flow {
+    margin: 20px 0;
+    padding: 0;
+  }
+  .flow-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 12px 0;
+    border-left: 2px solid var(--border-accent);
+    padding-left: 20px;
+    margin-left: 8px;
+    position: relative;
+  }
+  .flow-step::before {
+    content: '';
+    position: absolute;
+    left: -5px;
+    top: 16px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--border-accent);
+  }
+  .flow-step.active::before { background: var(--accent-push); }
+  .flow-step.warning::before { background: var(--accent-cont); }
+  .flow-step.danger::before { background: var(--accent-reversal); }
+  .flow-num {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-dim);
+    min-width: 20px;
+  }
+  .flow-content {
+    flex: 1;
+  }
+
+  /* Separator */
+  hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 40px 0;
+  }
+
+  ul { padding-left: 20px; margin: 8px 0 14px; }
+  li { margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- ============================================================ -->
+<!-- HEADER                                                        -->
+<!-- ============================================================ -->
+<header class="spec-header">
+  <h1>Fractal Push/Pull Trading System <span class="version">v0.1</span></h1>
+  <div class="subtitle">Automation Specification — ICMarkets Raw Spread</div>
+  <div class="meta">
+    <span>Instrument: GBPUSD, EURUSD, XAUUSD</span>
+    <span>Broker: ICMarkets Raw Spread MT5</span>
+    <span>Date: 2026-03-31</span>
+  </div>
+</header>
+
+<!-- ============================================================ -->
+<!-- TABLE OF CONTENTS                                             -->
+<!-- ============================================================ -->
+<nav class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#s1">Core Principle — Fractal Push &amp; Pull</a></li>
+    <li><a href="#s2">Timeframe Cascade</a></li>
+    <li><a href="#s3">Zone Creation — Heikin-Ashi Transitions</a></li>
+    <li class="sub"><a href="#s3a">Trigger Events</a></li>
+    <li class="sub"><a href="#s3b">Zone Boundaries (ORIZ Spec)</a></li>
+    <li class="sub"><a href="#s3c">Zone Classification (HH / LH / HL / LL)</a></li>
+    <li class="sub"><a href="#s3d">Zone Lifecycle</a></li>
+    <li><a href="#s4">Zone Roles — Push, Continuation, Pullback, Reversal</a></li>
+    <li class="sub"><a href="#s4a">Push Zone</a></li>
+    <li class="sub"><a href="#s4b">Continuation Zone</a></li>
+    <li class="sub"><a href="#s4c">Pullback Zone</a></li>
+    <li class="sub"><a href="#s4d">Reversal Zone</a></li>
+    <li><a href="#s5">Directional Bias — Top-Down Read</a></li>
+    <li><a href="#s6">Trendline Confirmation Layer</a></li>
+    <li><a href="#s7">Pullback-to-Reversal Transition</a></li>
+    <li><a href="#s8">Full Cycle Walkthrough — GBPUSD Example</a></li>
+    <li><a href="#s9">Indicator Build Requirements</a> <span class="status status-pending">PENDING</span></li>
+    <li><a href="#s10">Execution Rules</a> <span class="status status-pending">PENDING</span></li>
+    <li><a href="#s11">Position Management</a> <span class="status status-pending">PENDING</span></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<!-- SECTION 1: CORE PRINCIPLE                                     -->
+<!-- ============================================================ -->
+<section id="s1">
+  <h2><span class="section-num">01</span>Core Principle — Fractal Push &amp; Pull</h2>
+
+  <p>Every timeframe's price movement is either <strong>pushing</strong> toward a target zone or being <strong>pulled</strong> back by a higher timeframe's gravitational zones. This is fractal — the same mechanic repeats at every parent-child timeframe pair in the cascade.</p>
+
+  <p>At any moment, every TF has a <strong>direction</strong> determined by its parent TF. The parent's zones define the gravitational boundaries — the magnets — that the child TF pushes toward or reverses from. When a parent TF creates a zone, the child TF's job is to push price through its own zones to fulfill (or fail to fulfill) the parent's structural move.</p>
+
+  <p>The framework answers three questions mechanically, at every TF, at all times:</p>
+
+  <div class="def-block rule">
+    <div class="def-title">The Three Questions</div>
+    <p><strong>1. Where are we?</strong> — Which parent zone are we inside? What role does that zone have (push, continuation, pullback)?</p>
+    <p><strong>2. Where are we going?</strong> — What is the nearest target zone (magnet) that the current push is driving toward?</p>
+    <p><strong>3. What confirms the move is over?</strong> — What structural event (zone break, trendline break, CHoCH cascade) tells us the push is exhausted and the pull begins?</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 2: TIMEFRAME CASCADE                                  -->
+<!-- ============================================================ -->
+<section id="s2">
+  <h2><span class="section-num">02</span>Timeframe Cascade</h2>
+
+  <p>The system uses a strict parent-child hierarchy. Each timeframe acts as <strong>parent</strong> to the TF below it and <strong>child</strong> to the TF above it. Direction cascades downward; structure confirmation cascades upward.</p>
+
+  <div class="cascade">
+    <div class="cascade-row">
+      <span class="cascade-tf">MN</span>
+      <span class="cascade-role">Macro anchor — sets ultimate gravitational boundaries</span>
+    </div>
+    <div class="cascade-arrow">↕ parent → child</div>
+    <div class="cascade-row">
+      <span class="cascade-tf">W</span>
+      <span class="cascade-role">Macro direction — push zones inside MN zones drive W structure</span>
+    </div>
+    <div class="cascade-arrow">↕ parent → child</div>
+    <div class="cascade-row">
+      <span class="cascade-tf">D</span>
+      <span class="cascade-role">Directional bias — push/pullback zones inside W zones</span>
+    </div>
+    <div class="cascade-arrow">↕ parent → child</div>
+    <div class="cascade-row">
+      <span class="cascade-tf">H4</span>
+      <span class="cascade-role">Swing structure — push/pullback/reversal inside D zones</span>
+    </div>
+    <div class="cascade-arrow">↕ parent → child (execution TFs below — to be spec'd)</div>
+    <div class="cascade-row" style="opacity: 0.5;">
+      <span class="cascade-tf">H1</span>
+      <span class="cascade-role">—</span>
+    </div>
+    <div class="cascade-row" style="opacity: 0.5;">
+      <span class="cascade-tf">M15</span>
+      <span class="cascade-role">—</span>
+    </div>
+    <div class="cascade-row" style="opacity: 0.5;">
+      <span class="cascade-tf">M5</span>
+      <span class="cascade-role">—</span>
+    </div>
+    <div class="cascade-row" style="opacity: 0.5;">
+      <span class="cascade-tf">M1</span>
+      <span class="cascade-role">—</span>
+    </div>
+  </div>
+
+  <h3>Parent-Child Terminology</h3>
+  <table>
+    <tr><th>Term</th><th>Definition</th><th>Example</th></tr>
+    <tr>
+      <td><strong>Parent</strong></td>
+      <td>The TF one level above. Its zones define the boundaries for the child.</td>
+      <td>Weekly is parent to Daily</td>
+    </tr>
+    <tr>
+      <td><strong>Child</strong></td>
+      <td>The TF one level below. Its zones push, continue, pull back, or reverse within the parent's structure.</td>
+      <td>Daily is child of Weekly</td>
+    </tr>
+    <tr>
+      <td><strong>Grandchild</strong></td>
+      <td>The TF two levels below. Its structural breaks confirm the child's direction change.</td>
+      <td>H4 is grandchild of Weekly</td>
+    </tr>
+  </table>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 3: ZONE CREATION                                      -->
+<!-- ============================================================ -->
+<section id="s3">
+  <h2><span class="section-num">03</span>Zone Creation — Heikin-Ashi Transitions</h2>
+
+  <p>Zones are the atomic unit of the system. Every structural event — every push, pullback, and reversal — is expressed through zones. A zone is born from a Heikin-Ashi color transition, lives until broken or expired, and its classification tells you where it sits in the structural sequence.</p>
+
+  <!-- 3a: Trigger Events -->
+  <h3 id="s3a">Trigger Events</h3>
+
+  <p>Zones are created by <strong>HA color transitions</strong> detected via <code>request.security()</code> on each enabled timeframe.</p>
+
+  <table>
+    <tr><th>Transition</th><th>Zone Type</th><th>Meaning</th></tr>
+    <tr>
+      <td>Red → Blue <span class="tag tag-demand">HA close ≥ HA open after red run</span></td>
+      <td><span class="tag tag-demand">DEMAND</span></td>
+      <td>Sellers exhausted, buyers stepping in</td>
+    </tr>
+    <tr>
+      <td>Blue → Red <span class="tag tag-supply">HA close &lt; HA open after blue run</span></td>
+      <td><span class="tag tag-supply">SUPPLY</span></td>
+      <td>Buyers exhausted, sellers stepping in</td>
+    </tr>
+  </table>
+
+  <!-- 3b: Zone Boundaries -->
+  <h3 id="s3b">Zone Boundaries (ORIZ Spec)</h3>
+
+  <p>The zone is not just the transition candle — it spans the <strong>entire HA run</strong> that preceded it. The run is scanned backwards (up to 50 bars) to find the structural extreme.</p>
+
+  <table>
+    <tr><th>Zone Type</th><th>Top</th><th>Bottom</th></tr>
+    <tr>
+      <td><span class="tag tag-supply">SUPPLY</span></td>
+      <td>OHLC high of the run (structural extreme — highest <code>high</code> in the blue run)</td>
+      <td>HA low of transition candle (order-block edge)</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-demand">DEMAND</span></td>
+      <td>HA high of transition candle (order-block edge)</td>
+      <td>OHLC low of the run (structural extreme — lowest <code>low</code> in the red run)</td>
+    </tr>
+  </table>
+
+  <h4>Doji Handling</h4>
+  <p>If the transition candle is a doji (body/range &lt; 5%), the zone boundary uses the <strong>current</strong> candle's HA extreme instead of the previous candle's. This prevents tiny-body candles from creating unreasonably narrow zones.</p>
+
+  <!-- 3c: Zone Classification -->
+  <h3 id="s3c">Zone Classification (HH / LH / HL / LL)</h3>
+
+  <p>When a new zone fires, compare it to the <strong>previous zone of the same type</strong> on the same TF. One rule, every timeframe, every zone:</p>
+
+  <div class="def-block supply">
+    <div class="def-title">Supply Zone Classification</div>
+    <pre>New supply top > previous supply top  →  HH  (structural — trend extends)
+New supply top ≤ previous supply top  →  LH  (corrective — trend weakening)</pre>
+  </div>
+
+  <div class="def-block demand">
+    <div class="def-title">Demand Zone Classification</div>
+    <pre>New demand bot < previous demand bot  →  LL  (structural — trend extends)
+New demand bot ≥ previous demand bot  →  HL  (corrective — trend weakening)</pre>
+  </div>
+
+  <table>
+    <tr><th>Classification</th><th>Meaning</th><th>Structural Implication</th><th>Structure Event</th></tr>
+    <tr>
+      <td><strong>HH</strong></td>
+      <td>New high exceeded previous high</td>
+      <td>Bullish trend continuing</td>
+      <td>If HH zone broken → <strong>BOS</strong></td>
+    </tr>
+    <tr>
+      <td><strong>LH</strong></td>
+      <td>New high failed to exceed previous</td>
+      <td>Bullish momentum fading</td>
+      <td>If LH zone broken → <strong>CHoCH</strong></td>
+    </tr>
+    <tr>
+      <td><strong>LL</strong></td>
+      <td>New low exceeded previous low</td>
+      <td>Bearish trend continuing</td>
+      <td>If LL zone broken → <strong>BOS</strong></td>
+    </tr>
+    <tr>
+      <td><strong>HL</strong></td>
+      <td>New low held above previous</td>
+      <td>Bearish momentum fading</td>
+      <td>If HL zone broken → <strong>CHoCH</strong></td>
+    </tr>
+  </table>
+
+  <!-- 3d: Zone Lifecycle -->
+  <h3 id="s3d">Zone Lifecycle</h3>
+
+  <h4>Creation</h4>
+  <p>A zone is created when the HA color transition fires and passes validation: <code>ztop &gt; zbot</code> (valid range), zone age within TF-specific max age window, and the zone is pushed to the per-TF zone array.</p>
+
+  <h4>Active State</h4>
+  <p>While active, the zone box extends to the right. Labeled with TF, type (S/D), and classification (HH/LH/HL/LL).</p>
+
+  <h4>Break Detection — Body Close Only</h4>
+
+  <div class="def-block rule">
+    <div class="def-title">Critical Rule — Break = Body Close Only</div>
+    <p>A zone is broken <strong>only</strong> by a candle body close through it:</p>
+    <p><span class="tag tag-supply">Supply broken</span>: <code>close &gt; zone.top</code> — price body-closed above supply</p>
+    <p><span class="tag tag-demand">Demand broken</span>: <code>close &lt; zone.bottom</code> — price body-closed below demand</p>
+    <p><strong>Wicks through a zone are NOT breaks.</strong> A wick into a zone is a liquidity sweep — the zone remains active.</p>
+  </div>
+
+  <h4>Deletion</h4>
+  <p>A zone is removed when: (1) <strong>Broken</strong> — body close through it, immediate deletion. (2) <strong>Expired</strong> — zone age exceeds TF-specific max age. (3) <strong>Count overflow</strong> — more than 20 supply or 20 demand zones per TF, oldest removed first. Broken zones are deleted immediately. They do not persist as ghost zones.</p>
+
+  <table>
+    <tr><th>TF</th><th>Max Zone Age (bars)</th></tr>
+    <tr><td>M1 – H4</td><td>50</td></tr>
+    <tr><td>W</td><td>30</td></tr>
+    <tr><td>MN</td><td>20</td></tr>
+  </table>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 4: ZONE ROLES                                         -->
+<!-- ============================================================ -->
+<section id="s4">
+  <h2><span class="section-num">04</span>Zone Roles — Push, Continuation, Pullback, Reversal</h2>
+
+  <p>Every zone, in addition to its type (supply/demand) and classification (HH/LH/HL/LL), has a <strong>role</strong> that describes its function within the parent-child cascade. The role determines what the zone means for directional bias and target identification.</p>
+
+  <p>Zone roles are not intrinsic properties — they are <strong>relational</strong>. A zone's role depends on where it sits relative to its parent TF's structure. The same zone can look different depending on which parent-child relationship you're examining.</p>
+
+  <!-- 4a: Push Zone -->
+  <h3 id="s4a">Push Zone <span class="tag tag-push">PUSH</span></h3>
+
+  <div class="def-block push">
+    <div class="def-title">Definition — Push Zone</div>
+    <p>The <strong>singular child zone</strong>, created inside the parent zone that produced the parent's last HH/LL. It is the zone that <strong>initiated</strong> the structural move at the parent level — the deepest origin point of the push.</p>
+    <p><strong>There is exactly one push zone per parent structural move.</strong></p>
+  </div>
+
+  <h4>Identification Rule</h4>
+  <pre>GIVEN:  Parent TF created zone Z (which made the parent's last HH or LL)
+THEN:   The child zone created INSIDE zone Z that initiated the push
+        to break through and create the parent's new HH/LL
+IS:     The push zone for this parent-child pair</pre>
+
+  <div class="example">
+    <div class="example-label">Example — GBPUSD MN → W</div>
+    <p>Monthly demand zone created. Inside this MN demand, a Weekly demand zone is created — this Weekly demand is the <span class="tag tag-push">PUSH</span> zone. It drives price up through Weekly supply zones to eventually make a new W HH above the previous MN LH. The MN demand zone is the parent; the W demand inside it is the push zone.</p>
+  </div>
+
+  <h4>Push Zone as Magnet</h4>
+  <p>The push zone is a <strong>gravitational magnet</strong>. When the child TF pulls back counter to the parent's direction, the push zone is where price is being pulled toward. The pullback resolves either by reaching the push zone or by confirming a new push zone before reaching it.</p>
+
+  <h4>Push Zone Disqualification</h4>
+  <div class="def-block rule">
+    <div class="def-title">Rule — Wick ≠ Push</div>
+    <p>If the child TF's wick reaches the prior push zone boundary but does <strong>not</strong> body-close through it, the move does NOT qualify as creating a new push zone. Only a <strong>body-close break</strong> of the boundary extends the push.</p>
+  </div>
+
+  <!-- 4b: Continuation Zone -->
+  <h3 id="s4b">Continuation Zone <span class="tag tag-cont">CONTINUATION</span></h3>
+
+  <div class="def-block continuation">
+    <div class="def-title">Definition — Continuation Zone</div>
+    <p>Additional child zones created <strong>after</strong> the push zone, in the <strong>same direction</strong>, extending the HH higher or LL lower. They ride the push but did not initiate it.</p>
+    <p><strong>There can be multiple continuation zones per push.</strong></p>
+  </div>
+
+  <h4>Identification Rule</h4>
+  <pre>GIVEN:  Push zone P exists for this parent-child pair
+AND:    A new child zone fires in the SAME direction as P
+AND:    This zone is created ABOVE the push zone (for bullish) 
+        or BELOW the push zone (for bearish)
+AND:    It extends the structural sequence (new HH or new LL)
+THEN:   This zone is a CONTINUATION zone</pre>
+
+  <div class="example">
+    <div class="example-label">Example — GBPUSD W → D</div>
+    <p>Weekly push demand established. Daily creates a new demand zone above the MN demand top and above the W push demand — this is the first <span class="tag tag-cont">CONTINUATION</span> zone. As price continues up, additional Daily demand zones that make higher lows are further continuation zones, stacking the structure upward toward the eventual W HH.</p>
+  </div>
+
+  <!-- 4c: Pullback Zone -->
+  <h3 id="s4c">Pullback Zone <span class="tag tag-pullback">PULLBACK</span></h3>
+
+  <div class="def-block pullback">
+    <div class="def-title">Definition — Pullback Zone</div>
+    <p>Child zones that push <strong>counter</strong> to the parent's direction, moving price back toward the parent's push zone. The parent's push zone is the magnet pulling the LTFs back into it.</p>
+    <p>Pullback zones remain <strong>within</strong> the existing parent structure — they do not break the parent's LH/HL structural level.</p>
+  </div>
+
+  <h4>Identification Rule</h4>
+  <pre>GIVEN:  Parent is bullish (last parent zone = HH or HL demand, pushing up)
+AND:    Child creates SUPPLY zones (counter to parent direction)
+AND:    These supply zones push price DOWN toward the parent's push zone
+AND:    No break of the parent's structural HL level
+THEN:   These child supply zones are PULLBACK zones
+
+GIVEN:  Parent is bearish (last parent zone = LL or LH supply, pushing down)
+AND:    Child creates DEMAND zones (counter to parent direction)  
+AND:    These demand zones push price UP toward the parent's push zone
+AND:    No break of the parent's structural LH level
+THEN:   These child demand zones are PULLBACK zones</pre>
+
+  <div class="example">
+    <div class="example-label">Example — GBPUSD W → D (bearish pullback)</div>
+    <p>Weekly made its HH, creating a W supply zone at the top. Now price turns down. Daily creates LH supply zones pushing price lower — these Daily LH S zones are <span class="tag tag-pullback">PULLBACK</span> zones. They are pulling price back into the Weekly push demand zone. Each Daily LH supply is a "sell here" magnet — bearish bias at the Daily level until the Weekly pullback resolves.</p>
+  </div>
+
+  <h4>Pullback Resolution</h4>
+  <p>A pullback resolves in one of two ways:</p>
+  <div class="flow">
+    <div class="flow-step active">
+      <div class="flow-num">A</div>
+      <div class="flow-content"><strong>Price reaches the parent push zone.</strong> Pullback complete. Parent direction resumes from the push zone. The child zone that forms here becomes the new push zone if a new parent HH/LL is made.</div>
+    </div>
+    <div class="flow-step warning">
+      <div class="flow-num">B</div>
+      <div class="flow-content"><strong>The last child pullback zone is breached (body close through).</strong> This confirms a new push zone in the parent's direction — the pullback has been rejected and the parent push is extending again without reaching the original push zone.</div>
+    </div>
+  </div>
+
+  <!-- 4d: Reversal Zone -->
+  <h3 id="s4d">Reversal Zone <span class="tag tag-reversal">REVERSAL</span></h3>
+
+  <div class="def-block reversal">
+    <div class="def-title">Definition — Reversal Zone</div>
+    <p>When a pullback goes deep enough that the <strong>grandchild</strong> breaks the parent's structural zone (the parent's LH or HL), the pullback becomes a reversal. The child zone that drove the break of the continuation zone is the reversal zone.</p>
+    <p>A reversal zone marks the start of a new parent leg — the HL or LH that will push in the opposite direction.</p>
+  </div>
+
+  <h4>Identification Rule</h4>
+  <pre>GIVEN:  Child is pulling back (counter to parent direction)
+AND:    Grandchild zones driving the pullback break through 
+        the parent's LH supply zone (bearish) or HL demand zone (bullish)
+THEN:   The pullback has become a REVERSAL
+AND:    The child zone that drove the structural break = REVERSAL zone
+AND:    Price reverses from the reversal zone
+AND:    A new parent leg (LH or HL) begins</pre>
+
+  <div class="def-block rule">
+    <div class="def-title">Key Distinction — Pullback vs Reversal</div>
+    <p><strong>Pullback:</strong> child moves counter to parent direction but stays within parent structure. No parent LH/HL broken.</p>
+    <p><strong>Reversal:</strong> grandchild breaks the parent's structural zone (LH/HL). The pullback has gone too deep — parent structure has shifted.</p>
+    <p>The transition point: <strong>grandchild breaks parent structure = pullback becomes reversal.</strong></p>
+  </div>
+
+  <h4>Zone Role Summary</h4>
+  <table>
+    <tr><th>Role</th><th>Direction vs Parent</th><th>Count</th><th>Function</th></tr>
+    <tr>
+      <td><span class="tag tag-push">PUSH</span></td>
+      <td>Same</td>
+      <td>Exactly 1</td>
+      <td>Initiates parent's structural move. Magnet for pullbacks.</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-cont">CONTINUATION</span></td>
+      <td>Same</td>
+      <td>0 or more</td>
+      <td>Extends the push. Stacks structure higher/lower.</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-pullback">PULLBACK</span></td>
+      <td>Counter</td>
+      <td>0 or more</td>
+      <td>Retraces toward push zone. "Sell/buy here" magnets at child level.</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-reversal">REVERSAL</span></td>
+      <td>Counter</td>
+      <td>0 or 1</td>
+      <td>Breaks parent structure. Starts new parent leg (LH/HL).</td>
+    </tr>
+  </table>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 5: DIRECTIONAL BIAS                                   -->
+<!-- ============================================================ -->
+<section id="s5">
+  <h2><span class="section-num">05</span>Directional Bias — Top-Down Read</h2>
+
+  <p>At any moment, the system reads direction <strong>top-down</strong>. Each parent-child pair is evaluated independently using the same logic. The cascade creates a composite bias from MN down to execution TF.</p>
+
+  <h3>The Mechanical Read</h3>
+
+  <div class="flow">
+    <div class="flow-step active">
+      <div class="flow-num">1</div>
+      <div class="flow-content"><strong>MN: What was the last MN zone created?</strong> Supply → macro bearish. Demand → macro bullish. This sets the ultimate gravitational frame.</div>
+    </div>
+    <div class="flow-step active">
+      <div class="flow-num">2</div>
+      <div class="flow-content"><strong>W: Where is the last W zone relative to MN?</strong> If W supply is inside MN supply push zone → bearish, ride down. If W demand is inside MN demand push zone → bullish, ride up. If W demand sits below tested MN supply after MN demand was created → expect bullish reversal, push up to break MN LH.</div>
+    </div>
+    <div class="flow-step active">
+      <div class="flow-num">3</div>
+      <div class="flow-content"><strong>D: Where is the last D zone relative to W?</strong> Same logic. If D supply inside W supply (at W HH) → bearish at Daily level. Daily LH S zones = pullback zones pulling price into W push demand. Every D supply = "sell here" magnet until W structure shifts.</div>
+    </div>
+    <div class="flow-step active">
+      <div class="flow-num">4</div>
+      <div class="flow-content"><strong>H4: Where is the last H4 zone relative to D?</strong> Same logic. H4 zones inside D LH supply = the push zones driving the D pullback lower. H4 continuation zones track the push progress.</div>
+    </div>
+  </div>
+
+  <div class="example">
+    <div class="example-label">Example — GBPUSD Current Read (as shown in charts)</div>
+    <p><strong>MN:</strong> Last MN zone = demand. Macro bullish.</p>
+    <p><strong>W:</strong> W push demand inside MN demand → pushed up to make W HH above MN LH. W supply created at top. W continuation demand formed above push zone. Now in W pullback (price pulling back toward W push demand).</p>
+    <p><strong>D:</strong> Inside W supply at top, Daily created LH supply zones pushing down. These are <span class="tag tag-pullback">PULLBACK</span> zones at the W level. Daily bias = bearish (sell at every D LH S) until W pullback resolves.</p>
+    <p><strong>H4:</strong> H4 zones inside the D LH S drive the push lower. H4 supply zones = push zones for the D pullback leg. When H4 pushes up from D trendline but fails to break the last H4 bullish continuation → confirms continued push down into W push zone.</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 6: TRENDLINE CONFIRMATION                             -->
+<!-- ============================================================ -->
+<section id="s6">
+  <h2><span class="section-num">06</span>Trendline Confirmation Layer</h2>
+
+  <p>Trendlines provide an <strong>early warning system</strong> for push exhaustion and pullback resolution. They are drawn mechanically from zone events, not subjectively.</p>
+
+  <h3>Trendline Construction</h3>
+
+  <div class="def-block rule">
+    <div class="def-title">Rule — Trendline Anchor Points</div>
+    <p>A trendline is drawn from the <strong>push zone</strong> through the <strong>continuation zones</strong> at the same TF.</p>
+    <p><strong>Bullish trendline:</strong> Connects the push zone's demand bottom to the continuation zones' demand bottoms (rising support).</p>
+    <p><strong>Bearish trendline:</strong> Connects the push zone's supply top to the continuation zones' supply tops (falling resistance).</p>
+  </div>
+
+  <h3>Trendline Break Signals</h3>
+
+  <table>
+    <tr><th>Event</th><th>Meaning</th></tr>
+    <tr>
+      <td>Grandchild pushes from TF trendline into last child continuation zone → <strong>fails to break it</strong></td>
+      <td>Confirms parent direction continues. Push resumes toward target.</td>
+    </tr>
+    <tr>
+      <td>Grandchild <strong>breaks</strong> last child continuation zone above/below trendline</td>
+      <td>Early warning: pullback may be exhausting. Watch for reversal confirmation.</td>
+    </tr>
+    <tr>
+      <td>Child trendline from push zone is <strong>body-close broken</strong></td>
+      <td>Push structure has broken. Pullback or reversal in progress at this TF level.</td>
+    </tr>
+  </table>
+
+  <div class="example">
+    <div class="example-label">Example — H4 and Daily Trendlines (from charts)</div>
+    <p>H4 pushes up from the Daily trendline, created from the D continuation zone. H4 reaches the last H4 bullish continuation zone but fails to break it. This confirms the continued push <strong>down</strong> — into the Weekly push zone. The Daily bearish trendline (from D LH S push zone through D LH S continuation zones) remains intact.</p>
+  </div>
+
+  <div class="note">
+    <strong>Note:</strong> Trendline details (exact anchor logic, multi-touch validation, break thresholds) to be refined during indicator build phase. The core principle is established: push zone → continuation zones → trendline → break/hold = directional signal.
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 7: PULLBACK TO REVERSAL                               -->
+<!-- ============================================================ -->
+<section id="s7">
+  <h2><span class="section-num">07</span>Pullback-to-Reversal Transition</h2>
+
+  <p>The transition from pullback to reversal is the most critical structural event in the system. It tells you when a counter-move is no longer "coming back" — it has broken structure and started a new leg.</p>
+
+  <h3>Two-Layer Confirmation</h3>
+
+  <p>The end of a pullback is <strong>not</strong> confirmed at the pullback TF itself. It requires confirmation from one level deeper (grandchild), then validation at the child level:</p>
+
+  <div class="flow">
+    <div class="flow-step warning">
+      <div class="flow-num">1</div>
+      <div class="flow-content"><strong>Grandchild CHoCH.</strong> The grandchild TF creates a LH (if parent was bullish) or HL (if parent was bearish) — signaling that the child's counter-push is exhausting.</div>
+    </div>
+    <div class="flow-step danger">
+      <div class="flow-num">2</div>
+      <div class="flow-content"><strong>Child pullback zone broken.</strong> A child pullback zone (the LH S or HL D) gets body-close broken — confirming the pullback is over. If this break also breaks the <strong>parent's</strong> structural level (parent LH/HL), the pullback has become a reversal.</div>
+    </div>
+    <div class="flow-step active">
+      <div class="flow-num">3</div>
+      <div class="flow-content"><strong>New push zone confirmed.</strong> The demand/supply zone that price reversed from becomes the new push zone. A new parent leg begins.</div>
+    </div>
+  </div>
+
+  <div class="def-block reversal">
+    <div class="def-title">The Transition Test</div>
+    <p><strong>Still a pullback if:</strong> child moves counter to parent but does NOT break the parent's LH/HL. Grandchild structure still aligned with child's counter-direction.</p>
+    <p><strong>Becomes a reversal when:</strong> grandchild breaks the parent's structural zone (LH or HL). At this point, the child zone that drove the break = reversal zone. A new parent leg (HL/LH) begins from the reversal zone.</p>
+  </div>
+
+  <h3>Post-Reversal Cycle</h3>
+
+  <p>After a reversal is confirmed:</p>
+  <div class="flow">
+    <div class="flow-step active">
+      <div class="flow-num">1</div>
+      <div class="flow-content">The reversal zone becomes the origin of a new parent leg (HL or LH).</div>
+    </div>
+    <div class="flow-step active">
+      <div class="flow-num">2</div>
+      <div class="flow-content">A new parent zone is created from this leg — this new zone now becomes the magnet for the child TFs.</div>
+    </div>
+    <div class="flow-step active">
+      <div class="flow-num">3</div>
+      <div class="flow-content">The child TFs are pulled through their own push zones toward this new parent zone.</div>
+    </div>
+    <div class="flow-step active">
+      <div class="flow-num">4</div>
+      <div class="flow-content">The child TFs create counter-moves (pullbacks) that feed back up into the parent structure.</div>
+    </div>
+    <div class="flow-step active">
+      <div class="flow-num">5</div>
+      <div class="flow-content">The cycle repeats. Up and down the timeframes, endlessly.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 8: FULL CYCLE WALKTHROUGH                             -->
+<!-- ============================================================ -->
+<section id="s8">
+  <h2><span class="section-num">08</span>Full Cycle Walkthrough — GBPUSD</h2>
+
+  <div class="note">
+    <strong>Reference:</strong> This walkthrough maps directly to the annotated chart screenshots provided during spec development. All price levels and zone positions are from GBPUSD as observed on 2026-03-31.
+  </div>
+
+  <h3>Phase 1: MN Demand → W Push Up</h3>
+  <div class="flow">
+    <div class="flow-step active">
+      <div class="flow-num">1</div>
+      <div class="flow-content">MN demand zone created (macro bullish).</div>
+    </div>
+    <div class="flow-step active">
+      <div class="flow-num">2</div>
+      <div class="flow-content">Inside this MN demand, a W demand zone is created → this is the <span class="tag tag-push">W PUSH DEMAND</span>.</div>
+    </div>
+    <div class="flow-step active">
+      <div class="flow-num">3</div>
+      <div class="flow-content">Weekly pushes up. W continuation demand zones form above the push zone, stacking structure higher.</div>
+    </div>
+    <div class="flow-step active">
+      <div class="flow-num">4</div>
+      <div class="flow-content">W trendline drawn from push zone through continuation demands.</div>
+    </div>
+    <div class="flow-step active">
+      <div class="flow-num">5</div>
+      <div class="flow-content">W HH is made — above the previous MN LH. W supply zone created at top.</div>
+    </div>
+  </div>
+
+  <h3>Phase 2: W Supply → D Pullback Down</h3>
+  <div class="flow">
+    <div class="flow-step warning">
+      <div class="flow-num">6</div>
+      <div class="flow-content">Inside the W supply at the HH, Daily creates supply zones (D LH S) → these are <span class="tag tag-pullback">W-D PULLBACK</span> zones.</div>
+    </div>
+    <div class="flow-step warning">
+      <div class="flow-num">7</div>
+      <div class="flow-content">D LH S zones push price down. Daily bias = bearish. Every D supply = "sell here" magnet.</div>
+    </div>
+    <div class="flow-step warning">
+      <div class="flow-num">8</div>
+      <div class="flow-content">D makes new LL, new lower demand, new D LH S zones stacking down. Price being pulled toward W push demand (the magnet).</div>
+    </div>
+  </div>
+
+  <h3>Phase 3: D Push Into W Zones → H4 Confirms</h3>
+  <div class="flow">
+    <div class="flow-step active">
+      <div class="flow-num">9</div>
+      <div class="flow-content">H4 zones inside the D LH S drive the push lower → these are the <span class="tag tag-push">D-H4 PUSH</span> zones for the daily bearish leg.</div>
+    </div>
+    <div class="flow-step active">
+      <div class="flow-num">10</div>
+      <div class="flow-content">H4 creates continuation zones extending the push down.</div>
+    </div>
+    <div class="flow-step active">
+      <div class="flow-num">11</div>
+      <div class="flow-content">H4 pushes up from D trendline → reaches last H4 bullish continuation → fails to break → confirms continued push DOWN into W push zone.</div>
+    </div>
+  </div>
+
+  <h3>Phase 4: Pullback Resolution (to be observed)</h3>
+  <div class="flow">
+    <div class="flow-step">
+      <div class="flow-num">12</div>
+      <div class="flow-content">Price either reaches W push demand (pullback complete, resume bullish from push zone) — OR — last D pullback zone is breached, confirming a new push zone without reaching the original.</div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num">13</div>
+      <div class="flow-content">If pullback resolves: grandchild (H4) makes LH CHoCH → D LH S broken → confirms W pullback is over → new cycle begins from new W push demand.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 9: INDICATOR BUILD (PENDING)                          -->
+<!-- ============================================================ -->
+<section id="s9">
+  <h2><span class="section-num">09</span>Indicator Build Requirements <span class="status status-pending">PENDING</span></h2>
+
+  <p>This section will define the Pine Script v6 indicator requirements for visualizing the complete fractal push/pull system. To be spec'd after zone roles and cascade logic are fully validated.</p>
+
+  <div class="note">
+    <strong>Build approach:</strong> Claude Code CLI for implementation. Visual validation in TradingView Replay before any automation. Indicator parameters fixed at author defaults.
+  </div>
+
+  <h3>Required Visual Elements</h3>
+  <ul>
+    <li>Zone boxes with role coloring (push / continuation / pullback / reversal)</li>
+    <li>Zone labels: <code>{TF} {S|D} {HH|LH|HL|LL} [{ROLE}]</code></li>
+    <li>Parent zone background highlighting (showing which parent zone we're inside)</li>
+    <li>Trendlines from push zone through continuation zones</li>
+    <li>Push zone magnet lines (showing the pull target)</li>
+    <li>Structural sequence tracking (HH/LL lines per TF)</li>
+    <li>Pullback-to-reversal transition markers</li>
+  </ul>
+
+  <h3>Required Data Outputs</h3>
+  <ul>
+    <li>Current zone role per TF (push / continuation / pullback / reversal)</li>
+    <li>Current directional bias per TF</li>
+    <li>Current magnet/target per TF</li>
+    <li>Pullback depth relative to push zone</li>
+    <li>Grandchild CHoCH state for reversal detection</li>
+  </ul>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 10: EXECUTION (PENDING)                               -->
+<!-- ============================================================ -->
+<section id="s10">
+  <h2><span class="section-num">10</span>Execution Rules <span class="status status-pending">PENDING</span></h2>
+
+  <p>Entry, stop loss, and take profit rules. To be defined after indicator visualization confirms the framework produces clear, unambiguous signals on live data.</p>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 11: POSITION MANAGEMENT (PENDING)                     -->
+<!-- ============================================================ -->
+<section id="s11">
+  <h2><span class="section-num">11</span>Position Management <span class="status status-pending">PENDING</span></h2>
+
+  <p>Position sizing, trailing stops, partial exits, and multi-position management. To be defined after execution rules are established.</p>
+</section>
+
+<hr>
+
+<div class="note" style="margin-top: 40px;">
+  <strong>Spec version 0.1</strong> — Established: zone creation (HA transitions), zone classification (HH/LH/HL/LL), zone lifecycle, four zone roles (push, continuation, pullback, reversal), parent-child cascade, directional bias read, trendline confirmation, and pullback-to-reversal transition. Pending: execution TFs (H1-M1), indicator build spec, execution rules, position management.
+</div>
+
+</div>
+</body>
+</html>
