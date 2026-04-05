@@ -310,6 +310,91 @@ def default_configs() -> list[RetestConfig]:
              premium_discount="aligned", sl_mode="structure", tp_mode="zone",
              bias_filter="with_daily"))
 
+    # ── Section Z: HIGH-VALUE LIMIT COMBINATIONS (from findings analysis) ──
+    # These are the untested limit combos identified in level4-findings-and-next-steps.md
+
+    all_limit_pairs = ["H1@H4", "H1@D1", "M15@H4", "M5@H1", "M5@M15", "M15@H1"]
+
+    # Z1: Limit + against_daily (THE biggest gap — against_daily dominates H1@H4)
+    for pair in all_limit_pairs:
+        _add(RetestConfig(tf_pair=pair, entry_mode="limit", sl_mode="zone",
+             bias_filter="against_daily"))
+        _add(RetestConfig(tf_pair=pair, entry_mode="limit", sl_mode="zone",
+             bias_filter="against_daily", fixed_rr=3.0))
+
+    # Z2: Limit + reversal zones (42.2% WR market → with limit should improve)
+    for pair in all_limit_pairs:
+        _add(RetestConfig(tf_pair=pair, entry_mode="limit", sl_mode="zone",
+             zone_role_filter="reversal"))
+
+    # Z3: Limit + compression-born zones (2x durability)
+    for pair in all_limit_pairs:
+        _add(RetestConfig(tf_pair=pair, entry_mode="limit", sl_mode="zone",
+             birth_pattern_filter="compression"))
+
+    # Z4: Limit + retest #4-10 (the sweet spot)
+    for pair in all_limit_pairs:
+        _add(RetestConfig(tf_pair=pair, entry_mode="limit", sl_mode="zone",
+             retest_number_filter="4-10"))
+
+    # Z5: Limit + body_close (for adjacent-TF pairs — accumulation inside zone)
+    for pair in ["M5@M15", "M5@H1", "M15@H1"]:
+        _add(RetestConfig(tf_pair=pair, entry_mode="limit", sl_mode="zone",
+             touch_type="body_close"))
+
+    # Z6: Limit + direction (long-only and short-only)
+    for pair in all_limit_pairs:
+        _add(RetestConfig(tf_pair=pair, entry_mode="limit", sl_mode="zone",
+             direction="long"))
+        _add(RetestConfig(tf_pair=pair, entry_mode="limit", sl_mode="zone",
+             direction="short"))
+
+    # Z7: Limit + R:R variations (test 1.5, 3.0, 4.0 — current only tests 2.0)
+    for pair in priority_pairs:
+        for rr in [1.5, 3.0, 4.0]:
+            _add(RetestConfig(tf_pair=pair, entry_mode="limit", sl_mode="zone",
+                 fixed_rr=rr))
+
+    # Z8: Limit + structural SL + against_daily (best SL + best bias for HTF)
+    for pair in priority_pairs:
+        _add(RetestConfig(tf_pair=pair, entry_mode="limit", sl_mode="structure",
+             tp_mode="zone", bias_filter="against_daily"))
+
+    # Z9: Limit + push + against_daily (order block + counter-trend = highest conviction?)
+    for pair in priority_pairs:
+        _add(RetestConfig(tf_pair=pair, entry_mode="limit", sl_mode="zone",
+             zone_role_filter="push", bias_filter="against_daily"))
+
+    # Z10: Limit + fresh/young age
+    for pair in priority_pairs:
+        _add(RetestConfig(tf_pair=pair, entry_mode="limit", sl_mode="zone",
+             age_filter="fresh"))
+        _add(RetestConfig(tf_pair=pair, entry_mode="limit", sl_mode="zone",
+             age_filter="young"))
+
+    # Z11: Limit + time since creation (12h-3d = sweet spot from Level 1-3)
+    for pair in priority_pairs:
+        _add(RetestConfig(tf_pair=pair, entry_mode="limit", sl_mode="zone",
+             time_since_creation_filter="12h-3d"))
+
+    # Z12: Limit + at_transition (bias flip at zone — highest conviction?)
+    for pair in priority_pairs:
+        _add(RetestConfig(tf_pair=pair, entry_mode="limit", sl_mode="zone",
+             bias_filter="at_transition"))
+
+    # Z13: Full stack combos — limit + against_daily + continuation + young
+    _add(RetestConfig(tf_pair="H1@H4", entry_mode="limit", sl_mode="zone",
+         bias_filter="against_daily", zone_role_filter="continuation",
+         age_filter="young"))
+    _add(RetestConfig(tf_pair="H1@H4", entry_mode="limit", sl_mode="zone",
+         bias_filter="against_daily", zone_role_filter="continuation",
+         age_filter="young", fixed_rr=3.0))
+    # Limit + with_daily + push (strongest conviction stack)
+    _add(RetestConfig(tf_pair="H1@D1", entry_mode="limit", sl_mode="zone",
+         bias_filter="with_daily", zone_role_filter="push"))
+    _add(RetestConfig(tf_pair="H1@D1", entry_mode="limit", sl_mode="zone",
+         bias_filter="with_daily", zone_role_filter="push", fixed_rr=3.0))
+
     return configs
 
 
