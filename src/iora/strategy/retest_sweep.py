@@ -61,6 +61,8 @@ def default_configs() -> list[RetestConfig]:
             c.inside_w_zone_filter, c.d_to_w_filter,
             c.near_pdh_pdl, c.premium_discount,
             c.layered_sl_mode,
+            c.hma_filter, c.hma_cross_trigger, str(c.hma_cross_lookback),
+            c.hma_period, c.hma_source,
         )
         if key not in seen:
             seen.add(key)
@@ -433,6 +435,54 @@ def default_configs() -> list[RetestConfig]:
     _add(RetestConfig(tf_pair="H1@D1", entry_mode="cascade_layered",
          layered_sl_mode="htf", bias_filter="with_daily",
          zone_role_filter="push", max_concurrent=3))
+
+    # ── Section HMA-A: HMA direction filter (state-based) ──────────────
+    hma_entry_pairs = ["M5@H1", "M15@H1", "M5@M15", "M15@H4", "H1@H4"]
+
+    for pair in hma_entry_pairs:
+        for ref_tf in ["with_hma_h1", "with_hma_h4"]:
+            for period in [12, 24]:
+                for source in ["close", "ha_close"]:
+                    _add(RetestConfig(tf_pair=pair, hma_filter=ref_tf,
+                         hma_period=period, hma_source=source))
+
+    # ── Section HMA-B: HA-cross-HMA trigger (event-based) ──────────────
+    for pair in hma_entry_pairs:
+        for ref_tf in ["h1", "h4"]:
+            for lookback in [5, 10, 20, 50, "until_reverse"]:
+                for period in [12, 24]:
+                    _add(RetestConfig(tf_pair=pair, hma_cross_trigger=ref_tf,
+                         hma_cross_lookback=lookback, hma_period=period))
+
+    # ── Section HMA-C: High-value combos (HMA + proven configs) ────────
+
+    # limit + hma_filter — does HMA improve the SQN 23.64 limit config?
+    for pair in priority_pairs:
+        for ref_tf in ["with_hma_h1", "with_hma_h4"]:
+            _add(RetestConfig(tf_pair=pair, entry_mode="limit", sl_mode="zone",
+                 hma_filter=ref_tf, hma_period=24))
+
+    # limit + hma_cross_trigger — does the cross event improve limit entries?
+    for pair in priority_pairs:
+        for ref_tf in ["h1", "h4"]:
+            for lookback in [20, "until_reverse"]:
+                _add(RetestConfig(tf_pair=pair, entry_mode="limit", sl_mode="zone",
+                     hma_cross_trigger=ref_tf, hma_cross_lookback=lookback,
+                     hma_period=24))
+
+    # cascade_layered + hma_filter — does HMA improve layered cascade?
+    for pair in ["H1@H4", "H1@D1", "M15@H4", "M5@H1"]:
+        _add(RetestConfig(tf_pair=pair, entry_mode="cascade_layered",
+             layered_sl_mode="own", hma_filter="with_hma_h4",
+             hma_period=24, max_concurrent=3))
+
+    # against_daily + hma_filter — complementary signals?
+    for pair in priority_pairs:
+        _add(RetestConfig(tf_pair=pair, bias_filter="against_daily",
+             hma_filter="with_hma_h1", hma_period=24))
+        _add(RetestConfig(tf_pair=pair, entry_mode="limit", sl_mode="zone",
+             bias_filter="against_daily", hma_filter="with_hma_h1",
+             hma_period=24))
 
     return configs
 

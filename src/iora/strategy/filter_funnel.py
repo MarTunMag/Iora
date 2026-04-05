@@ -247,6 +247,54 @@ def _make_premium_discount_filter(cfg: RetestConfig):
     return filt
 
 
+def _make_hma_filter(cfg: RetestConfig):
+    if cfg.hma_filter == "any":
+        return None
+    ref_tf = "h1" if "h1" in cfg.hma_filter else "h4"
+
+    def fn(c: RetestCandidate) -> bool:
+        hma_dir = c.hma_direction_h1 if ref_tf == "h1" else c.hma_direction_h4
+        if c.direction == "long":
+            return hma_dir == 1
+        return hma_dir == -1
+
+    return fn
+
+
+def _make_hma_cross_trigger(cfg: RetestConfig):
+    if cfg.hma_cross_trigger == "none":
+        return None
+    ref_tf = cfg.hma_cross_trigger  # "h1" or "h4"
+    lookback = cfg.hma_cross_lookback
+
+    def fn(c: RetestCandidate) -> bool:
+        if ref_tf == "h1":
+            cross_dir = c.hma_cross_direction_h1
+            bars_since = c.bars_since_hma_cross_h1
+            ha_above = c.ha_above_hma_h1
+        else:
+            cross_dir = c.hma_cross_direction_h4
+            bars_since = c.bars_since_hma_cross_h4
+            ha_above = c.ha_above_hma_h4
+
+        # Direction must match
+        if c.direction == "long" and cross_dir != 1:
+            return False
+        if c.direction == "short" and cross_dir != -1:
+            return False
+
+        # Lookback window check
+        if lookback == "until_reverse":
+            # Active as long as HA is still on the cross side
+            if c.direction == "long":
+                return ha_above
+            return not ha_above
+        else:
+            return bars_since <= int(lookback)
+
+    return fn
+
+
 _FILTER_FACTORIES = [
     ("touch_type", _make_touch_filter),
     ("direction", _make_direction_filter),
@@ -265,6 +313,8 @@ _FILTER_FACTORIES = [
     ("session", _make_session_filter),
     ("near_pdh_pdl", _make_near_pdh_pdl_filter),
     ("premium_discount", _make_premium_discount_filter),
+    ("hma_filter", _make_hma_filter),
+    ("hma_cross_trigger", _make_hma_cross_trigger),
 ]
 
 

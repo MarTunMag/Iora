@@ -76,6 +76,13 @@ class RetestConfig:
     near_pdh_pdl: str = "any"               # "near" = within 0.5 ATR of PDH or PDL, "any"
     premium_discount: str = "any"           # "aligned" = longs in discount + shorts in premium, "any"
 
+    # HMA filters
+    hma_filter: str = "any"                # "with_hma_h1", "with_hma_h4", "any"
+    hma_cross_trigger: str = "none"        # "h1", "h4", "none"
+    hma_cross_lookback: int | str = 20     # entry-TF bars, or "until_reverse"
+    hma_period: int = 24                   # HMA period (12 or 24)
+    hma_source: str = "close"             # "close" or "ha_close"
+
     # Touch policy (spec dimension: first_touch vs until_broken)
     touch_policy: str = "until_broken"       # "first_touch" = zone consumed after one entry;
                                              # "until_broken" = zone can be re-entered

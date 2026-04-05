@@ -153,6 +153,69 @@ def test_config_entry_mode_default():
     assert cfg.entry_mode == "market"
 
 
+def test_hma_filter_passes_matching_direction():
+    """HMA direction filter keeps candidates matching HMA direction."""
+    from iora.strategy.filter_funnel import apply_filters
+
+    ts = pd.Timestamp("2025-01-15 10:00")
+    # Long candidate with HMA H1 rising (+1)
+    c_long = _candidate(ts=ts, side="demand")
+    c_long = RetestCandidate(
+        event=c_long.event, zone_top=c_long.zone_top, zone_bottom=c_long.zone_bottom,
+        entry_price=c_long.entry_price, atr=c_long.atr,
+        period_hi=c_long.period_hi, period_lo=c_long.period_lo,
+        hma_direction_h1=1,  # rising
+    )
+    cfg = RetestConfig(tf_pair="H1@H4", hma_filter="with_hma_h1")
+    funnel = apply_filters([c_long], cfg)
+    assert len(funnel.passed) == 1  # passes — long + rising
+
+    # Same candidate but HMA falling
+    c_long_fall = RetestCandidate(
+        event=c_long.event, zone_top=c_long.zone_top, zone_bottom=c_long.zone_bottom,
+        entry_price=c_long.entry_price, atr=c_long.atr,
+        period_hi=c_long.period_hi, period_lo=c_long.period_lo,
+        hma_direction_h1=-1,  # falling
+    )
+    funnel2 = apply_filters([c_long_fall], cfg)
+    assert len(funnel2.passed) == 0  # filtered — long + falling
+
+
+def test_hma_cross_trigger_until_reverse():
+    """HMA cross trigger with until_reverse keeps candidates while HA stays above HMA."""
+    from iora.strategy.filter_funnel import apply_filters
+
+    ts = pd.Timestamp("2025-01-15 10:00")
+    # Long candidate: bullish cross happened, HA still above HMA
+    c = _candidate(ts=ts, side="demand")
+    c_above = RetestCandidate(
+        event=c.event, zone_top=c.zone_top, zone_bottom=c.zone_bottom,
+        entry_price=c.entry_price, atr=c.atr,
+        period_hi=c.period_hi, period_lo=c.period_lo,
+        hma_cross_direction_h1=1,  # bullish cross
+        ha_above_hma_h1=True,      # still above
+        bars_since_hma_cross_h1=50,
+    )
+    cfg = RetestConfig(
+        tf_pair="H1@H4", hma_cross_trigger="h1",
+        hma_cross_lookback="until_reverse",
+    )
+    funnel = apply_filters([c_above], cfg)
+    assert len(funnel.passed) == 1
+
+    # Same but HA crossed back below (reversed)
+    c_reversed = RetestCandidate(
+        event=c.event, zone_top=c.zone_top, zone_bottom=c.zone_bottom,
+        entry_price=c.entry_price, atr=c.atr,
+        period_hi=c.period_hi, period_lo=c.period_lo,
+        hma_cross_direction_h1=1,
+        ha_above_hma_h1=False,     # reversed
+        bars_since_hma_cross_h1=50,
+    )
+    funnel2 = apply_filters([c_reversed], cfg)
+    assert len(funnel2.passed) == 0
+
+
 def test_cascade_layered_produces_multiple_trades():
     """cascade_layered should produce multiple trades from one retest event
     when breaker zones are present and price reaches them."""

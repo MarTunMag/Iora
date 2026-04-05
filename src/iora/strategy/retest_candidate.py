@@ -4,10 +4,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from math import isnan, nan
 
+import numpy as np
 import pandas as pd
 
 from iora.data.bar_iterator import iter_bars
 from iora.data.tf_alignment import build_aligned_multi_tf
+from iora.indicators.heikin_ashi import calculate_heikin_ashi
+from iora.indicators.hma import (
+    compute_hma, compute_hma_direction, compute_ha_hma_cross, compute_bars_since_cross,
+)
 from iora.diagnostics.bias_timeline import collect_bias_state
 from iora.diagnostics.bias_timeline_runner import _compute_atr
 from iora.diagnostics.opportunity_counter import OpportunityEvent, detect_events
@@ -45,6 +50,16 @@ class RetestCandidate:
     # Breaker zones inside the context zone (for layered limit orders)
     # Each tuple: (zone_top, zone_bottom, zone_tf) of a broken LTF zone
     breaker_zones: list[tuple[float, float, str]] = field(default_factory=list)
+
+    # HMA state at entry time (from reference TF)
+    hma_direction_h1: int = 0       # +1 rising, -1 falling, 0 flat/unavailable
+    hma_direction_h4: int = 0
+    ha_above_hma_h1: bool = False   # HA close > HMA on H1 at this bar
+    ha_above_hma_h4: bool = False
+    bars_since_hma_cross_h1: int = 9999  # entry-TF bars since last cross
+    bars_since_hma_cross_h4: int = 9999
+    hma_cross_direction_h1: int = 0  # +1 bullish, -1 bearish
+    hma_cross_direction_h4: int = 0
 
     # Phase 3 bias context (from BiasStateRecord at entry time)
     d_to_w_relationship: str = "neutral"
@@ -190,11 +205,122 @@ def _compute_d1_range_midpoint(state: PushZoneEngineState) -> float:
     return (supply_top + demand_bottom) / 2.0
 
 
+@dataclass(slots=True)
+class _HmaAlignedState:
+    """Pre-computed HMA state aligned to entry TF index."""
+    direction: pd.Series       # int: +1, -1, 0
+    ha_above_hma: pd.Series    # bool
+    bars_since_cross: pd.Series  # int
+    cross_direction: pd.Series   # int: +1, -1, 0 (forward-filled)
+
+
+def _precompute_hma_state(
+    ref_tf_df: pd.DataFrame,
+    entry_tf_df: pd.DataFrame,
+    hma_period: int = 24,
+    hma_source: str = "close",
+) -> _HmaAlignedState | None:
+    """Pre-compute HMA state on a reference TF and align to entry TF.
+
+    Args:
+        ref_tf_df: OHLC DataFrame for the reference TF (H1 or H4)
+        entry_tf_df: OHLC DataFrame for the entry TF (base index)
+        hma_period: HMA period
+        hma_source: "close" or "ha_close"
+
+    Returns:
+        _HmaAlignedState aligned to entry_tf_df index, or None if ref TF unavailable.
+    """
+    if ref_tf_df is None or ref_tf_df.empty:
+        return None
+
+    # Compute HMA source
+    if hma_source == "ha_close":
+        ha_df = calculate_heikin_ashi(ref_tf_df)
+        source = ha_df["close"]
+    else:
+        source = ref_tf_df["close"].astype(float)
+
+    hma = compute_hma(source, hma_period)
+
+    # ATR on reference TF for flat threshold
+    ref_atr = _compute_atr(ref_tf_df, period=14)
+
+    # Direction
+    direction = compute_hma_direction(hma, ref_atr)
+
+    # HA close for cross detection (always use HA close, not regular close)
+    ha_df = calculate_heikin_ashi(ref_tf_df)
+    ha_close = ha_df["close"]
+
+    ha_above, cross_dir = compute_ha_hma_cross(ha_close, hma)
+
+    # Raw cross events for bars_since computation
+    cross_raw = pd.Series(0, index=ref_tf_df.index, dtype=int)
+    _prev = np.empty(len(ha_above), dtype=bool)
+    _prev[0] = False
+    _prev[1:] = ha_above.values[:-1]
+    prev_above_arr = pd.Series(_prev, index=ha_above.index)
+    cross_raw[ha_above & ~prev_above_arr] = 1
+    cross_raw[~ha_above & prev_above_arr] = -1
+    bars_since = compute_bars_since_cross(cross_raw)
+
+    # Align to entry TF via merge_asof (forward-fill, no lookahead)
+    # The ref TF value at time T is only visible on entry TF bars at T or later.
+    ref_state = pd.DataFrame({
+        "direction": direction,
+        "ha_above_hma": ha_above,
+        "bars_since_cross": bars_since,
+        "cross_direction": cross_dir,
+    }, index=ref_tf_df.index)
+
+    aligned = pd.merge_asof(
+        entry_tf_df[["close"]].rename(columns={"close": "_dummy"}),
+        ref_state,
+        left_index=True, right_index=True,
+        direction="backward",
+    )
+
+    # Convert bars_since_cross from ref-TF bars to entry-TF bars:
+    # Align cross timestamps to entry TF, then count entry bars since each cross.
+    cross_times = ref_tf_df.index[cross_raw != 0]
+    if len(cross_times) > 0:
+        # For each entry bar, find the nearest prior cross time via merge_asof
+        cross_time_aligned = pd.merge_asof(
+            entry_tf_df[["close"]].rename(columns={"close": "_d2"}),
+            pd.DataFrame({"cross_time": cross_times}, index=cross_times),
+            left_index=True, right_index=True,
+            direction="backward",
+        )
+        # Vectorized: use searchsorted to find entry-TF bar index of each cross time
+        entry_idx = entry_tf_df.index
+        cross_ts = cross_time_aligned["cross_time"]
+        # For each entry bar, find the entry-bar index of its aligned cross time
+        cross_entry_idx = entry_idx.searchsorted(cross_ts, side="left")
+        # bars_since = current_entry_idx - cross_entry_idx
+        current_idx = np.arange(len(entry_idx))
+        entry_bars_since = np.where(
+            pd.notna(cross_ts),
+            current_idx - cross_entry_idx,
+            9999,
+        ).astype(int)
+        aligned["bars_since_cross"] = entry_bars_since
+
+    return _HmaAlignedState(
+        direction=aligned["direction"].fillna(0).astype(int),
+        ha_above_hma=aligned["ha_above_hma"].fillna(False).astype(bool),
+        bars_since_cross=aligned["bars_since_cross"].fillna(9999).astype(int),
+        cross_direction=aligned["cross_direction"].fillna(0).astype(int),
+    )
+
+
 def build_retest_candidates(
     data_by_tf: dict[str, pd.DataFrame],
     entry_tf: str = "M5",
     symbol: str = "UNKNOWN",
     period_depth: int = 3,
+    hma_period: int = 24,
+    hma_source: str = "close",
 ) -> list[RetestCandidate]:
     """Run zone engine + bias + event detection and return enriched RetestCandidates.
 
@@ -206,6 +332,8 @@ def build_retest_candidates(
         entry_tf: Entry timeframe to iterate on
         symbol: Symbol name (used for pip size)
         period_depth: Period tracker history depth
+        hma_period: HMA period for direction/cross computation
+        hma_source: "close" or "ha_close" — source series for HMA
 
     Returns:
         List of RetestCandidate with zone geometry and ATR attached.
@@ -222,6 +350,14 @@ def build_retest_candidates(
     base_df = data_by_tf[entry_tf]
     atr_series = _compute_atr(base_df, period=14)
     pip_size = _get_pip_size(symbol)
+
+    # Pre-compute HMA state on H1 and H4 (aligned to entry TF)
+    hma_h1 = _precompute_hma_state(
+        data_by_tf.get("H1"), base_df, hma_period, hma_source,
+    ) if "H1" in data_by_tf and entry_tf != "H1" else None
+    hma_h4 = _precompute_hma_state(
+        data_by_tf.get("H4"), base_df, hma_period, hma_source,
+    ) if "H4" in data_by_tf and entry_tf not in ("H1", "H4") else None
 
     candidates: list[RetestCandidate] = []
     prev_d_bias = ""
@@ -305,6 +441,17 @@ def build_retest_candidates(
                 matched_zone.top, matched_zone.bottom,
             )
 
+            # HMA state lookup
+            i = ctx.idx
+            hma_dir_h1 = int(hma_h1.direction.iloc[i]) if hma_h1 is not None and i < len(hma_h1.direction) else 0
+            hma_dir_h4 = int(hma_h4.direction.iloc[i]) if hma_h4 is not None and i < len(hma_h4.direction) else 0
+            ha_above_h1 = bool(hma_h1.ha_above_hma.iloc[i]) if hma_h1 is not None and i < len(hma_h1.ha_above_hma) else False
+            ha_above_h4 = bool(hma_h4.ha_above_hma.iloc[i]) if hma_h4 is not None and i < len(hma_h4.ha_above_hma) else False
+            bsc_h1 = int(hma_h1.bars_since_cross.iloc[i]) if hma_h1 is not None and i < len(hma_h1.bars_since_cross) else 9999
+            bsc_h4 = int(hma_h4.bars_since_cross.iloc[i]) if hma_h4 is not None and i < len(hma_h4.bars_since_cross) else 9999
+            cross_dir_h1 = int(hma_h1.cross_direction.iloc[i]) if hma_h1 is not None and i < len(hma_h1.cross_direction) else 0
+            cross_dir_h4 = int(hma_h4.cross_direction.iloc[i]) if hma_h4 is not None and i < len(hma_h4.cross_direction) else 0
+
             candidates.append(RetestCandidate(
                 event=event,
                 zone_top=matched_zone.top,
@@ -317,6 +464,14 @@ def build_retest_candidates(
                 next_opposing_zone_price=opposing_price,
                 d1_range_midpoint=d1_mid,
                 breaker_zones=breaker_zones,
+                hma_direction_h1=hma_dir_h1,
+                hma_direction_h4=hma_dir_h4,
+                ha_above_hma_h1=ha_above_h1,
+                ha_above_hma_h4=ha_above_h4,
+                bars_since_hma_cross_h1=bsc_h1,
+                bars_since_hma_cross_h4=bsc_h4,
+                hma_cross_direction_h1=cross_dir_h1,
+                hma_cross_direction_h4=cross_dir_h4,
                 d_to_w_relationship=bias_rec.d_to_w_relationship,
                 inside_w_zone=is_inside_w,
             ))
