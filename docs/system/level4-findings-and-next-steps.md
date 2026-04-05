@@ -107,50 +107,100 @@ The simulation assumes perfect fills at limit price with zero spread/slippage. I
 
 ### 4.2 Layered Cascade Limit Orders (HIGHEST POTENTIAL)
 
-**Concept:** When a context zone (H1/H4/D1) is retested, place limit orders at MULTIPLE LTF zone boundaries inside it — the M15, M5, and M1 zones that existed before the context zone's push. Each limit has its own SL (behind its own zone boundary) but ALL share the same TP (the HTF structural target).
+**Concept:** When a context zone (H1/H4/D1) is retested, place limit orders at the **breaker zones** inside it — the LTF zones that were BROKEN during the HTF zone's creation push. These breaker zones flip from support→resistance (or resistance→support) and become the precision retest levels where price will reach as it retraces back into the HTF zone.
 
-**Why this explodes R:R:**
+**Why breaker zones specifically:**
+The H1 demand zone was created by a push that moved price UP. During that push, price broke through M15/M5/M1 supply zones. Those broken supply zones are now **breaker demand zones** — former resistance that now acts as support. When price retraces back into the H1 zone, it will reach these breaker levels because they're the structural points where the push originated. We KNOW price will return to them because that's how retests work — and the zones that broke during the push are exactly where institutional orders are resting.
+
+**The layered cascade limit model:**
 
 ```
-Example: H1 demand zone retested, TP target = next H1 supply (100 pips above)
-
-Layer      | Entry Level           | SL Distance | TP Distance | R:R
-M15 limit  | M15 dem top (highest) | ~20 pips    | ~100 pips   | 5:1
-M5 limit   | M5 dem top (middle)   | ~8 pips     | ~108 pips   | 13:1
-M1 limit   | M1 dem top (deepest)  | ~3 pips     | ~113 pips   | 37:1
+H1 DEMAND zone created by a bullish push
+    │
+    │  During the push, price broke through these LTF zones:
+    │  (these are now BREAKER zones — former supply → now demand)
+    │
+    │  ┌─── H1 zone top ───────────────────────┐
+    │  │                                         │
+    │  │  BRK M15 supply top                     │ ← Buy limit #1 (shallowest retest)
+    │  │  (was M15 resistance, now flipped)       │    SL options below
+    │  │                                         │
+    │  │  BRK M5 supply top                      │ ← Buy limit #2 (deeper retest)
+    │  │  (was M5 resistance, now flipped)        │
+    │  │                                         │
+    │  │  BRK M1 supply top                      │ ← Buy limit #3 (deepest — liquidity sweep)
+    │  │  (was M1 resistance, now flipped)        │
+    │  │                                         │
+    │  └─── H1 zone bottom ────────────────────┘
+    │
+    │  TP for ALL layers: next H1 supply zone (the HTF structural target)
 ```
 
-- Same TP for all layers (the HTF structural target)
-- But SL shrinks with each layer (each zone's own boundary)
-- M1 limit = the deepest liquidity sweep entry = highest R:R
-- If only M15 fills: 1 position at 5:1 RR → still great
-- If all 3 fill: 3 positions averaging ~15:1 RR → extraordinary
+**R:R explosion with breaker zones:**
+
+```
+Example: H1 demand zone, TP = next H1 supply (100 pips above)
+
+Layer       | Entry at BRK zone  | SL A (own)  | SL B (HTF)  | TP      | R:R A  | R:R B
+BRK M15 lim | M15 brk top        | ~20 pips    | ~35 pips     | 100 pip | 5:1    | 3:1
+BRK M5 lim  | M5 brk top         | ~8 pips     | ~28 pips     | 108 pip | 13:1   | 4:1
+BRK M1 lim  | M1 brk top         | ~3 pips     | ~25 pips     | 113 pip | 37:1   | 5:1
+```
+
+**SL Options (test all three):**
+
+**Option A: SL behind each breaker zone's own boundary**
+- Tightest SL per layer → maximum R:R per position
+- M5 breaker fails (price pushes through) → stopped on M5 layer
+- But M15 and H1 layers still valid (HTF zone hasn't broken)
+- Highest R:R but higher stop-out rate on tight layers
+- Best for: maximizing individual layer R:R
+
+**Option B: SL behind the HTF zone boundary for ALL layers**
+- All layers share the same SL (H1 zone bottom)
+- Only stopped out if the entire HTF thesis fails
+- H1 zones have 0% break-through → this SL almost never gets hit
+- Lower R:R per position but maximum protection
+- Best for: capital preservation with position sizing across layers
+
+**Option C: Hybrid — tight SL with HTF backstop**
+- Enter at M5 breaker with SL behind M5 breaker (tight)
+- If M5 holds and price moves in favor → move SL to breakeven
+- If M5 breaks but H1 still holds → re-enter at M15 breaker with SL behind M15
+- Aggressive on precision layers, safe on wider layers
+- Best for: adaptive position management
 
 **Fill logic:**
 - Price retraces after the H1 zone creation
-- M15 limit fills first (shallowest retracement) → position 1 active
-- M5 limit fills on deeper retracement → position 2 added
-- M1 limit fills at the deepest point → position 3 (maximum precision)
-- The M1 fill IS the liquidity sweep — price grabbed the deepest stops before reversing
+- It returns to the breaker zones because those are where the push originated
+- BRK M15 limit fills first (shallowest retracement) → position 1 active
+- BRK M5 limit fills deeper → position 2 added
+- BRK M1 limit fills at the deepest point → position 3 (maximum precision, the true liquidity sweep)
+- If price only reaches BRK M15 → 1 position at 5:1+ RR
+- If price reaches BRK M1 → 3 positions with combined 15:1+ average RR
 
 **What the data already confirms:**
-- Push zones 0% break-through → the H1 zone WILL hold
-- M5@H1 limit SQN 15.56 (single layer) → multi-layer should compound
-- Limit orders already WR 64-70% → each layer adds a position on the same thesis
-- The LTF zones inside the HTF zone are the "sniper entry" levels (Video 16)
+- Push zones 0% break-through → the H1 zone WILL hold as the backstop
+- Retest #4-10 = sweet spot → the breaker zones inside the H1 zone have been tested enough
+- Limit orders SQN 23.64 with single-layer entry → multi-layer on the same thesis should compound
+- M5@H1 limit already showed 69.9% WR → the M5 layer IS reaching and filling
+- Breaker zones in the sweep showed 42.2% WR as reversal zones → with limit orders at the breaker boundary, this should improve significantly
+
+**From YouTube education (Videos 3, 14, 15, 16):**
+- "Smart money enters at the order block AFTER the liquidity grab" → the BRK M1 limit IS the smart money entry at the deepest level
+- "90% of retail traders enter too early and get stopped out. The order block is where institutions enter AFTER the trap" (Video 15) → the breaker zone IS the order block that flipped
+- "Top-down analysis: weekly → daily → H4 → M15 → entry" (Video 16) → each breaker layer IS a TF level in the top-down cascade
+- "Sniper entries use multiple time frames for the best entry" → each layer IS a sniper entry at increasing precision
 
 **Implementation needed:**
 - New `entry_mode="cascade_layered"` in RetestConfig
-- When a context zone fires, capture the LTF zones that existed BEFORE the push
-- Place limit orders at each LTF zone boundary (with small buffer)
-- Each limit has independent SL (own zone boundary) but shared TP
-- Track each layer independently: fill rate, WR, SQN, total P&L
+- When a context zone fires, find the LTF zones that were BROKEN during the push (breaker zones)
+- Place limit orders at each breaker zone's top (demand) or bottom (supply) with small buffer
+- SL mode options: "own" (behind each breaker), "htf" (behind HTF zone), "hybrid" (tight with HTF backstop)
+- TP shared: the HTF structural target (next opposing zone on context TF)
+- Track each layer independently: fill rate, WR, SQN, P&L
 - Report combined portfolio P&L across all layers
-
-**From YouTube education (Videos 3, 14, 15, 16):**
-- "Smart money enters at the order block AFTER the liquidity grab" → the M1 limit at the deepest zone IS the smart money entry
-- "Top-down analysis: weekly → daily → H4 → M15 → entry" → the layered limits ARE the multi-TF execution of the top-down analysis
-- "Sniper entries use multiple time frames for the best entry" → each TF layer IS a sniper entry at increasing precision
+- Position sizing: each layer gets a fraction of total risk (e.g., 0.33R per layer = 1R total if all 3 fill)
 
 ### 4.3 HMA Direction Filter
 
