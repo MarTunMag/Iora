@@ -60,6 +60,7 @@ def default_configs() -> list[RetestConfig]:
             c.time_since_creation_filter, c.parent_tf_boundary_filter,
             c.inside_w_zone_filter, c.d_to_w_filter,
             c.near_pdh_pdl, c.premium_discount,
+            c.layered_sl_mode,
         )
         if key not in seen:
             seen.add(key)
@@ -394,6 +395,44 @@ def default_configs() -> list[RetestConfig]:
          bias_filter="with_daily", zone_role_filter="push"))
     _add(RetestConfig(tf_pair="H1@D1", entry_mode="limit", sl_mode="zone",
          bias_filter="with_daily", zone_role_filter="push", fixed_rr=3.0))
+
+    # ── Section ZZ: Layered cascade limit orders ──────────────────────
+    layered_pairs = ["H1@H4", "H1@D1", "M15@H4", "M5@H1"]
+
+    for pair in layered_pairs:
+        # Layered + own SL (tightest, highest RR)
+        _add(RetestConfig(tf_pair=pair, entry_mode="cascade_layered",
+             layered_sl_mode="own", sl_mode="zone", max_concurrent=3))
+        # Layered + HTF SL (safest, 0% break-through backstop)
+        _add(RetestConfig(tf_pair=pair, entry_mode="cascade_layered",
+             layered_sl_mode="htf", sl_mode="zone", max_concurrent=3))
+        # Layered + own SL + with_daily
+        _add(RetestConfig(tf_pair=pair, entry_mode="cascade_layered",
+             layered_sl_mode="own", sl_mode="zone", bias_filter="with_daily",
+             max_concurrent=3))
+        # Layered + own SL + against_daily
+        _add(RetestConfig(tf_pair=pair, entry_mode="cascade_layered",
+             layered_sl_mode="own", sl_mode="zone", bias_filter="against_daily",
+             max_concurrent=3))
+        # Layered + own SL + push zones only (order block thesis)
+        _add(RetestConfig(tf_pair=pair, entry_mode="cascade_layered",
+             layered_sl_mode="own", sl_mode="zone", zone_role_filter="push",
+             max_concurrent=3))
+        # Layered + HTF SL + zone TP
+        _add(RetestConfig(tf_pair=pair, entry_mode="cascade_layered",
+             layered_sl_mode="htf", tp_mode="zone", max_concurrent=3))
+        # Layered + R:R variations
+        for rr in [1.5, 3.0, 4.0]:
+            _add(RetestConfig(tf_pair=pair, entry_mode="cascade_layered",
+                 layered_sl_mode="own", fixed_rr=rr, max_concurrent=3))
+
+    # Specific high-conviction combos
+    _add(RetestConfig(tf_pair="H1@H4", entry_mode="cascade_layered",
+         layered_sl_mode="own", bias_filter="against_daily",
+         zone_role_filter="continuation", max_concurrent=3))
+    _add(RetestConfig(tf_pair="H1@D1", entry_mode="cascade_layered",
+         layered_sl_mode="htf", bias_filter="with_daily",
+         zone_role_filter="push", max_concurrent=3))
 
     return configs
 

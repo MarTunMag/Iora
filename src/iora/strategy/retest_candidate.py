@@ -1,7 +1,7 @@
 """RetestCandidate — enriched retest event for Level 4 sweep."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from math import isnan, nan
 
 import pandas as pd
@@ -42,6 +42,10 @@ class RetestCandidate:
     next_opposing_zone_price: float = nan  # Nearest opposing zone on context TF (structural TP)
     d1_range_midpoint: float = nan         # Midpoint of D1 supply top + D1 demand bottom
 
+    # Breaker zones inside the context zone (for layered limit orders)
+    # Each tuple: (zone_top, zone_bottom, zone_tf) of a broken LTF zone
+    breaker_zones: list[tuple[float, float, str]] = field(default_factory=list)
+
     # Phase 3 bias context (from BiasStateRecord at entry time)
     d_to_w_relationship: str = "neutral"
     inside_w_zone: bool = False
@@ -58,6 +62,56 @@ class RetestCandidate:
 
 
 from iora.diagnostics.opportunity_runner import _get_pip_size
+
+
+def _find_breaker_zones(
+    state: PushZoneEngineState,
+    entry_tf: str,
+    zone_side: str,
+    ctx_zone_top: float,
+    ctx_zone_bottom: float,
+    max_zones: int = 3,
+) -> list[tuple[float, float, str]]:
+    """Find LTF opposing zones inside the context zone (breaker zones).
+
+    For demand retest: LTF supply zones inside context zone (broken resistance → breaker demand).
+    For supply retest: LTF demand zones inside context zone (broken support → breaker supply).
+    Returns up to max_zones sorted by price (highest first for demand, lowest first for supply).
+    Each tuple: (zone_top, zone_bottom, zone_tf).
+    """
+    from iora.constants import ENGINE_TF_ORDER
+
+    # Determine which TFs are lower than the context zone's TF by checking
+    # which TFs have tick states and are in the ENGINE_TF_ORDER before entry_tf
+    entry_idx = ENGINE_TF_ORDER.index(entry_tf) if entry_tf in ENGINE_TF_ORDER else 0
+    # Look at entry_tf and anything lower
+    ltf_candidates = ENGINE_TF_ORDER[:entry_idx + 1]
+
+    results: list[tuple[float, float, str]] = []
+    for tf in ltf_candidates:
+        ts = state.tick_states.get(tf)
+        if ts is None:
+            continue
+
+        if zone_side == "demand":
+            # Long retest — find LTF supply zones inside the context demand zone
+            for z in ts.supply_zones:
+                if z.bottom >= ctx_zone_bottom and z.top <= ctx_zone_top:
+                    results.append((z.top, z.bottom, tf))
+        else:
+            # Short retest — find LTF demand zones inside the context supply zone
+            for z in ts.demand_zones:
+                if z.bottom >= ctx_zone_bottom and z.top <= ctx_zone_top:
+                    results.append((z.top, z.bottom, tf))
+
+    # Sort: for demand retests, highest first (shallowest fill first);
+    # for supply retests, lowest first (shallowest fill first)
+    if zone_side == "demand":
+        results.sort(key=lambda x: x[0], reverse=True)
+    else:
+        results.sort(key=lambda x: x[1], reverse=False)
+
+    return results[:max_zones]
 
 
 def _find_ltf_choch_boundary(
@@ -245,6 +299,12 @@ def build_retest_candidates(
                 or bias_rec.nearest_w_demand_dist < 0
             )
 
+            # Breaker zones: LTF opposing zones inside context zone
+            breaker_zones = _find_breaker_zones(
+                state, entry_tf, event.zone_side,
+                matched_zone.top, matched_zone.bottom,
+            )
+
             candidates.append(RetestCandidate(
                 event=event,
                 zone_top=matched_zone.top,
@@ -256,6 +316,7 @@ def build_retest_candidates(
                 ltf_choch_zone_boundary=ltf_boundary,
                 next_opposing_zone_price=opposing_price,
                 d1_range_midpoint=d1_mid,
+                breaker_zones=breaker_zones,
                 d_to_w_relationship=bias_rec.d_to_w_relationship,
                 inside_w_zone=is_inside_w,
             ))

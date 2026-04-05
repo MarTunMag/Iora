@@ -49,7 +49,11 @@ class RetestConfig:
     cascade_direction: str = "same"          # "same", "any"
 
     # Entry mode
-    entry_mode: str = "market"              # "market" = close price, "limit" = zone edge
+    entry_mode: str = "market"              # "market" = close price, "limit" = zone edge,
+                                             # "cascade_layered" = limit at breaker zones
+    # Layered cascade SL mode (only used when entry_mode == "cascade_layered")
+    layered_sl_mode: str = "own"            # "own" = SL behind each breaker zone,
+                                             # "htf" = SL behind HTF context zone
 
     # SL/TP
     sl_mode: str = "zone"                    # "zone", "atr", "period", "structure"

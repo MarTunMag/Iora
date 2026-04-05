@@ -97,3 +97,150 @@ def test_result_has_metrics():
     if result.trades:
         assert "total_trades" in result.metrics
         assert "win_rate" in result.metrics
+
+
+def test_limit_order_fills_when_price_reaches_zone():
+    """Limit long: entry at zone_bottom + buffer; fills only if bar low reaches it."""
+    ts = pd.Timestamp("2025-01-15 10:00")
+    c = _candidate(ts=ts, side="demand", entry_price=1.2520,
+                   zone_top=1.2510, zone_bottom=1.2490, atr=0.0030)
+    # Limit price = zone_bottom + 0.1 * atr = 1.2490 + 0.0003 = 1.2493
+    # Bar low must reach 1.2493 for fill
+    bar_data = pd.DataFrame(
+        {"open": [1.2520, 1.2500, 1.2530],
+         "high": [1.2550, 1.2540, 1.2600],
+         "low":  [1.2490, 1.2480, 1.2520],
+         "close": [1.2510, 1.2530, 1.2580],
+         "tick_volume": [100, 100, 100]},
+        index=pd.date_range(ts, periods=3, freq="1h"),
+    )
+    cfg = RetestConfig(
+        tf_pair="H1@H4", touch_type="wick_touch", bias_filter="with_daily",
+        entry_mode="limit", sl_mode="zone", fixed_rr=2.0,
+    )
+    result = evaluate_retest_config([c], cfg, symbol="GBPUSD", bar_data=bar_data)
+    assert len(result.trades) >= 1
+    # Entry price should be the limit price, not the bar close
+    trade = result.trades[0]
+    expected_limit = 1.2490 + 0.1 * 0.0030  # 1.2493
+    assert abs(trade.entry_price - expected_limit) < 1e-6
+
+
+def test_limit_order_no_fill_when_price_doesnt_reach():
+    """Limit long: if bar low never reaches zone_bottom + buffer, no entry."""
+    ts = pd.Timestamp("2025-01-15 10:00")
+    c = _candidate(ts=ts, side="demand", entry_price=1.2520,
+                   zone_top=1.2510, zone_bottom=1.2490, atr=0.0030)
+    # Limit price = 1.2493; bar lows stay above it
+    bar_data = pd.DataFrame(
+        {"open": [1.2520, 1.2530],
+         "high": [1.2550, 1.2560],
+         "low":  [1.2510, 1.2515],  # Never reaches 1.2493
+         "close": [1.2530, 1.2540],
+         "tick_volume": [100, 100]},
+        index=pd.date_range(ts, periods=2, freq="1h"),
+    )
+    cfg = RetestConfig(
+        tf_pair="H1@H4", touch_type="wick_touch", bias_filter="with_daily",
+        entry_mode="limit", sl_mode="zone", fixed_rr=2.0,
+    )
+    result = evaluate_retest_config([c], cfg, symbol="GBPUSD", bar_data=bar_data)
+    assert len(result.trades) == 0
+
+
+def test_config_entry_mode_default():
+    cfg = RetestConfig()
+    assert cfg.entry_mode == "market"
+
+
+def test_cascade_layered_produces_multiple_trades():
+    """cascade_layered should produce multiple trades from one retest event
+    when breaker zones are present and price reaches them."""
+    ts = pd.Timestamp("2025-01-15 10:00")
+    ev = OpportunityEvent(
+        timestamp=ts, zone_tf="H4", entry_tf="H1", tf_pair="H1@H4",
+        touch_type="wick_touch", zone_side="demand",
+        zone_role="continuation", age_bucket="fresh",
+        bias_alignment="with_daily", test_count_cls="retested_1",
+        zone_age_bars=5, zone_test_count=1, bias_strength=2,
+        price_distance_at_touch=1.5, replacement_count=0,
+        birth_bias_d="unknown", birth_period_pattern="HH_HL",
+        birth_price_distance=0.3,
+    )
+    # Context zone: 1.2490 - 1.2550, 3 breaker zones inside
+    breaker_zones = [
+        (1.2540, 1.2530, "M15"),  # shallowest
+        (1.2520, 1.2510, "M5"),   # middle
+        (1.2505, 1.2495, "M1"),   # deepest
+    ]
+    c = RetestCandidate(
+        event=ev, zone_top=1.2550, zone_bottom=1.2490,
+        entry_price=1.2520, atr=0.0030,
+        period_hi=1.2600, period_lo=1.2450,
+        breaker_zones=breaker_zones,
+    )
+    # Bar that reaches ALL breaker zone limits
+    # Limit prices: brk_top + 0.1*atr = 1.2540+0.0003=1.2543, 1.2520+0.0003=1.2523, 1.2505+0.0003=1.2508
+    # Bar low must reach all three → low=1.2480
+    bar_data = pd.DataFrame(
+        {"open": [1.2540, 1.2530, 1.2540, 1.2560, 1.2580],
+         "high": [1.2560, 1.2560, 1.2570, 1.2590, 1.2700],
+         "low":  [1.2480, 1.2510, 1.2530, 1.2540, 1.2560],
+         "close": [1.2530, 1.2540, 1.2560, 1.2570, 1.2650],
+         "tick_volume": [100]*5},
+        index=pd.date_range(ts, periods=5, freq="1h"),
+    )
+    cfg = RetestConfig(
+        tf_pair="H1@H4", touch_type="wick_touch", bias_filter="with_daily",
+        entry_mode="cascade_layered", layered_sl_mode="own",
+        sl_mode="zone", fixed_rr=2.0, max_concurrent=3,
+    )
+    result = evaluate_retest_config([c], cfg, symbol="GBPUSD", bar_data=bar_data)
+    # Should have 3 trades (one per breaker zone)
+    assert len(result.trades) == 3
+    # All trade IDs should contain _L suffix
+    for t in result.trades:
+        assert "_L" in t.trade_id
+
+
+def test_cascade_layered_sl_modes():
+    """layered_sl_mode='own' uses breaker zone boundary; 'htf' uses context zone."""
+    from iora.strategy.retest_sl_tp import compute_layered_sl
+
+    atr = 0.0030
+    buf = 0.15 * atr
+
+    # Own SL: behind each breaker zone
+    sl_own = compute_layered_sl(
+        direction="long", brk_top=1.2520, brk_bottom=1.2510,
+        ctx_zone_top=1.2550, ctx_zone_bottom=1.2490,
+        atr=atr, mode="own",
+    )
+    assert abs(sl_own - (1.2510 - buf)) < 1e-8
+
+    # HTF SL: behind the context zone
+    sl_htf = compute_layered_sl(
+        direction="long", brk_top=1.2520, brk_bottom=1.2510,
+        ctx_zone_top=1.2550, ctx_zone_bottom=1.2490,
+        atr=atr, mode="htf",
+    )
+    assert abs(sl_htf - (1.2490 - buf)) < 1e-8
+
+    # HTF SL should be further away (lower for longs)
+    assert sl_htf < sl_own
+
+    # Short direction
+    sl_own_short = compute_layered_sl(
+        direction="short", brk_top=1.2530, brk_bottom=1.2520,
+        ctx_zone_top=1.2550, ctx_zone_bottom=1.2490,
+        atr=atr, mode="own",
+    )
+    assert abs(sl_own_short - (1.2530 + buf)) < 1e-8
+
+    sl_htf_short = compute_layered_sl(
+        direction="short", brk_top=1.2530, brk_bottom=1.2520,
+        ctx_zone_top=1.2550, ctx_zone_bottom=1.2490,
+        atr=atr, mode="htf",
+    )
+    assert abs(sl_htf_short - (1.2550 + buf)) < 1e-8
+    assert sl_htf_short > sl_own_short

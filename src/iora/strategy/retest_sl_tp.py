@@ -13,6 +13,7 @@ from math import isnan
 from iora.strategy.retest_candidate import RetestCandidate
 
 _ZONE_BUFFER_ATR: float = 0.15  # Buffer beyond zone edge as ATR fraction
+_LIMIT_BUFFER_ATR: float = 0.10  # Buffer for limit order entry at breaker zone
 
 
 def compute_retest_sl(
@@ -54,6 +55,41 @@ def compute_retest_sl(
     if c.direction == "long":
         return c.entry_price - atr_mult * c.atr
     return c.entry_price + atr_mult * c.atr
+
+
+def compute_layered_sl(
+    direction: str,
+    brk_top: float,
+    brk_bottom: float,
+    ctx_zone_top: float,
+    ctx_zone_bottom: float,
+    atr: float,
+    mode: str = "own",
+    buffer_atr: float = _ZONE_BUFFER_ATR,
+) -> float:
+    """Compute SL for a layered cascade entry at a breaker zone.
+
+    Args:
+        direction: "long" or "short"
+        brk_top, brk_bottom: breaker zone boundaries
+        ctx_zone_top, ctx_zone_bottom: HTF context zone boundaries
+        atr: ATR(14) at entry time
+        mode: "own" = SL behind breaker zone, "htf" = SL behind HTF zone
+        buffer_atr: ATR fraction for buffer beyond zone edge
+    """
+    buf = buffer_atr * atr
+    if mode == "own":
+        if direction == "long":
+            return brk_bottom - buf
+        return brk_top + buf
+    elif mode == "htf":
+        if direction == "long":
+            return ctx_zone_bottom - buf
+        return ctx_zone_top + buf
+    # Fallback to own
+    if direction == "long":
+        return brk_bottom - buf
+    return brk_top + buf
 
 
 def compute_retest_tp(

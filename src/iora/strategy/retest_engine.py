@@ -14,7 +14,7 @@ import pandas as pd
 from iora.strategy.retest_candidate import RetestCandidate
 from iora.strategy.retest_config import RetestConfig
 from iora.strategy.filter_funnel import FilterFunnel, apply_filters, apply_filters_with_cascade
-from iora.strategy.retest_sl_tp import compute_retest_sl, compute_retest_tp
+from iora.strategy.retest_sl_tp import compute_retest_sl, compute_retest_tp, compute_layered_sl, _LIMIT_BUFFER_ATR
 from iora.strategy.trade_converter import SweepTradeRecord, _get_pip_size
 from iora.strategy.sweep_runner import compute_metrics
 
@@ -216,6 +216,9 @@ def _simulate_with_bars(
 ) -> list[RetestTradeRecord]:
     """Bar-by-bar simulation: entries from candidate map, SL/TP exit checks."""
 
+    is_layered = config.entry_mode == "cascade_layered"
+    max_open = config.max_concurrent if is_layered else 1
+
     # Build entry_map: timestamp → list of candidates at that bar
     # When multiple candidates share a timestamp, use the one with smallest
     # price_distance_at_touch (nearest to price).
@@ -234,7 +237,7 @@ def _simulate_with_bars(
     consumed_zones: set[tuple[float, float]] = set()
 
     trades: list[RetestTradeRecord] = []
-    open_trade: Optional[_OpenTrade] = None
+    open_trades: list[_OpenTrade] = []
     trade_counter = 0
 
     for idx, (ts, row) in enumerate(bar_data.iterrows()):
@@ -242,109 +245,207 @@ def _simulate_with_bars(
         bar_high = float(row["high"])
         bar_low = float(row["low"])
 
-        # --- Exit check (open trade first) ---
-        if open_trade is not None:
-            c = open_trade.candidate
+        # --- Exit check (all open trades) ---
+        still_open: list[_OpenTrade] = []
+        for ot in open_trades:
+            c = ot.candidate
             direction = 1 if c.direction == "long" else -1
 
-            # Check SL and TP based on direction.
-            # For longs: SL hit if low <= sl; TP hit if high >= tp
-            # For shorts: SL hit if high >= sl; TP hit if low <= tp
-            # SL takes priority if both hit in same bar.
             sl_hit = False
             tp_hit = False
 
             if direction == 1:  # LONG
-                if bar_low <= open_trade.sl:
+                if bar_low <= ot.sl:
                     sl_hit = True
-                elif bar_high >= open_trade.tp:
+                elif bar_high >= ot.tp:
                     tp_hit = True
             else:  # SHORT
-                if bar_high >= open_trade.sl:
+                if bar_high >= ot.sl:
                     sl_hit = True
-                elif bar_low <= open_trade.tp:
+                elif bar_low <= ot.tp:
                     tp_hit = True
 
             if sl_hit:
-                trades.append(open_trade.close_at(open_trade.sl, ts, "sl_hit"))
-                open_trade = None
+                trades.append(ot.close_at(ot.sl, ts, "sl_hit"))
             elif tp_hit:
-                trades.append(open_trade.close_at(open_trade.tp, ts, "tp_hit"))
-                open_trade = None
+                trades.append(ot.close_at(ot.tp, ts, "tp_hit"))
+            else:
+                still_open.append(ot)
+        open_trades = still_open
 
         # --- Entry check ---
-        if open_trade is None and ts in entry_map:
-            candidate = entry_map[ts]
-            zone_key = (candidate.zone_top, candidate.zone_bottom)
+        if len(open_trades) >= max_open or ts not in entry_map:
+            continue
 
-            # Apply first_touch policy
-            if config.touch_policy == "first_touch" and zone_key in consumed_zones:
-                pass  # Skip this entry
-            else:
-                # Determine entry price based on entry_mode
-                use_limit = config.entry_mode == "limit"
-                if use_limit:
-                    limit_buf = 0.1 * candidate.atr
-                    if candidate.direction == "long":
-                        limit_price = candidate.zone_bottom + limit_buf
-                        filled = bar_low <= limit_price
-                    else:
-                        limit_price = candidate.zone_top - limit_buf
-                        filled = bar_high >= limit_price
+        candidate = entry_map[ts]
+        zone_key = (candidate.zone_top, candidate.zone_bottom)
 
-                    if not filled:
-                        continue  # Limit order not reached — no entry
+        # Apply first_touch policy
+        if config.touch_policy == "first_touch" and zone_key in consumed_zones:
+            continue
 
-                    # Override entry price on candidate for SL/TP computation
-                    candidate = RetestCandidate(
-                        event=candidate.event,
-                        zone_top=candidate.zone_top,
-                        zone_bottom=candidate.zone_bottom,
-                        entry_price=limit_price,
-                        atr=candidate.atr,
-                        period_hi=candidate.period_hi,
-                        period_lo=candidate.period_lo,
-                        ltf_choch_zone_boundary=candidate.ltf_choch_zone_boundary,
-                        next_opposing_zone_price=candidate.next_opposing_zone_price,
-                        d_to_w_relationship=candidate.d_to_w_relationship,
-                        inside_w_zone=candidate.inside_w_zone,
-                    )
+        if is_layered:
+            # Cascade layered: place limit orders at each breaker zone
+            before = len(open_trades)
+            _enter_layered(
+                candidate, config, symbol, bar_high, bar_low,
+                open_trades, trades, pip_size, trade_counter, max_open,
+            )
+            trade_counter += len(open_trades) - before
+        else:
+            # Standard market or limit entry
+            use_limit = config.entry_mode == "limit"
+            if use_limit:
+                limit_buf = _LIMIT_BUFFER_ATR * candidate.atr
+                if candidate.direction == "long":
+                    limit_price = candidate.zone_bottom + limit_buf
+                    filled = bar_low <= limit_price
+                else:
+                    limit_price = candidate.zone_top - limit_buf
+                    filled = bar_high >= limit_price
 
-                # Compute SL and TP
-                sl = compute_retest_sl(
-                    candidate,
-                    mode=config.sl_mode,
-                    atr_mult=config.sl_atr_mult,
-                )
-                tp = compute_retest_tp(
-                    candidate,
-                    sl_price=sl,
-                    mode=config.tp_mode,
-                    fixed_rr=config.fixed_rr,
-                )
+                if not filled:
+                    continue  # Limit order not reached — no entry
 
-                trade_counter += 1
-                trade_id = f"{symbol}_{config.tf_pair}_{trade_counter:04d}"
-
-                open_trade = _OpenTrade(
-                    candidate=candidate,
-                    sl=sl,
-                    tp=tp,
-                    trade_id=trade_id,
-                    symbol=symbol,
-                    pip_size=pip_size,
+                # Override entry price on candidate for SL/TP computation
+                candidate = RetestCandidate(
+                    event=candidate.event,
+                    zone_top=candidate.zone_top,
+                    zone_bottom=candidate.zone_bottom,
+                    entry_price=limit_price,
+                    atr=candidate.atr,
+                    period_hi=candidate.period_hi,
+                    period_lo=candidate.period_lo,
+                    ltf_choch_zone_boundary=candidate.ltf_choch_zone_boundary,
+                    next_opposing_zone_price=candidate.next_opposing_zone_price,
+                    breaker_zones=candidate.breaker_zones,
+                    d_to_w_relationship=candidate.d_to_w_relationship,
+                    inside_w_zone=candidate.inside_w_zone,
                 )
 
-                if config.touch_policy == "first_touch":
-                    consumed_zones.add(zone_key)
+            # Compute SL and TP
+            sl = compute_retest_sl(
+                candidate,
+                mode=config.sl_mode,
+                atr_mult=config.sl_atr_mult,
+            )
+            tp = compute_retest_tp(
+                candidate,
+                sl_price=sl,
+                mode=config.tp_mode,
+                fixed_rr=config.fixed_rr,
+            )
 
-    # Close any remaining open trade at end of data
-    if open_trade is not None:
+            trade_counter += 1
+            trade_id = f"{symbol}_{config.tf_pair}_{trade_counter:04d}"
+
+            open_trades.append(_OpenTrade(
+                candidate=candidate,
+                sl=sl,
+                tp=tp,
+                trade_id=trade_id,
+                symbol=symbol,
+                pip_size=pip_size,
+            ))
+
+        if config.touch_policy == "first_touch":
+            consumed_zones.add(zone_key)
+
+    # Close any remaining open trades at end of data
+    if open_trades:
         last_ts = bar_data.index[-1]
         last_close = float(bar_data.iloc[-1]["close"])
-        trades.append(open_trade.close_at(last_close, last_ts, "end_of_data"))
+        for ot in open_trades:
+            trades.append(ot.close_at(last_close, last_ts, "end_of_data"))
 
     return trades
+
+
+def _enter_layered(
+    candidate: RetestCandidate,
+    config: RetestConfig,
+    symbol: str,
+    bar_high: float,
+    bar_low: float,
+    open_trades: list[_OpenTrade],
+    trades: list[RetestTradeRecord],
+    pip_size: float,
+    trade_counter_base: int,
+    max_open: int,
+) -> None:
+    """Place layered limit orders at breaker zones inside the context zone.
+
+    Each breaker zone generates an independent trade with its own entry/SL
+    but shared TP logic (zone or fixed R:R from each layer's own risk).
+    """
+    if not candidate.breaker_zones:
+        return
+
+    limit_buf = _LIMIT_BUFFER_ATR * candidate.atr
+    layer_num = 0
+
+    for brk_top, brk_bottom, brk_tf in candidate.breaker_zones:
+        if len(open_trades) >= max_open:
+            break
+
+        # Compute limit price at breaker zone edge
+        if candidate.direction == "long":
+            limit_price = brk_top + limit_buf
+            filled = bar_low <= limit_price
+        else:
+            limit_price = brk_bottom - limit_buf
+            filled = bar_high >= limit_price
+
+        if not filled:
+            continue
+
+        layer_num += 1
+
+        # Create a candidate copy with the limit entry price
+        layer_candidate = RetestCandidate(
+            event=candidate.event,
+            zone_top=candidate.zone_top,
+            zone_bottom=candidate.zone_bottom,
+            entry_price=limit_price,
+            atr=candidate.atr,
+            period_hi=candidate.period_hi,
+            period_lo=candidate.period_lo,
+            ltf_choch_zone_boundary=candidate.ltf_choch_zone_boundary,
+            next_opposing_zone_price=candidate.next_opposing_zone_price,
+            breaker_zones=candidate.breaker_zones,
+            d_to_w_relationship=candidate.d_to_w_relationship,
+            inside_w_zone=candidate.inside_w_zone,
+        )
+
+        # Compute SL using layered mode
+        sl = compute_layered_sl(
+            direction=candidate.direction,
+            brk_top=brk_top,
+            brk_bottom=brk_bottom,
+            ctx_zone_top=candidate.zone_top,
+            ctx_zone_bottom=candidate.zone_bottom,
+            atr=candidate.atr,
+            mode=config.layered_sl_mode,
+        )
+
+        # TP: use standard TP computation (zone or fixed_rr from this layer's risk)
+        tp = compute_retest_tp(
+            layer_candidate,
+            sl_price=sl,
+            mode=config.tp_mode,
+            fixed_rr=config.fixed_rr,
+        )
+
+        trade_id = f"{symbol}_{config.tf_pair}_{trade_counter_base + layer_num:04d}_L{layer_num}"
+
+        open_trades.append(_OpenTrade(
+            candidate=layer_candidate,
+            sl=sl,
+            tp=tp,
+            trade_id=trade_id,
+            symbol=symbol,
+            pip_size=pip_size,
+        ))
 
 
 # ---------------------------------------------------------------------------

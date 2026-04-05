@@ -1,5 +1,7 @@
 # tests/strategy/test_retest_sl_tp.py
 """Tests for retest-specific SL/TP computation."""
+from math import isnan, nan
+
 import pandas as pd
 from iora.diagnostics.opportunity_counter import OpportunityEvent
 from iora.strategy.retest_candidate import RetestCandidate
@@ -9,7 +11,8 @@ from iora.strategy.retest_sl_tp import compute_retest_sl, compute_retest_tp
 
 def _candidate(side="demand", zone_top=1.2550, zone_bottom=1.2500,
                entry_price=1.2560, atr=0.0080,
-               period_hi=1.2600, period_lo=1.2450) -> RetestCandidate:
+               period_hi=1.2600, period_lo=1.2450,
+               ltf_choch=nan, opposing_zone=nan) -> RetestCandidate:
     ev = OpportunityEvent(
         timestamp=pd.Timestamp("2025-01-15 10:00"),
         zone_tf="H4", entry_tf="H1", tf_pair="H1@H4",
@@ -25,6 +28,8 @@ def _candidate(side="demand", zone_top=1.2550, zone_bottom=1.2500,
         event=ev, zone_top=zone_top, zone_bottom=zone_bottom,
         entry_price=entry_price, atr=atr,
         period_hi=period_hi, period_lo=period_lo,
+        ltf_choch_zone_boundary=ltf_choch,
+        next_opposing_zone_price=opposing_zone,
     )
 
 
@@ -82,4 +87,56 @@ class TestTP:
         risk = sl - c.entry_price
         tp = compute_retest_tp(c, sl, mode="fixed_rr", fixed_rr=2.0)
         expected = c.entry_price - 2.0 * risk
+        assert abs(tp - expected) < 1e-8
+
+
+class TestStructureSL:
+    def test_long_structure_sl_uses_ltf_boundary(self):
+        c = _candidate(side="demand", ltf_choch=1.2520)
+        sl = compute_retest_sl(c, mode="structure")
+        # SL = ltf_boundary - buffer (0.15 * atr)
+        expected = 1.2520 - 0.15 * c.atr
+        assert abs(sl - expected) < 1e-8
+
+    def test_short_structure_sl_uses_ltf_boundary(self):
+        c = _candidate(side="supply", entry_price=1.2540, ltf_choch=1.2530)
+        sl = compute_retest_sl(c, mode="structure")
+        expected = 1.2530 + 0.15 * c.atr
+        assert abs(sl - expected) < 1e-8
+
+    def test_structure_sl_falls_back_to_atr_when_nan(self):
+        c = _candidate(side="demand")  # ltf_choch defaults to NaN
+        sl = compute_retest_sl(c, mode="structure", atr_mult=1.5)
+        expected = c.entry_price - 1.5 * c.atr
+        assert abs(sl - expected) < 1e-8
+
+
+class TestZoneTP:
+    def test_long_zone_tp_uses_opposing(self):
+        c = _candidate(side="demand", opposing_zone=1.2700)
+        sl = compute_retest_sl(c, mode="zone")
+        tp = compute_retest_tp(c, sl, mode="zone")
+        assert abs(tp - 1.2700) < 1e-8
+
+    def test_short_zone_tp_uses_opposing(self):
+        c = _candidate(side="supply", entry_price=1.2540, opposing_zone=1.2400)
+        sl = compute_retest_sl(c, mode="zone")
+        tp = compute_retest_tp(c, sl, mode="zone")
+        assert abs(tp - 1.2400) < 1e-8
+
+    def test_zone_tp_falls_back_to_fixed_rr_when_nan(self):
+        c = _candidate(side="demand")  # opposing defaults to NaN
+        sl = compute_retest_sl(c, mode="zone")
+        risk = c.entry_price - sl
+        tp = compute_retest_tp(c, sl, mode="zone", fixed_rr=3.0)
+        expected = c.entry_price + 3.0 * risk
+        assert abs(tp - expected) < 1e-8
+
+    def test_zone_tp_falls_back_if_opposing_wrong_direction(self):
+        # Opposing zone below entry for a long → invalid, should fallback
+        c = _candidate(side="demand", opposing_zone=1.2400)
+        sl = compute_retest_sl(c, mode="zone")
+        risk = c.entry_price - sl
+        tp = compute_retest_tp(c, sl, mode="zone", fixed_rr=2.0)
+        expected = c.entry_price + 2.0 * risk
         assert abs(tp - expected) < 1e-8
