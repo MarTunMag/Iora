@@ -23,6 +23,12 @@
 | 10 | Daily Bias Checklist (Brett Go) | [youtube.com/watch?v=QyEhAuFem6Y](https://youtube.com/watch?v=QyEhAuFem6Y) | 45,850 |
 | 11 | 4-Hour Range Scalping Strategy | [youtube.com/watch?v=O5eC5lY7ZXY](https://youtube.com/watch?v=O5eC5lY7ZXY) | 15,230 |
 | 12 | Candle Closures — Validation Before Entry | [youtube.com/watch?v=JD_sWSjIiJE](https://youtube.com/watch?v=JD_sWSjIiJE) | 17,875 |
+| 13 | Liquidity + Timing Mastery (Brett Go) | [youtube.com/watch?v=wFo4UTOPbNo](https://youtube.com/watch?v=wFo4UTOPbNo) | 40,027 |
+| 14 | Spotting Liquidity Early | [youtube.com/watch?v=rqwiL8aNYHY](https://youtube.com/watch?v=rqwiL8aNYHY) | 28,116 |
+| 15 | Smart Money Traps + Order Blocks | [youtube.com/watch?v=MxygA1AFspI](https://youtube.com/watch?v=MxygA1AFspI) | 29,701 |
+| 16 | Sniper Entries — Top-Down Analysis | [youtube.com/watch?v=64kNx-FY1Uw](https://youtube.com/watch?v=64kNx-FY1Uw) | 19,401 |
+| 17 | Supply/Demand Mastery (5 Pillars) | [youtube.com/watch?v=TOpg1R0QqTA](https://youtube.com/watch?v=TOpg1R0QqTA) | 33,741 |
+| 18 | Chart Markup — Daily to M5 Process | [youtube.com/watch?v=lCJ3SQXaQds](https://youtube.com/watch?v=lCJ3SQXaQds) | 21,298 |
 
 Full transcripts saved at `docs/system/youtube_references/`
 
