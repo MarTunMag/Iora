@@ -105,7 +105,54 @@ The simulation assumes perfect fills at limit price with zero spread/slippage. I
 
 **Implementation:** New cascade entry mode in the sweep engine that chains D1 trigger → H4 zone active → M15/M5 limit order at zone edge. The D1 zone being active is the precondition for looking at ANY lower TF.
 
-### 4.2 HMA Direction Filter
+### 4.2 Layered Cascade Limit Orders (HIGHEST POTENTIAL)
+
+**Concept:** When a context zone (H1/H4/D1) is retested, place limit orders at MULTIPLE LTF zone boundaries inside it — the M15, M5, and M1 zones that existed before the context zone's push. Each limit has its own SL (behind its own zone boundary) but ALL share the same TP (the HTF structural target).
+
+**Why this explodes R:R:**
+
+```
+Example: H1 demand zone retested, TP target = next H1 supply (100 pips above)
+
+Layer      | Entry Level           | SL Distance | TP Distance | R:R
+M15 limit  | M15 dem top (highest) | ~20 pips    | ~100 pips   | 5:1
+M5 limit   | M5 dem top (middle)   | ~8 pips     | ~108 pips   | 13:1
+M1 limit   | M1 dem top (deepest)  | ~3 pips     | ~113 pips   | 37:1
+```
+
+- Same TP for all layers (the HTF structural target)
+- But SL shrinks with each layer (each zone's own boundary)
+- M1 limit = the deepest liquidity sweep entry = highest R:R
+- If only M15 fills: 1 position at 5:1 RR → still great
+- If all 3 fill: 3 positions averaging ~15:1 RR → extraordinary
+
+**Fill logic:**
+- Price retraces after the H1 zone creation
+- M15 limit fills first (shallowest retracement) → position 1 active
+- M5 limit fills on deeper retracement → position 2 added
+- M1 limit fills at the deepest point → position 3 (maximum precision)
+- The M1 fill IS the liquidity sweep — price grabbed the deepest stops before reversing
+
+**What the data already confirms:**
+- Push zones 0% break-through → the H1 zone WILL hold
+- M5@H1 limit SQN 15.56 (single layer) → multi-layer should compound
+- Limit orders already WR 64-70% → each layer adds a position on the same thesis
+- The LTF zones inside the HTF zone are the "sniper entry" levels (Video 16)
+
+**Implementation needed:**
+- New `entry_mode="cascade_layered"` in RetestConfig
+- When a context zone fires, capture the LTF zones that existed BEFORE the push
+- Place limit orders at each LTF zone boundary (with small buffer)
+- Each limit has independent SL (own zone boundary) but shared TP
+- Track each layer independently: fill rate, WR, SQN, total P&L
+- Report combined portfolio P&L across all layers
+
+**From YouTube education (Videos 3, 14, 15, 16):**
+- "Smart money enters at the order block AFTER the liquidity grab" → the M1 limit at the deepest zone IS the smart money entry
+- "Top-down analysis: weekly → daily → H4 → M15 → entry" → the layered limits ARE the multi-TF execution of the top-down analysis
+- "Sniper entries use multiple time frames for the best entry" → each TF layer IS a sniper entry at increasing precision
+
+### 4.3 HMA Direction Filter
 
 **Concept:** Add HMA(12) or HMA(24) on H4 and/or H1 as a trend direction filter. Only take M5@M15 or M1@M5 retest trades in the HMA direction.
 
