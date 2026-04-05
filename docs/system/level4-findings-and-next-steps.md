@@ -202,18 +202,40 @@ BRK M1 lim  | M1 brk top         | ~3 pips     | ~25 pips     | 113 pip | 37:1  
 - Report combined portfolio P&L across all layers
 - Position sizing: each layer gets a fraction of total risk (e.g., 0.33R per layer = 1R total if all 3 fill)
 
-### 4.3 HMA Direction Filter
+### 4.3 HMA Direction Filter + HA Cross Signal (IN PROGRESS — building now)
 
 **Concept:** Add HMA(12) or HMA(24) on H4 and/or H1 as a trend direction filter. Only take M5@M15 or M1@M5 retest trades in the HMA direction.
 
-**Why this could work:** HMA is a responsive moving average that shows trend direction without the lag of SMA/EMA. Using H4 HMA direction as a filter for intraday entries aligns trades with the intermediate trend momentum — similar to the bias filter but more responsive to recent price action.
+**Enhanced concept — HA candle cross over HMA as an early signal:**
+When the H1 or H4 Heikin-Ashi candle CLOSES above the HMA (after being below) = early bullish signal. When HA closes below HMA (after being above) = early bearish signal. This HA-cross-HMA event on H1/H4 becomes the TRIGGER to start looking for downstream LTF entries (M1/M5/M15).
+
+**Why this could work:**
+- HMA is responsive (less lag than SMA/EMA) so it catches trend changes early
+- The HA candle already smooths noise — HA + HMA alignment is double-filtered direction
+- HA closing over a falling/flattening HMA = momentum shift — the structure is changing
+- This gives an earlier signal than waiting for a full CHoCH on the same TF
+- Downstream LTF entries in the HMA cross direction = riding the new momentum early
+
+**Sweep dimensions to test:**
+- `hma_filter="with_hma"` — entry direction must match HMA slope direction (HMA rising = long only, HMA falling = short only)
+- `hma_cross_trigger="ha_above"` or `"ha_below"` — only enter on downstream TFs when the HTF HA candle has recently crossed above/below the HMA
+- HMA periods: 12 and 24 (test both)
+- HMA TFs: H1 and H4 (test both as the direction filter TF)
 
 **Implementation:**
 - Compute HMA(12) and HMA(24) on H4 and H1 bars
-- New filter: `hma_filter="with_hma"` — only enter when the entry direction matches HMA slope direction
-- Test across TF pairs: does HMA filter improve SQN on limit order configs?
+- Compute HA candle close on H4 and H1 (already exists in the zone engine)
+- Detect HA cross events: HA close crosses above HMA = bullish trigger, below = bearish
+- New filter: `hma_filter` in RetestConfig
+- New trigger: `hma_cross_trigger` — only look for LTF entries within N bars of the HTF HA-HMA cross event
+- Test across all TF pairs with limit and cascade_layered entry modes
 
-**Note:** This adds a lagging indicator to a structural system. The bias filter (from period tracker HH/HL/LH/LL) is already a trend direction signal based on structure, not indicators. HMA might add value as a confirmation, or it might just reduce trades without improving quality. Test and let the data decide.
+**Cross-reference with validated findings:**
+- H1@H4 against_daily SQN 1.12 → the "against daily" pullback may coincide with HA crossing below HMA (the pullback starts) then HA crossing back above (the pullback ends, resume push)
+- The HA-HMA cross on H4 could replace or supplement the bias_filter — it's a momentum-based bias rather than structure-based
+- Test both independently AND combined: does HMA cross + bias alignment produce higher conviction than either alone?
+
+**Note:** This adds a lagging indicator to a structural system. The bias filter (from period tracker HH/HL/LH/LL) is already a trend direction signal based on structure, not indicators. HMA might add value as a confirmation, or it might just reduce trades without improving quality. The HA-cross-HMA variant is more interesting because it's an EVENT (a specific moment in time) rather than just a directional filter. Test and let the data decide.
 
 ### 4.3 Untested Limit Order Combinations
 

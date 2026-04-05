@@ -274,6 +274,42 @@ This is a structural timing signal, not just an arbitrary time window. Test whet
 
 ---
 
+## 17b. HMA Direction Filter + HA-HMA Cross Signal (IN PROGRESS)
+
+**New sweep dimensions:**
+
+| Config | Status | Description |
+|--------|:------:|-------------|
+| `hma_filter="with_hma"` | ⬜ Building | Entry direction must match HMA slope (HMA rising = long only, falling = short only) |
+| `hma_filter="with_hma"` + period 12 vs 24 | ⬜ Building | Test HMA(12) and HMA(24) on H1 and H4 |
+| `hma_cross_trigger` | ⬜ Building | HA candle closes above/below HMA = early momentum signal. Only look for LTF entries within N bars of this cross event. |
+| HMA TF: H1 vs H4 | ⬜ Building | Which TF's HMA provides the best direction filter for LTF entries |
+
+**HA-HMA Cross as entry trigger:**
+- H1 HA close above H1 HMA(24) after being below = bullish trigger → go long on M1/M5/M15
+- H1 HA close below H1 HMA(24) after being above = bearish trigger → go short on M1/M5/M15
+- H4 HA close above H4 HMA(12) = stronger/slower signal (covers more intraday)
+- Combined with limit orders at breaker zones = HMA-triggered cascade entries
+
+**Test configs:**
+```
+For pair in all_pairs:
+    # HMA direction filter only
+    hma_filter="with_hma", hma_tf="H1", hma_period=24
+    hma_filter="with_hma", hma_tf="H4", hma_period=12
+    hma_filter="with_hma", hma_tf="H4", hma_period=24
+
+    # HMA cross trigger (event-based, not just directional)
+    hma_cross_trigger=True, hma_tf="H1", hma_period=24
+    hma_cross_trigger=True, hma_tf="H4", hma_period=12
+
+    # Combined with limit entries
+    entry_mode="limit", hma_filter="with_hma", hma_tf="H1", hma_period=24
+    entry_mode="cascade_layered", hma_filter="with_hma", hma_tf="H4", hma_period=12
+```
+
+---
+
 ## 18. New Code Required
 
 These items need code changes before they can be swept:
