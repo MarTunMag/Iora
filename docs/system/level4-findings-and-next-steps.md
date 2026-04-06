@@ -457,6 +457,23 @@ All 18 transcripts saved at `docs/system/youtube_references/`
 
 ## 10. Priority Action Items (When Back from Cabin)
 
+### CRITICAL: Cross-TF TP (The Next Breakthrough)
+
+The current system enters with LTF precision (M5 limit, 1.5 pip SL) but exits at a fixed R:R on the SAME TF (2:1 = 3 pip TP). This captures only the micro-bounce.
+
+**What the cascade model actually implies:** Enter on M5 with M5-level SL, but target the NEXT HTF ZONE as TP.
+
+| Entry | SL | TP (current) | TP (cross-TF) | R:R current | R:R cross-TF |
+|-------|:--:|:------------:|:-------------:|:-----------:|:------------:|
+| M5@M15 limit | 1.5p | M15 opp (3p) | H1 opp (15p) | 2:1 | 10:1 |
+| M5@M15 limit | 1.5p | M15 opp (3p) | H4 opp (50p) | 2:1 | 33:1 |
+| M5@H1 limit | 3p | H1 opp (8p) | H4 opp (40p) | 3:1 | 13:1 |
+| H1@H4 limit | 5p | H4 opp (15p) | D1 opp (100p) | 3:1 | 20:1 |
+
+**Implementation:** New `tp_mode="htf_zone"` that targets the opposing zone on a HIGHER TF than the context TF. For M5@M15 entries, the TP is at the next H1 or H4 supply/demand. The `next_opposing_zone_price` already exists on RetestCandidate — it just needs to look at a HIGHER TF's zones instead of the context TF's zones.
+
+**This is where ML enters:** Partial TP at the context-TF zone (guaranteed small win), trail remainder to HTF zone (potential large win). ML learns the optimal partial/trail strategy per context.
+
 ### Immediate (Day 1)
 1. Run 4-symbol sweep (EURUSD, USDJPY, XAUUSD, GBPJPY) with `--parallel-symbols 2`
 2. Analyze cross-symbol results — does limit effect hold?
