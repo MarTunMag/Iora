@@ -328,15 +328,33 @@ A symbol is included in the production portfolio if:
 
 **Growth path from $1,000:**
 
-| Stage | Account | Symbols | Risk/Trade | Lot Size (GBPUSD) | Timeline |
-|:-----:|:-------:|:-------:|:----------:|:-----------------:|:--------:|
-| Demo | $1,000 demo | 1 | 0.5% ($5) | 0.04 lots | Week 1 |
-| Live start | $1,000 real | 1 | 0.3% ($3) | 0.025 lots | Week 2-4 |
-| Validated | $5,000+ | 5 | 0.3% ($15) | 0.125 lots | Month 2 |
-| Growth | $25,000+ | 10 | 0.2% ($50) | 0.42 lots | Month 3 |
-| Scale | $100,000+ | 20 | 0.15% ($150) | 1.25 lots | Month 4-5 |
-| Full | $400,000+ | 38 | 0.3% ($1,200) | **100 lots (MAX)** | Month 6+ |
-| Capacity | $1M+ | 38 | Capped at max lot | 100 lots | Ongoing |
+| Stage | Account | Symbols | Risk/Trade | Lot Size (GBPUSD) | Max DD | Timeline |
+|:-----:|:-------:|:-------:|:----------:|:-----------------:|:------:|:--------:|
+| Demo | $1,000 demo | 2 | 0.5% ($5) | 0.04 lots | ~20% | Week 1 |
+| Live start | $1,000 real | 2 | 0.5% ($5) | 0.04 lots | ~20% | Week 2-4 |
+| Accelerate | $5,000+ | 5 | 0.5% ($25) | 0.21 lots | ~20% | Month 2 |
+| Scale | $25,000+ | 10 | 0.5% ($125) | 1.04 lots | ~15% | Month 3 |
+| Consolidate | $100,000+ | 20 | 0.3% ($300) | 2.5 lots | ~12% | Month 4 |
+| Full | $400,000+ | 38 | 0.3% ($1,200) | **100 lots (MAX)** | ~8% | Month 5+ |
+| Capacity | $1M+ | 38 | Capped at max lot | 100 lots | <5% | Ongoing |
+
+**Risk scaling logic:**
+- $1K-$25K: 0.5% risk (aggressive growth — small capital, can afford to lose)
+- $25K-$100K: 0.5% risk with more symbols (diversification reduces portfolio DD)
+- $100K+: reduce to 0.3% (capital preservation — the account matters now)
+- $400K+: max lot ceiling hit on major pairs — risk % auto-decreases as account grows
+
+**Multi-account structure (ICMarkets — 5 live accounts under one broker login):**
+
+| Account | Start | Symbols | Funded When |
+|:-------:|:-----:|---------|:-----------:|
+| 1 | $1,000 | GBPUSD, EURUSD | Day 1 |
+| 2 | $0 | GBPJPY, USDJPY | Account 1 reaches $5K → fund $2K |
+| 3 | $0 | XAUUSD, BTCUSD | Account 1+2 combined $15K → fund $3K |
+| 4 | $0 | NAS100, DE40, USOIL | Combined $50K → fund $5K |
+| 5 | $0 | Remaining validated symbols | Combined $100K+ → fund proportionally |
+
+Each account runs independently — isolated risk per account.
 
 **At max lot ceiling ($400K+ per broker):**
 - Risk per trade is CAPPED by broker max lot, not by system
