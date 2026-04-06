@@ -328,15 +328,46 @@ A symbol is included in the production portfolio if:
 
 **Growth path from $1,000:**
 
-| Stage | Account | Symbols | Risk/Trade | Lot Size (GBPUSD) | Max DD | Timeline |
-|:-----:|:-------:|:-------:|:----------:|:-----------------:|:------:|:--------:|
-| Demo | $1,000 demo | 2 | 0.5% ($5) | 0.04 lots | ~20% | Week 1 |
-| Live start | $1,000 real | 2 | 0.5% ($5) | 0.04 lots | ~20% | Week 2-4 |
-| Accelerate | $5,000+ | 5 | 0.5% ($25) | 0.21 lots | ~20% | Month 2 |
-| Scale | $25,000+ | 10 | 0.5% ($125) | 1.04 lots | ~15% | Month 3 |
-| Consolidate | $100,000+ | 20 | 0.3% ($300) | 2.5 lots | ~12% | Month 4 |
-| Full | $400,000+ | 38 | 0.3% ($1,200) | **100 lots (MAX)** | ~8% | Month 5+ |
-| Capacity | $1M+ | 38 | Capped at max lot | 100 lots | <5% | Ongoing |
+| Stage | Account | Symbols | Risk/Trade | Max DD | Timeline |
+|:-----:|:-------:|:-------:|:----------:|:------:|:--------:|
+| **Demo** | **$1K demo** | **5 (diversified)** | **0.75%** | **~30%** | **Week 1-2** |
+| Live start | $1K real | 5 | 0.5% | ~20% | Week 3-6 |
+| Growth | $5K+ | 5-8 | 0.5% | ~20% | Month 2 |
+| Scale | $25K+ | 10-15 | 0.5% | ~15% | Month 3 |
+| Diversify | $100K+ | 20-25 | 0.3% | ~12% | Month 4 |
+| Full | $400K+ | 38 | 0.3% or max lot | ~8% | Month 5+ |
+| Multi-broker | $1M+ | 38 × N brokers | Max lot capped | <5% | Ongoing |
+
+**Demo validation plan (0.75% risk, 5 symbols, 2 weeks):**
+- Purpose: validate execution, fill rates, spread impact, and see REAL risk
+- At 0.75% risk × 5 symbols × ~7 trades/day/symbol = ~35 trades/day
+- Expected: ~630 trades in 2 weeks
+- Compare demo WR/PF/AvgR to backtest — if within 50%, proceed to live
+- If demo WR < 50% or PF < 2.0 after 300 trades → stop and investigate
+
+**Optimal starting 5 (maximum diversification, uncorrelated asset classes):**
+
+| # | Symbol | Asset Class | Session Peak | Spread (ECN) | Why |
+|---|--------|:-----------:|:------------:|:------------:|-----|
+| 1 | GBPUSD | FX major | London/NY | 0.1-0.3 pip | Tightest spread, most data |
+| 2 | USDJPY | FX major | Asian/NY | 0.1-0.3 pip | Different currency pair, Asian session exposure |
+| 3 | XAUUSD | Metal | London/NY | 0.5-2.0 pip | Low FX correlation, strong zones |
+| 4 | BTCUSD | Crypto | 24/7 | Varies | Near-zero FX correlation, 24/7 coverage |
+| 5 | NAS100 or DE40 | Index | NY or EUR | 0.5-2.0 pts | Zero commission (spread only), uncorrelated |
+
+**Why these 5:** If USD strengthens → GBPUSD suffers but XAUUSD may rally (safe haven) and BTCUSD is unaffected. If crypto crashes → FX and metals don't care. If indices sell off → FX and crypto may be unaffected. Maximum diversification = maximum protection against correlated drawdowns.
+
+**Scaling with uncorrelated additions (after 38-symbol sweep validates):**
+
+| Capital | Add | Why |
+|:-------:|-----|-----|
+| $5K | GBPJPY, EURUSD | Proven in sweep, add FX cross diversity |
+| $10K | XAGUSD, ETHUSD | Second metal + second crypto |
+| $25K | DE40 (or NAS100), US30, USOIL | Indices + energy — zero/low commission |
+| $50K | AUDNZD, EURGBP, CADCHF | FX crosses — low correlation to majors |
+| $100K+ | All remaining validated symbols | Full diversification, risk % drops naturally |
+
+**Index advantage:** CFD indices on ICMarkets have zero commission (spread-only). With limit entries, the spread impact is lower because the SL is structural (not a 2-pip scalp). NAS100 with a 5-point SL and 3:1 R:R = 15-point TP. At 0.5-point spread, that's 3% cost vs 50% on a 2-pip FX scalp. Indices could be the most cost-efficient symbols in the portfolio.
 
 **Risk scaling logic:**
 - $1K-$25K: 0.5% risk (aggressive growth — small capital, can afford to lose)
