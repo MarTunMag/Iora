@@ -302,14 +302,38 @@ A symbol is included in the production portfolio if:
 
 ### Portfolio Risk Management
 
+**Scaling framework — risk per trade decreases as symbols increase:**
+
+| Account Stage | Account Size | Active Symbols | Risk/Trade | Max Single DD | Max Portfolio DD |
+|:-------------:|:------------:|:--------------:|:----------:|:-------------:|:----------------:|
+| Start | $10K-50K | 5-8 | 0.30% | 2.4% | ~12% |
+| Growth | $50K-500K | 10-15 | 0.15% | 1.2% | ~12% |
+| Scale | $500K+ | 20-38 | 0.05% | 0.4% | ~10% |
+
+**Correlation cluster limits — max 2 symbols active per cluster:**
+
+| Cluster | Symbols | Max Concurrent |
+|---------|---------|:--------------:|
+| USD majors | EURUSD, GBPUSD, AUDUSD, NZDUSD | 2 |
+| JPY pairs | USDJPY, EURJPY, GBPJPY, AUDJPY | 2 |
+| Crosses | EURGBP, AUDNZD, CADCHF | 2 |
+| Metals | XAUUSD, XAGUSD | 1-2 |
+| Crypto | BTCUSD, ETHUSD | 1 |
+| Indices | NAS100, US30, DE40 | 2 |
+| Energy | USOIL, UKOUSD | 1 |
+
+**Max lot calculation:** `lot = (account × risk_pct) / (sl_pips × pip_value)`
+- When calculated lot > broker max lot → you've hit capacity on that symbol
+- Scale to additional brokers for more capacity
+
+**Daily portfolio rules:**
+
 | Rule | Value | Reason |
 |------|-------|--------|
-| Max symbols active simultaneously | 10 | Correlation risk |
-| Max risk per symbol per day | 2% | Symbol-specific blowup protection |
-| Max portfolio risk per day | 5% | Total portfolio protection |
-| Risk per trade | 0.25-0.5% | Position sizing |
-| Correlation check | Must not exceed 0.6 between active trades | Avoid correlated exposure |
-| Rebalance frequency | Weekly | Adjust allocations based on performance |
+| Max portfolio risk per day | 5% account | Protect against correlated moves |
+| If cluster has 2 losing trades → pause cluster | Until next session | Prevent correlation-driven drawdown |
+| Compound monthly | Recalculate lot sizes at month start | Let growth compound |
+| Scale symbols gradually | Add 2-3 symbols per month as validated | Don't overextend early |
 
 ### Execution Requirements
 
