@@ -326,14 +326,45 @@ A symbol is included in the production portfolio if:
 - When calculated lot > broker max lot → you've hit capacity on that symbol
 - Scale to additional brokers for more capacity
 
+**Growth path from $1,000:**
+
+| Stage | Account | Symbols | Risk/Trade | Lot Size (GBPUSD) | Timeline |
+|:-----:|:-------:|:-------:|:----------:|:-----------------:|:--------:|
+| Demo | $1,000 demo | 1 | 0.5% ($5) | 0.04 lots | Week 1 |
+| Live start | $1,000 real | 1 | 0.3% ($3) | 0.025 lots | Week 2-4 |
+| Validated | $5,000+ | 5 | 0.3% ($15) | 0.125 lots | Month 2 |
+| Growth | $25,000+ | 10 | 0.2% ($50) | 0.42 lots | Month 3 |
+| Scale | $100,000+ | 20 | 0.15% ($150) | 1.25 lots | Month 4-5 |
+| Full | $400,000+ | 38 | 0.3% ($1,200) | **100 lots (MAX)** | Month 6+ |
+| Capacity | $1M+ | 38 | Capped at max lot | 100 lots | Ongoing |
+
+**At max lot ceiling ($400K+ per broker):**
+- Risk per trade is CAPPED by broker max lot, not by system
+- At 100 lots × 1.2 pip SL × $10/pip = $1,200 fixed risk per trade
+- As account grows, risk % per trade DECREASES automatically
+- At $100M: 100 lots = 0.0012% risk per trade = negligible
+
+**Worst case at full scale (38 symbols × max lot × MaxDD simultaneously):**
+- 38 × 8R × $1,200 = $364,800 total drawdown
+- At $1M account: 36% drawdown (significant but survivable)
+- At $10M account: 3.6% drawdown (minor)
+- At $100M account: 0.36% drawdown (negligible)
+
+**Multi-broker scaling:**
+When one broker hits max lot on all symbols, add another broker:
+- Broker 1: 38 symbols × 100 lots max
+- Broker 2: 38 symbols × 100 lots max
+- Each broker runs the identical mechanical system
+- Capital split across brokers, risk per trade stays at max lot
+
 **Daily portfolio rules:**
 
 | Rule | Value | Reason |
 |------|-------|--------|
-| Max portfolio risk per day | 5% account | Protect against correlated moves |
-| If cluster has 2 losing trades → pause cluster | Until next session | Prevent correlation-driven drawdown |
 | Compound monthly | Recalculate lot sizes at month start | Let growth compound |
-| Scale symbols gradually | Add 2-3 symbols per month as validated | Don't overextend early |
+| Max lot cap per symbol | Broker-defined (e.g., 100 lots) | Hard ceiling |
+| Scale symbols gradually | Start 1 → 5 → 10 → 20 → 38 as validated | Build confidence |
+| All symbols run same config | M5@M15 limit 70%@rr3.0+H1 | Mechanical, no discretion |
 
 ### Execution Requirements
 
