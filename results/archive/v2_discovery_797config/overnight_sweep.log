@@ -1,0 +1,223 @@
+Running retest sweep: 797 configs × 5 symbols (parallel_symbols=2)
+
+======================================================================
+  GBPUSD
+======================================================================
+
+======================================================================
+  EURUSD
+======================================================================
+  D1: 5,101 bars (2006-08-03 to 2026-04-02)
+  H1: 102,435 bars (2009-09-29 to 2026-04-02)
+  D1: 5,101 bars (2006-08-04 to 2026-04-02)
+  H4: 30,609 bars (2006-07-21 to 2026-04-02)
+  H1: 102,435 bars (2009-09-29 to 2026-04-02)
+  M15: 109,732 bars (2021-11-03 to 2026-04-02)
+  M5: 129,189 bars (2024-07-08 to 2026-04-02)
+  W1: 735 bars (2012-03-04 to 2026-03-29)
+  H4: 30,609 bars (2006-07-24 to 2026-04-02)
+  M15: 109,737 bars (2021-11-03 to 2026-04-02)
+  M5: 129,208 bars (2024-07-08 to 2026-04-02)
+  W1: 735 bars (2012-03-04 to 2026-03-29)
+
+  Completed in 25936.7s (432.3m)
+  Configs with trades: 737/797
+  Total trades across all configs: 803,013
+
+  TOP 10 BY SQN (min 30 trades):
+    #1: M5@M15 | entry=limit bias=any role=any sl=zone rr=2.0
+       Trades=9,951 WR=53.2% SQN=39.65 AvgR=0.595 PF=2.25 MaxDD=14.0R
+    #2: M15@H1 | entry=limit bias=any role=any sl=zone rr=2.0
+       Trades=6,770 WR=51.4% SQN=29.75 AvgR=0.542 PF=2.14 MaxDD=17.0R
+    #3: H1@H4 | entry=limit bias=any role=any sl=zone rr=4.0
+       Trades=1,291 WR=57.8% SQN=27.48 AvgR=1.889 PF=5.47 MaxDD=7.0R
+    #4: H1@H4 | entry=limit bias=any role=any sl=zone rr=3.0
+       Trades=1,315 WR=61.1% SQN=26.81 AvgR=1.443 PF=4.79 MaxDD=7.0R
+    #5: M5@M15 | entry=limit bias=any role=any sl=zone rr=2.0
+       Trades=1,433 WR=65.9% SQN=25.97 AvgR=0.976 PF=3.79 MaxDD=7.0R
+    #6: M5@M15 | entry=limit bias=any role=any sl=zone rr=2.0
+       Trades=1,192 WR=68.0% SQN=25.68 AvgR=1.041 PF=4.22 MaxDD=7.0R
+    #7: M5@M15 | entry=limit bias=against_daily role=any sl=zone rr=3.0
+       Trades=870 WR=64.8% SQN=24.59 AvgR=1.593 PF=5.64 MaxDD=8.0R
+    #8: M5@M15 | entry=limit bias=any role=any sl=zone rr=2.0
+       Trades=1,038 WR=68.1% SQN=24.03 AvgR=1.043 PF=4.55 MaxDD=9.0R
+    #9: H1@H4 | entry=limit bias=any role=any sl=zone rr=2.0
+       Trades=1,347 WR=64.2% SQN=23.64 AvgR=0.927 PF=3.78 MaxDD=7.0R
+    #10: M5@H1 | entry=limit bias=any role=any sl=zone rr=2.0
+       Trades=2,939 WR=54.3% SQN=22.86 AvgR=0.630 PF=2.39 MaxDD=12.0R
+
+  Saved 797 configs to results\GBPUSD\gbpusd_retest_sweep.csv
+
+======================================================================
+  USDJPY
+======================================================================
+  D1: 5,101 bars (2006-08-03 to 2026-04-02)
+  H1: 102,435 bars (2009-09-29 to 2026-04-02)
+  H4: 30,609 bars (2006-07-21 to 2026-04-02)
+  M15: 109,732 bars (2021-11-03 to 2026-04-02)
+  M5: 129,190 bars (2024-07-08 to 2026-04-02)
+  W1: 735 bars (2012-03-04 to 2026-03-29)
+
+  Completed in 28189.6s (469.8m)
+  Configs with trades: 736/797
+  Total trades across all configs: 785,641
+
+  TOP 10 BY SQN (min 30 trades):
+    #1: M5@M15 | entry=limit bias=any role=any sl=zone rr=2.0
+       Trades=10,114 WR=53.5% SQN=40.76 AvgR=0.606 PF=2.27 MaxDD=12.0R
+    #2: M15@H1 | entry=limit bias=any role=any sl=zone rr=2.0
+       Trades=6,597 WR=52.1% SQN=30.53 AvgR=0.563 PF=2.20 MaxDD=16.0R
+    #3: M5@M15 | entry=limit bias=any role=any sl=zone rr=2.0
+       Trades=1,472 WR=67.2% SQN=27.65 AvgR=1.016 PF=3.86 MaxDD=6.0R
+    #4: H1@H4 | entry=limit bias=any role=any sl=zone rr=4.0
+       Trades=1,174 WR=58.3% SQN=26.57 AvgR=1.913 PF=5.73 MaxDD=6.0R
+    #5: M5@M15 | entry=limit bias=any role=any sl=zone rr=2.0
+       Trades=1,282 WR=67.9% SQN=26.46 AvgR=1.036 PF=4.07 MaxDD=6.0R
+    #6: H1@H4 | entry=limit bias=any role=any sl=zone rr=3.0
+       Trades=1,198 WR=61.6% SQN=26.04 AvgR=1.464 PF=5.07 MaxDD=6.0R
+    #7: M5@M15 | entry=limit bias=any role=any sl=zone rr=2.0
+       Trades=1,106 WR=68.2% SQN=24.86 AvgR=1.045 PF=4.29 MaxDD=6.0R
+    #8: M5@M15 | entry=limit bias=against_daily role=any sl=zone rr=3.0
+       Trades=893 WR=63.6% SQN=23.96 AvgR=1.544 PF=4.82 MaxDD=7.0R
+    #9: M5@H1 | entry=limit bias=any role=any sl=zone rr=2.0
+       Trades=2,850 WR=54.9% SQN=23.15 AvgR=0.647 PF=2.46 MaxDD=11.0R
+    #10: H1@H4 | entry=limit bias=any role=any sl=zone rr=2.0
+       Trades=1,216 WR=64.2% SQN=22.47 AvgR=0.927 PF=3.83 MaxDD=5.0R
+
+  Saved 797 configs to results\EURUSD\eurusd_retest_sweep.csv
+
+======================================================================
+  XAUUSD
+======================================================================
+  D1: 3,263 bars (2013-08-09 to 2026-04-02)
+  H1: 65,272 bars (1998-04-22 to 2026-04-02)
+  H4: 19,581 bars (2001-12-21 to 2026-04-02)
+  M15: 109,277 bars (2021-08-18 to 2026-04-02)
+  M5: 127,821 bars (2024-06-13 to 2026-04-02)
+  W1: 470 bars (2017-04-02 to 2026-03-29)
+
+  Completed in 26570.6s (442.8m)
+  Configs with trades: 738/797
+  Total trades across all configs: 701,193
+
+  TOP 10 BY SQN (min 30 trades):
+    #1: M5@M15 | entry=limit bias=any role=any sl=zone rr=2.0
+       Trades=9,367 WR=52.0% SQN=36.08 AvgR=0.559 PF=2.09 MaxDD=13.0R
+    #2: M15@H1 | entry=limit bias=any role=any sl=zone rr=2.0
+       Trades=6,078 WR=51.1% SQN=27.76 AvgR=0.534 PF=2.09 MaxDD=13.0R
+    #3: M5@M15 | entry=limit bias=any role=any sl=zone rr=2.0
+       Trades=1,487 WR=64.0% SQN=24.65 AvgR=0.921 PF=3.40 MaxDD=7.0R
+    #4: H1@H4 | entry=limit bias=any role=any sl=zone rr=3.0
+       Trades=962 WR=62.0% SQN=23.60 AvgR=1.478 PF=5.34 MaxDD=10.0R
+    #5: M5@M15 | entry=limit bias=any role=any sl=zone rr=2.0
+       Trades=1,063 WR=66.7% SQN=23.07 AvgR=1.001 PF=3.95 MaxDD=7.0R
+    #6: H1@H4 | entry=limit bias=any role=any sl=zone rr=4.0
+       Trades=938 WR=57.2% SQN=23.05 AvgR=1.862 PF=5.18 MaxDD=10.0R
+    #7: M5@H1 | entry=limit bias=any role=any sl=zone rr=2.0
+       Trades=2,651 WR=54.5% SQN=21.93 AvgR=0.636 PF=2.18 MaxDD=12.0R
+    #8: H1@H4 | entry=limit bias=any role=any sl=zone rr=2.0
+       Trades=986 WR=65.4% SQN=21.17 AvgR=0.962 PF=4.17 MaxDD=9.0R
+    #9: M5@M15 | entry=limit bias=any role=any sl=zone rr=2.0
+       Trades=1,148 WR=63.3% SQN=21.08 AvgR=0.900 PF=3.62 MaxDD=8.0R
+    #10: M5@M15 | entry=limit bias=against_daily role=any sl=zone rr=3.0
+       Trades=828 WR=59.7% SQN=20.32 AvgR=1.386 PF=4.29 MaxDD=7.0R
+
+  Saved 797 configs to results\XAUUSD\xauusd_retest_sweep.csv
+
+======================================================================
+  GBPJPY
+======================================================================
+  D1: 5,101 bars (2006-08-04 to 2026-04-02)
+  H1: 102,435 bars (2009-09-29 to 2026-04-02)
+  H4: 30,609 bars (2006-07-21 to 2026-04-02)
+  M15: 109,732 bars (2021-11-03 to 2026-04-02)
+  M5: 129,189 bars (2024-07-08 to 2026-04-02)
+  W1: 735 bars (2012-03-04 to 2026-03-29)
+
+ERROR on GBPJPY: A process in the process pool was terminated abruptly while the future was running or pending.
+concurrent.futures.process._RemoteTraceback: 
+"""
+concurrent.futures.process._RemoteTraceback: 
+'''
+Traceback (most recent call last):
+  File "C:\Python314\Lib\concurrent\futures\process.py", line 423, in wait_result_broken_or_wakeup
+    result_item = result_reader.recv()
+  File "C:\Python314\Lib\multiprocessing\connection.py", line 257, in recv
+    return _ForkingPickler.loads(buf.getbuffer())
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+AttributeError: 'RetestCandidate' object has no attribute 'opposing_zone_h1' and no __dict__ for setting new attributes
+'''
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Python314\Lib\concurrent\futures\process.py", line 254, in _process_worker
+    r = call_item.fn(*call_item.args, **call_item.kwargs)
+  File "C:\Iora\scripts\run_sweep_all_symbols.py", line 43, in run_symbol
+    summary = run_retest_sweep(
+        data_by_tf=data_by_tf,
+    ...<2 lines>...
+        configs=configs,
+    )
+  File "C:\Iora\src\iora\strategy\retest_sweep.py", line 533, in run_retest_sweep
+    for pair, targets in pair_targets.items():
+                                           ^^^
+  File "C:\Python314\Lib\concurrent\futures\_base.py", line 443, in result
+    return self.__get_result()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Python314\Lib\concurrent\futures\_base.py", line 395, in __get_result
+    raise self._exception
+concurrent.futures.process.BrokenProcessPool: A process in the process pool was terminated abruptly while the future was running or pending.
+"""
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Iora\scripts\run_sweep_all_symbols.py", line 168, in main
+    future.result()
+    ~~~~~~~~~~~~~^^
+  File "C:\Python314\Lib\concurrent\futures\_base.py", line 443, in result
+    return self.__get_result()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Python314\Lib\concurrent\futures\_base.py", line 395, in __get_result
+    raise self._exception
+concurrent.futures.process.BrokenProcessPool: A process in the process pool was terminated abruptly while the future was running or pending.
+
+  Completed in 35188.7s (586.5m)
+  Configs with trades: 736/797
+  Total trades across all configs: 764,613
+
+  TOP 10 BY SQN (min 30 trades):
+    #1: M5@M15 | entry=limit bias=any role=any sl=zone rr=2.0
+       Trades=9,393 WR=53.5% SQN=39.11 AvgR=0.604 PF=2.23 MaxDD=12.0R
+    #2: M15@H1 | entry=limit bias=any role=any sl=zone rr=2.0
+       Trades=6,122 WR=51.4% SQN=28.26 AvgR=0.542 PF=2.12 MaxDD=16.0R
+    #3: H1@H4 | entry=limit bias=any role=any sl=zone rr=3.0
+       Trades=1,076 WR=64.0% SQN=26.67 AvgR=1.561 PF=5.74 MaxDD=5.0R
+    #4: H1@H4 | entry=limit bias=any role=any sl=zone rr=4.0
+       Trades=1,044 WR=59.3% SQN=25.83 AvgR=1.965 PF=6.12 MaxDD=8.0R
+    #5: M5@M15 | entry=limit bias=any role=any sl=zone rr=2.0
+       Trades=1,235 WR=67.3% SQN=25.42 AvgR=1.019 PF=3.92 MaxDD=5.0R
+    #6: M5@M15 | entry=limit bias=any role=any sl=zone rr=2.0
+       Trades=1,055 WR=68.5% SQN=24.61 AvgR=1.056 PF=4.22 MaxDD=5.0R
+    #7: H1@H4 | entry=limit bias=any role=any sl=zone rr=2.0
+       Trades=1,106 WR=67.5% SQN=24.20 AvgR=1.024 PF=4.40 MaxDD=5.0R
+    #8: M5@H1 | entry=limit bias=any role=any sl=zone rr=2.0
+       Trades=2,691 WR=55.6% SQN=23.24 AvgR=0.668 PF=2.53 MaxDD=12.0R
+    #9: M5@M15 | entry=limit bias=any role=any sl=zone rr=2.0
+       Trades=1,267 WR=64.2% SQN=22.88 AvgR=0.925 PF=3.49 MaxDD=7.0R
+    #10: M5@M15 | entry=limit bias=against_daily role=any sl=zone rr=3.0
+       Trades=858 WR=61.8% SQN=22.15 AvgR=1.471 PF=4.90 MaxDD=7.0R
+
+  Saved 797 configs to results\USDJPY\usdjpy_retest_sweep.csv
+
+======================================================================
+  ALL DONE — 5 symbols in 61529s (1025.5m)
+======================================================================
+
+Output files:
+  EURUSD/eurusd_retest_sweep.csv (674.2 KB)
+  GBPJPY/gbpjpy_retest_sweep.csv (46.3 KB)
+  GBPUSD/gbpusd_retest_sweep.csv (672.9 KB)
+  USDJPY/usdjpy_retest_sweep.csv (676.0 KB)
+  XAUUSD/xauusd_retest_sweep.csv (672.2 KB)

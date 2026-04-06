@@ -1,0 +1,379 @@
+Running opportunity counter (--all-tfs) for 5 symbols
+Symbols: GBPUSD, EURUSD, USDJPY, XAUUSD, GBPJPY
+Each symbol runs M1/M5/M15/H1 entry TFs in parallel with full date ranges
+
+============================================================
+  GBPUSD — starting --all-tfs (parallel, full date ranges)
+============================================================
+
+GBPUSD completed in 460.0s (7.7m)
+Total events: 1,816,256
+
+Data periods:
+  H1: 2009-09-29 to 2026-04-02 (16.5 years, 102,435 bars)
+  M1: 2025-08-04 to 2026-04-02 (0.7 years, 245,775 bars)
+  M15: 2021-11-03 to 2026-04-02 (4.4 years, 109,732 bars)
+  M5: 2024-07-08 to 2026-04-02 (1.7 years, 129,189 bars)
+
+  H1@D1 (16.5 yrs):
+    Wick touches:      10,871
+    Body closes:       90,201
+    Near-misses:       11,670
+    Break-throughs:         1
+    Total:            112,743
+
+  H1@H4 (16.5 yrs):
+    Wick touches:      30,581
+    Body closes:      107,311
+    Near-misses:       30,857
+    Break-throughs:       224
+    Total:            168,973
+
+  M15@H1 (4.4 yrs):
+    Wick touches:      35,115
+    Body closes:      125,436
+    Near-misses:       33,928
+    Break-throughs:       272
+    Total:            194,751
+
+  M15@H4 (4.4 yrs):
+    Wick touches:      14,988
+    Body closes:       96,624
+    Near-misses:       15,753
+    Break-throughs:        13
+    Total:            127,378
+
+  M1@M15 (0.7 yrs):
+    Wick touches:      33,293
+    Body closes:      256,478
+    Near-misses:       52,190
+    Break-throughs:        36
+    Total:            341,997
+
+  M1@M5 (0.7 yrs):
+    Wick touches:      61,932
+    Body closes:      280,480
+    Near-misses:      100,646
+    Break-throughs:       293
+    Total:            443,351
+
+  M5@H1 (1.7 yrs):
+    Wick touches:      21,074
+    Body closes:      127,488
+    Near-misses:       22,425
+    Break-throughs:        41
+    Total:            171,028
+
+  M5@M15 (1.7 yrs):
+    Wick touches:      47,858
+    Body closes:      160,313
+    Near-misses:       47,441
+    Break-throughs:       423
+    Total:            256,035
+
+Saved 1,816,256 events to results\gbpusd_alltfs_opportunities.csv
+Saved matrix (2,684 combos) to results\gbpusd_alltfs_opportunity_matrix.csv
+
+============================================================
+  EURUSD — starting --all-tfs (parallel, full date ranges)
+============================================================
+
+EURUSD completed in 547.6s (9.1m)
+Total events: 1,954,578
+
+Data periods:
+  H1: 2009-09-29 to 2026-04-02 (16.5 years, 102,435 bars)
+  M1: 2025-08-04 to 2026-04-02 (0.7 years, 245,873 bars)
+  M15: 2021-11-03 to 2026-04-02 (4.4 years, 109,737 bars)
+  M5: 2024-07-08 to 2026-04-02 (1.7 years, 129,208 bars)
+
+  H1@D1 (16.5 yrs):
+    Wick touches:      11,691
+    Body closes:       96,457
+    Near-misses:       12,523
+    Break-throughs:         3
+    Total:            120,674
+
+  H1@H4 (16.5 yrs):
+    Wick touches:      30,329
+    Body closes:      107,370
+    Near-misses:       29,947
+    Break-throughs:       219
+    Total:            167,865
+
+  M15@H1 (4.4 yrs):
+    Wick touches:      34,969
+    Body closes:      131,760
+    Near-misses:       33,527
+    Break-throughs:       271
+    Total:            200,527
+
+  M15@H4 (4.4 yrs):
+    Wick touches:      15,257
+    Body closes:      106,071
+    Near-misses:       15,948
+    Break-throughs:        14
+    Total:            137,290
+
+  M1@M15 (0.7 yrs):
+    Wick touches:      35,517
+    Body closes:      274,223
+    Near-misses:       66,490
+    Break-throughs:        39
+    Total:            376,269
+
+  M1@M5 (0.7 yrs):
+    Wick touches:      63,353
+    Body closes:      292,933
+    Near-misses:      126,561
+    Break-throughs:       273
+    Total:            483,120
+
+  M5@H1 (1.7 yrs):
+    Wick touches:      22,612
+    Body closes:      147,748
+    Near-misses:       24,336
+    Break-throughs:        43
+    Total:            194,739
+
+  M5@M15 (1.7 yrs):
+    Wick touches:      49,855
+    Body closes:      172,462
+    Near-misses:       51,340
+    Break-throughs:       437
+    Total:            274,094
+
+Saved 1,954,578 events to results\eurusd_alltfs_opportunities.csv
+Saved matrix (2,634 combos) to results\eurusd_alltfs_opportunity_matrix.csv
+
+============================================================
+  USDJPY — starting --all-tfs (parallel, full date ranges)
+============================================================
+
+USDJPY completed in 476.4s (7.9m)
+Total events: 1,752,324
+
+Data periods:
+  H1: 2009-09-29 to 2026-04-02 (16.5 years, 102,435 bars)
+  M1: 2025-08-04 to 2026-04-02 (0.7 years, 245,789 bars)
+  M15: 2021-11-03 to 2026-04-02 (4.4 years, 109,732 bars)
+  M5: 2024-07-08 to 2026-04-02 (1.7 years, 129,190 bars)
+
+  H1@D1 (16.5 yrs):
+    Wick touches:      10,840
+    Body closes:      104,300
+    Near-misses:       11,387
+    Break-throughs:         0
+    Total:            126,527
+
+  H1@H4 (16.5 yrs):
+    Wick touches:      31,752
+    Body closes:      114,796
+    Near-misses:       32,104
+    Break-throughs:       147
+    Total:            178,799
+
+  M15@H1 (4.4 yrs):
+    Wick touches:      33,453
+    Body closes:      122,911
+    Near-misses:       33,184
+    Break-throughs:       242
+    Total:            189,790
+
+  M15@H4 (4.4 yrs):
+    Wick touches:      13,826
+    Body closes:      101,418
+    Near-misses:       14,659
+    Break-throughs:        10
+    Total:            129,913
+
+  M1@M15 (0.7 yrs):
+    Wick touches:      33,368
+    Body closes:      244,488
+    Near-misses:       41,811
+    Break-throughs:        38
+    Total:            319,705
+
+  M1@M5 (0.7 yrs):
+    Wick touches:      60,230
+    Body closes:      272,328
+    Near-misses:       78,326
+    Break-throughs:       301
+    Total:            411,185
+
+  M5@H1 (1.7 yrs):
+    Wick touches:      20,043
+    Body closes:      124,662
+    Near-misses:       21,341
+    Break-throughs:        49
+    Total:            166,095
+
+  M5@M15 (1.7 yrs):
+    Wick touches:      44,248
+    Body closes:      142,032
+    Near-misses:       43,643
+    Break-throughs:       387
+    Total:            230,310
+
+Saved 1,752,324 events to results\usdjpy_alltfs_opportunities.csv
+Saved matrix (2,604 combos) to results\usdjpy_alltfs_opportunity_matrix.csv
+
+============================================================
+  XAUUSD — starting --all-tfs (parallel, full date ranges)
+============================================================
+
+XAUUSD completed in 584.8s (9.7m)
+Total events: 1,631,487
+
+Data periods:
+  H1: 1998-04-22 to 2026-04-02 (27.9 years, 65,272 bars)
+  M1: 2025-07-30 to 2026-04-02 (0.7 years, 238,913 bars)
+  M15: 2021-08-18 to 2026-04-02 (4.6 years, 109,277 bars)
+  M5: 2024-06-13 to 2026-04-02 (1.8 years, 127,821 bars)
+
+  H1@D1 (27.9 yrs):
+    Wick touches:       7,583
+    Body closes:       57,972
+    Near-misses:        7,937
+    Break-throughs:        13
+    Total:             73,505
+
+  H1@H4 (27.9 yrs):
+    Wick touches:      21,292
+    Body closes:       70,674
+    Near-misses:       20,344
+    Break-throughs:       157
+    Total:            112,467
+
+  M15@H1 (4.6 yrs):
+    Wick touches:      33,514
+    Body closes:      122,745
+    Near-misses:       32,603
+    Break-throughs:       209
+    Total:            189,071
+
+  M15@H4 (4.6 yrs):
+    Wick touches:      14,233
+    Body closes:       97,548
+    Near-misses:       14,933
+    Break-throughs:         8
+    Total:            126,722
+
+  M1@M15 (0.7 yrs):
+    Wick touches:      35,321
+    Body closes:      250,152
+    Near-misses:       37,617
+    Break-throughs:        32
+    Total:            323,122
+
+  M1@M5 (0.7 yrs):
+    Wick touches:      64,057
+    Body closes:      262,899
+    Near-misses:       68,238
+    Break-throughs:       249
+    Total:            395,443
+
+  M5@H1 (1.8 yrs):
+    Wick touches:      20,369
+    Body closes:      125,571
+    Near-misses:       21,315
+    Break-throughs:        28
+    Total:            167,283
+
+  M5@M15 (1.8 yrs):
+    Wick touches:      46,666
+    Body closes:      151,205
+    Near-misses:       45,619
+    Break-throughs:       384
+    Total:            243,874
+
+Saved 1,631,487 events to results\xauusd_alltfs_opportunities.csv
+Saved matrix (2,729 combos) to results\xauusd_alltfs_opportunity_matrix.csv
+
+============================================================
+  GBPJPY — starting --all-tfs (parallel, full date ranges)
+============================================================
+
+GBPJPY completed in 581.6s (9.7m)
+Total events: 1,887,651
+
+Data periods:
+  H1: 2009-09-29 to 2026-04-02 (16.5 years, 102,435 bars)
+  M1: 2025-08-04 to 2026-03-27 (0.6 years, 240,866 bars)
+  M15: 2021-11-03 to 2026-04-02 (4.4 years, 109,732 bars)
+  M5: 2024-07-08 to 2026-04-02 (1.7 years, 129,189 bars)
+
+  H1@D1 (16.5 yrs):
+    Wick touches:      11,498
+    Body closes:       95,300
+    Near-misses:       12,197
+    Break-throughs:         2
+    Total:            118,997
+
+  H1@H4 (16.5 yrs):
+    Wick touches:      32,578
+    Body closes:      112,324
+    Near-misses:       33,135
+    Break-throughs:       181
+    Total:            178,218
+
+  M15@H1 (4.4 yrs):
+    Wick touches:      38,546
+    Body closes:      131,340
+    Near-misses:       37,776
+    Break-throughs:       244
+    Total:            207,906
+
+  M15@H4 (4.4 yrs):
+    Wick touches:      15,802
+    Body closes:      103,575
+    Near-misses:       16,499
+    Break-throughs:        14
+    Total:            135,890
+
+  M1@M15 (0.6 yrs):
+    Wick touches:      41,443
+    Body closes:      259,670
+    Near-misses:       44,693
+    Break-throughs:        37
+    Total:            345,843
+
+  M1@M5 (0.6 yrs):
+    Wick touches:      74,502
+    Body closes:      286,465
+    Near-misses:       79,960
+    Break-throughs:       284
+    Total:            441,211
+
+  M5@H1 (1.7 yrs):
+    Wick touches:      24,943
+    Body closes:      144,796
+    Near-misses:       25,967
+    Break-throughs:        53
+    Total:            195,759
+
+  M5@M15 (1.7 yrs):
+    Wick touches:      53,619
+    Body closes:      158,402
+    Near-misses:       51,373
+    Break-throughs:       433
+    Total:            263,827
+
+Saved 1,887,651 events to results\gbpjpy_alltfs_opportunities.csv
+Saved matrix (2,684 combos) to results\gbpjpy_alltfs_opportunity_matrix.csv
+
+============================================================
+  ALL DONE — 5 symbols in 2782.0s (46.4m)
+============================================================
+
+Output files:
+  eurusd_alltfs_opportunities.csv (299.5 MB)
+  eurusd_alltfs_opportunity_matrix.csv (0.3 MB)
+  gbpjpy_alltfs_opportunities.csv (285.2 MB)
+  gbpjpy_alltfs_opportunity_matrix.csv (0.3 MB)
+  gbpusd_alltfs_opportunities.csv (277.9 MB)
+  gbpusd_alltfs_opportunity_matrix.csv (0.3 MB)
+  usdjpy_alltfs_opportunities.csv (264.8 MB)
+  usdjpy_alltfs_opportunity_matrix.csv (0.3 MB)
+  xauusd_alltfs_opportunities.csv (244.1 MB)
+  xauusd_alltfs_opportunity_matrix.csv (0.3 MB)

@@ -1,0 +1,556 @@
+Cross-TF + Partial TP Sweep: 112 configs x 38 symbols
+Parallel workers: 2
+Symbols: AUDJPY, AUDNZD, AUDUSD, BTCUSD, CADCHF, CADJPY, DE40, ETHUSD, EURAUD, EURCHF, EURGBP, EURJPY, EURUSD, F40, GBPAUD, GBPJPY, GBPNZD, GBPUSD, HK50, JP225, NZDJPY, NZDUSD, UK100, US30, US500, USDCAD, USDCHF, USDJPY, USDMXN, USDTRY, USDZAR, USTEC, XAGUSD, XAUUSD, XBRUSD, XNGUSD, XPTUSD, XTIUSD
+
+======================================================================
+  AUDJPY -- Cross-TF + Partial TP Sweep
+======================================================================
+
+======================================================================
+  AUDNZD -- Cross-TF + Partial TP Sweep
+======================================================================
+  D1: 324 bars (2025-01-02 to 2026-04-02)
+  D1: 324 bars (2025-01-02 to 2026-04-02)
+  H1: 7,763 bars (2025-01-02 to 2026-04-02)
+  H1: 7,763 bars (2025-01-02 to 2026-04-02)
+  H4: 1,941 bars (2025-01-02 to 2026-04-02)
+  H4: 1,941 bars (2025-01-02 to 2026-04-02)
+  M15: 31,044 bars (2025-01-02 to 2026-04-02)
+  M15: 31,044 bars (2025-01-02 to 2026-04-02)
+  M5: 93,124 bars (2025-01-02 to 2026-04-02)
+  M5: 93,125 bars (2025-01-02 to 2026-04-02)
+  W1: 55 bars (2025-03-16 to 2026-03-29)
+  W1: 56 bars (2025-03-09 to 2026-03-29)
+
+  Completed in 1062.3s (17.7m)
+  Configs with trades: 112/112
+  Total trades across all configs: 50,168
+
+  TOP 10 BY SQN (min 30 trades):
+    #1: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=1,822 WR=64.2% SQN=34.91 AvgR=1.569 PF=5.38 AvgWin=4.5p AvgLoss=-1.5p AvgHold=0.1h
+    #2: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=1,822 WR=64.2% SQN=34.91 AvgR=1.569 PF=5.38 AvgWin=4.5p AvgLoss=-1.5p AvgHold=0.1h
+    #3: M5@M15 | limit | tp=rr=4.0 sl=zone
+       Trades=1,761 WR=58.3% SQN=32.61 AvgR=1.916 PF=5.40 AvgWin=6.0p AvgLoss=-1.5p AvgHold=0.1h
+    #4: M5@M15 | limit | tp=rr=4.0 sl=zone
+       Trades=1,761 WR=58.3% SQN=32.61 AvgR=1.916 PF=5.40 AvgWin=6.0p AvgLoss=-1.5p AvgHold=0.1h
+    #5: M5@M15 | limit | tp=rr=2.0 sl=zone
+       Trades=1,875 WR=67.8% SQN=31.98 AvgR=1.035 PF=4.26 AvgWin=3.1p AvgLoss=-1.5p AvgHold=0.1h
+    #6: M5@M15 | limit | tp=rr=2.0 sl=zone
+       Trades=1,875 WR=67.8% SQN=31.98 AvgR=1.035 PF=4.26 AvgWin=3.1p AvgLoss=-1.5p AvgHold=0.1h
+    #7: M5@M15 | limit | tp=rr=6.0 sl=zone
+       Trades=1,667 WR=47.2% SQN=26.92 AvgR=2.305 PF=5.25 AvgWin=9.0p AvgLoss=-1.5p AvgHold=0.2h
+    #8: M5@M15 | limit | tp=rr=8.0 sl=zone
+       Trades=1,632 WR=37.7% SQN=22.15 AvgR=2.392 PF=4.83 AvgWin=12.2p AvgLoss=-1.5p AvgHold=0.3h
+    #9: M5@M15 | limit | tp=rr=10.0 sl=zone
+       Trades=1,591 WR=31.8% SQN=19.45 AvgR=2.498 PF=4.67 AvgWin=15.2p AvgLoss=-1.5p AvgHold=0.4h
+    #10: M15@H1 | limit | tp=rr=3.0 sl=zone
+       Trades=436 WR=66.5% SQN=18.35 AvgR=1.661 PF=6.55 AvgWin=8.2p AvgLoss=-2.5p AvgHold=0.3h
+
+  Saved 42 partial configs to results\AUDJPY\audjpy_partial_tp_sweep.csv
+  Saved 70 cross-TF configs to results\AUDJPY\audjpy_cross_tf_sweep.csv
+
+======================================================================
+  AUDUSD -- Cross-TF + Partial TP Sweep
+
+  [1/38] AUDJPY done in 1064s OK
+======================================================================
+  D1: 324 bars (2025-01-02 to 2026-04-02)
+  H1: 7,763 bars (2025-01-02 to 2026-04-02)
+  H4: 1,941 bars (2025-01-02 to 2026-04-02)
+  M15: 31,044 bars (2025-01-02 to 2026-04-02)
+  M5: 93,127 bars (2025-01-02 to 2026-04-02)
+  W1: 58 bars (2025-02-23 to 2026-03-29)
+
+  Completed in 1095.6s (18.3m)
+  Configs with trades: 112/112
+  Total trades across all configs: 68,462
+
+  TOP 10 BY SQN (min 30 trades):
+    #1: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=2,574 WR=61.2% SQN=37.67 AvgR=1.448 PF=4.84 AvgWin=2.8p AvgLoss=-0.9p AvgHold=0.3h
+    #2: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=2,574 WR=61.2% SQN=37.67 AvgR=1.448 PF=4.84 AvgWin=2.8p AvgLoss=-0.9p AvgHold=0.3h
+    #3: M5@M15 | limit | tp=rr=4.0 sl=zone
+       Trades=2,468 WR=55.7% SQN=35.71 AvgR=1.786 PF=5.34 AvgWin=3.9p AvgLoss=-0.9p AvgHold=0.4h
+    #4: M5@M15 | limit | tp=rr=4.0 sl=zone
+       Trades=2,468 WR=55.7% SQN=35.71 AvgR=1.786 PF=5.34 AvgWin=3.9p AvgLoss=-0.9p AvgHold=0.4h
+    #5: M5@M15 | limit | tp=rr=2.0 sl=zone
+       Trades=2,695 WR=65.4% SQN=34.96 AvgR=0.961 PF=3.90 AvgWin=1.9p AvgLoss=-0.9p AvgHold=0.3h
+    #6: M5@M15 | limit | tp=rr=2.0 sl=zone
+       Trades=2,695 WR=65.4% SQN=34.96 AvgR=0.961 PF=3.90 AvgWin=1.9p AvgLoss=-0.9p AvgHold=0.3h
+    #7: M5@M15 | limit | tp=rr=6.0 sl=zone
+       Trades=2,313 WR=44.1% SQN=28.91 AvgR=2.090 PF=5.13 AvgWin=5.9p AvgLoss=-0.9p AvgHold=0.4h
+    #8: M5@M15 | limit | tp=rr=8.0 sl=zone
+       Trades=2,208 WR=34.5% SQN=23.12 AvgR=2.106 PF=4.65 AvgWin=8.1p AvgLoss=-0.9p AvgHold=0.6h
+    #9: M15@H1 | limit | tp=rr=3.0 sl=zone
+       Trades=670 WR=65.8% SQN=22.26 AvgR=1.633 PF=5.89 AvgWin=4.7p AvgLoss=-1.5p AvgHold=0.4h
+    #10: M15@H1 | limit | tp=rr=3.0 sl=zone
+       Trades=670 WR=65.8% SQN=22.26 AvgR=1.633 PF=5.89 AvgWin=4.7p AvgLoss=-1.5p AvgHold=0.4h
+
+  Saved 42 partial configs to results\AUDNZD\audnzd_partial_tp_sweep.csv
+  Saved 70 cross-TF configs to results\AUDNZD\audnzd_cross_tf_sweep.csv
+
+======================================================================
+  BTCUSD -- Cross-TF + Partial TP Sweep
+======================================================================
+
+  [2/38] AUDNZD done in 1097s OK
+  D1: 3,531 bars (2015-01-07 to 2026-04-02)
+  H1: 70,653 bars (2011-03-24 to 2026-04-02)
+  H4: 18,969 bars (2011-03-24 to 2026-04-02)
+  M15: 113,823 bars (2022-12-26 to 2026-04-02)
+  M5: 141,371 bars (2024-11-22 to 2026-04-02)
+  W1: 504 bars (2016-08-07 to 2026-03-29)
+
+  Completed in 1175.5s (19.6m)
+  Configs with trades: 112/112
+  Total trades across all configs: 48,199
+
+  TOP 10 BY SQN (min 30 trades):
+    #1: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=1,773 WR=64.6% SQN=34.84 AvgR=1.583 PF=5.51 AvgWin=2.7p AvgLoss=-0.9p AvgHold=0.2h
+    #2: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=1,773 WR=64.6% SQN=34.84 AvgR=1.583 PF=5.51 AvgWin=2.7p AvgLoss=-0.9p AvgHold=0.2h
+    #3: M5@M15 | limit | tp=rr=2.0 sl=zone
+       Trades=1,821 WR=68.6% SQN=32.47 AvgR=1.059 PF=4.46 AvgWin=1.8p AvgLoss=-0.9p AvgHold=0.2h
+    #4: M5@M15 | limit | tp=rr=2.0 sl=zone
+       Trades=1,821 WR=68.6% SQN=32.47 AvgR=1.059 PF=4.46 AvgWin=1.8p AvgLoss=-0.9p AvgHold=0.2h
+    #5: M5@M15 | limit | tp=rr=4.0 sl=zone
+       Trades=1,710 WR=58.6% SQN=32.39 AvgR=1.930 PF=5.63 AvgWin=3.5p AvgLoss=-0.9p AvgHold=0.3h
+    #6: M5@M15 | limit | tp=rr=4.0 sl=zone
+       Trades=1,710 WR=58.6% SQN=32.39 AvgR=1.930 PF=5.63 AvgWin=3.5p AvgLoss=-0.9p AvgHold=0.3h
+    #7: M5@M15 | limit | tp=rr=6.0 sl=zone
+       Trades=1,628 WR=46.7% SQN=26.24 AvgR=2.272 PF=5.12 AvgWin=5.2p AvgLoss=-0.9p AvgHold=0.3h
+    #8: M5@M15 | limit | tp=rr=8.0 sl=zone
+       Trades=1,578 WR=38.1% SQN=22.06 AvgR=2.428 PF=4.72 AvgWin=6.9p AvgLoss=-0.9p AvgHold=0.5h
+    #9: M5@M15 | limit | tp=partial(70%@rr3.0+H1) sl=zone
+       Trades=1,331 WR=65.1% SQN=19.43 AvgR=1.973 PF=6.50 AvgWin=3.1p AvgLoss=-0.9p AvgHold=1.9h
+    #10: M5@M15 | limit | tp=rr=10.0 sl=zone
+       Trades=1,543 WR=32.1% SQN=19.38 AvgR=2.536 PF=4.35 AvgWin=8.3p AvgLoss=-0.9p AvgHold=0.6h
+
+  Saved 42 partial configs to results\AUDUSD\audusd_partial_tp_sweep.csv
+  Saved 70 cross-TF configs to results\AUDUSD\audusd_cross_tf_sweep.csv
+
+======================================================================
+
+  [3/38] AUDUSD done in 1184s OK
+  CADCHF -- Cross-TF + Partial TP Sweep
+======================================================================
+  D1: 324 bars (2025-01-02 to 2026-04-02)
+  H1: 7,763 bars (2025-01-02 to 2026-04-02)
+  H4: 1,941 bars (2025-01-02 to 2026-04-02)
+  M15: 31,043 bars (2025-01-02 to 2026-04-02)
+  M5: 93,116 bars (2025-01-02 to 2026-04-02)
+  W1: 55 bars (2025-03-16 to 2026-03-29)
+
+  Completed in 2340.2s (39.0m)
+  Configs with trades: 112/112
+  Total trades across all configs: 113,219
+
+  TOP 10 BY SQN (min 30 trades):
+    #1: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=2,970 WR=61.6% SQN=40.98 AvgR=1.463 PF=4.77 AvgWin=142.7p AvgLoss=-48.0p AvgHold=0.1h
+    #2: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=2,970 WR=61.6% SQN=40.98 AvgR=1.463 PF=4.77 AvgWin=142.7p AvgLoss=-48.0p AvgHold=0.1h
+    #3: M5@M15 | limit | tp=rr=4.0 sl=zone
+       Trades=2,864 WR=56.6% SQN=39.51 AvgR=1.830 PF=5.22 AvgWin=191.1p AvgLoss=-47.7p AvgHold=0.1h
+    #4: M5@M15 | limit | tp=rr=4.0 sl=zone
+       Trades=2,864 WR=56.6% SQN=39.51 AvgR=1.830 PF=5.22 AvgWin=191.1p AvgLoss=-47.7p AvgHold=0.1h
+    #5: M5@M15 | limit | tp=rr=2.0 sl=zone
+       Trades=3,077 WR=65.7% SQN=37.79 AvgR=0.970 PF=3.84 AvgWin=95.9p AvgLoss=-47.9p AvgHold=0.1h
+    #6: M5@M15 | limit | tp=rr=2.0 sl=zone
+       Trades=3,077 WR=65.7% SQN=37.79 AvgR=0.970 PF=3.84 AvgWin=95.9p AvgLoss=-47.9p AvgHold=0.1h
+    #7: M15@H1 | limit | tp=rr=3.0 sl=zone
+       Trades=2,027 WR=62.1% SQN=34.38 AvgR=1.482 PF=5.03 AvgWin=177.0p AvgLoss=-57.6p AvgHold=0.3h
+    #8: M15@H1 | limit | tp=rr=3.0 sl=zone
+       Trades=2,027 WR=62.1% SQN=34.38 AvgR=1.482 PF=5.03 AvgWin=177.0p AvgLoss=-57.6p AvgHold=0.3h
+    #9: M15@H1 | limit | tp=rr=4.0 sl=zone
+       Trades=1,954 WR=56.7% SQN=32.69 AvgR=1.833 PF=5.34 AvgWin=234.7p AvgLoss=-57.4p AvgHold=0.3h
+    #10: M15@H1 | limit | tp=rr=4.0 sl=zone
+       Trades=1,954 WR=56.7% SQN=32.69 AvgR=1.833 PF=5.34 AvgWin=234.7p AvgLoss=-57.4p AvgHold=0.3h
+
+  Saved 42 partial configs to results\BTCUSD\btcusd_partial_tp_sweep.csv
+  Saved 70 cross-TF configs to results\BTCUSD\btcusd_cross_tf_sweep.csv
+
+======================================================================
+
+  [4/38] BTCUSD done in 2342s OK
+  CADJPY -- Cross-TF + Partial TP Sweep
+======================================================================
+  D1: 324 bars (2025-01-02 to 2026-04-02)
+  H1: 7,763 bars (2025-01-02 to 2026-04-02)
+  H4: 1,941 bars (2025-01-02 to 2026-04-02)
+  M15: 31,043 bars (2025-01-02 to 2026-04-02)
+  M5: 93,119 bars (2025-01-02 to 2026-04-02)
+  W1: 56 bars (2025-03-09 to 2026-03-29)
+
+  Completed in 1367.7s (22.8m)
+  Configs with trades: 112/112
+  Total trades across all configs: 54,125
+
+  TOP 10 BY SQN (min 30 trades):
+    #1: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=1,945 WR=63.5% SQN=35.31 AvgR=1.542 PF=5.49 AvgWin=2.0p AvgLoss=-0.6p AvgHold=0.2h
+    #2: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=1,945 WR=63.5% SQN=35.31 AvgR=1.542 PF=5.49 AvgWin=2.0p AvgLoss=-0.6p AvgHold=0.2h
+    #3: M5@M15 | limit | tp=rr=4.0 sl=zone
+       Trades=1,883 WR=57.9% SQN=33.29 AvgR=1.894 PF=5.77 AvgWin=2.7p AvgLoss=-0.6p AvgHold=0.2h
+    #4: M5@M15 | limit | tp=rr=4.0 sl=zone
+       Trades=1,883 WR=57.9% SQN=33.29 AvgR=1.894 PF=5.77 AvgWin=2.7p AvgLoss=-0.6p AvgHold=0.2h
+    #5: M5@M15 | limit | tp=rr=2.0 sl=zone
+       Trades=2,002 WR=67.1% SQN=32.19 AvgR=1.014 PF=4.25 AvgWin=1.3p AvgLoss=-0.6p AvgHold=0.2h
+    #6: M5@M15 | limit | tp=rr=2.0 sl=zone
+       Trades=2,002 WR=67.1% SQN=32.19 AvgR=1.014 PF=4.25 AvgWin=1.3p AvgLoss=-0.6p AvgHold=0.2h
+    #7: M5@M15 | limit | tp=rr=6.0 sl=zone
+       Trades=1,792 WR=46.9% SQN=27.64 AvgR=2.281 PF=5.63 AvgWin=4.1p AvgLoss=-0.6p AvgHold=0.3h
+    #8: M5@M15 | limit | tp=rr=8.0 sl=zone
+       Trades=1,743 WR=38.6% SQN=23.58 AvgR=2.475 PF=5.40 AvgWin=5.6p AvgLoss=-0.6p AvgHold=0.4h
+    #9: M5@M15 | limit | tp=rr=10.0 sl=zone
+       Trades=1,698 WR=32.2% SQN=20.38 AvgR=2.544 PF=5.17 AvgWin=7.0p AvgLoss=-0.6p AvgHold=0.5h
+    #10: M15@H1 | limit | tp=rr=3.0 sl=zone
+       Trades=616 WR=62.5% SQN=19.21 AvgR=1.500 PF=5.24 AvgWin=3.5p AvgLoss=-1.1p AvgHold=0.4h
+
+  Saved 42 partial configs to results\CADCHF\cadchf_partial_tp_sweep.csv
+  Saved 70 cross-TF configs to results\CADCHF\cadchf_cross_tf_sweep.csv
+
+======================================================================
+  DE40 -- Cross-TF + Partial TP Sweep
+======================================================================
+
+  [5/38] CADCHF done in 1377s OK
+  D1: 3,013 bars (2014-06-03 to 2026-04-02)
+  H1: 60,273 bars (2012-08-06 to 2026-04-02)
+  H4: 16,421 bars (2012-08-06 to 2026-04-02)
+  M15: 108,974 bars (2021-07-22 to 2026-04-02)
+  M5: 126,879 bars (2024-06-03 to 2026-04-02)
+  W1: 435 bars (2017-12-03 to 2026-03-29)
+
+  Completed in 1065.5s (17.8m)
+  Configs with trades: 112/112
+  Total trades across all configs: 51,518
+
+  TOP 10 BY SQN (min 30 trades):
+    #1: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=1,754 WR=60.0% SQN=29.95 AvgR=1.401 PF=4.77 AvgWin=4.4p AvgLoss=-1.4p AvgHold=0.1h
+    #2: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=1,754 WR=60.0% SQN=29.95 AvgR=1.401 PF=4.77 AvgWin=4.4p AvgLoss=-1.4p AvgHold=0.1h
+    #3: M5@M15 | limit | tp=rr=4.0 sl=zone
+       Trades=1,703 WR=54.1% SQN=28.27 AvgR=1.707 PF=4.96 AvgWin=5.9p AvgLoss=-1.4p AvgHold=0.1h
+    #4: M5@M15 | limit | tp=rr=4.0 sl=zone
+       Trades=1,703 WR=54.1% SQN=28.27 AvgR=1.707 PF=4.96 AvgWin=5.9p AvgLoss=-1.4p AvgHold=0.1h
+    #5: M5@M15 | limit | tp=rr=2.0 sl=zone
+       Trades=1,821 WR=64.9% SQN=28.23 AvgR=0.947 PF=3.96 AvgWin=3.0p AvgLoss=-1.4p AvgHold=0.1h
+    #6: M5@M15 | limit | tp=rr=2.0 sl=zone
+       Trades=1,821 WR=64.9% SQN=28.23 AvgR=0.947 PF=3.96 AvgWin=3.0p AvgLoss=-1.4p AvgHold=0.1h
+    #7: M5@M15 | limit | tp=rr=6.0 sl=zone
+       Trades=1,650 WR=43.5% SQN=23.90 AvgR=2.042 PF=4.77 AvgWin=8.8p AvgLoss=-1.4p AvgHold=0.2h
+    #8: M5@M15 | limit | tp=rr=8.0 sl=zone
+       Trades=1,608 WR=34.8% SQN=19.95 AvgR=2.134 PF=4.59 AvgWin=12.1p AvgLoss=-1.4p AvgHold=0.3h
+    #9: M5@M15 | limit | tp=partial(70%@rr3.0+H1) sl=zone
+       Trades=1,361 WR=59.4% SQN=17.54 AvgR=1.642 PF=5.48 AvgWin=5.3p AvgLoss=-1.4p AvgHold=1.8h
+    #10: M5@M15 | limit | tp=rr=10.0 sl=zone
+       Trades=1,573 WR=28.7% SQN=17.21 AvgR=2.161 PF=4.23 AvgWin=14.9p AvgLoss=-1.4p AvgHold=0.5h
+
+  Saved 42 partial configs to results\CADJPY\cadjpy_partial_tp_sweep.csv
+  Saved 70 cross-TF configs to results\CADJPY\cadjpy_cross_tf_sweep.csv
+
+======================================================================
+  ETHUSD -- Cross-TF + Partial TP Sweep
+======================================================================
+
+  [6/38] CADJPY done in 1074s OK
+  D1: 2,575 bars (2018-06-13 to 2026-04-02)
+  H1: 51,507 bars (2016-05-02 to 2026-04-02)
+  H4: 13,708 bars (2016-05-02 to 2026-04-02)
+  M15: 113,805 bars (2022-12-24 to 2026-04-02)
+  M5: 141,319 bars (2024-11-22 to 2026-04-02)
+  W1: 367 bars (2019-03-24 to 2026-03-29)
+
+  Completed in 1670.4s (27.8m)
+  Configs with trades: 112/112
+  Total trades across all configs: 91,421
+
+  TOP 10 BY SQN (min 30 trades):
+    #1: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=2,255 WR=62.9% SQN=37.28 AvgR=1.517 PF=5.07 AvgWin=14.1p AvgLoss=-4.7p AvgHold=0.2h
+    #2: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=2,255 WR=62.9% SQN=37.28 AvgR=1.517 PF=5.07 AvgWin=14.1p AvgLoss=-4.7p AvgHold=0.2h
+    #3: M5@M15 | limit | tp=rr=4.0 sl=zone
+       Trades=2,190 WR=58.4% SQN=36.50 AvgR=1.922 PF=5.59 AvgWin=18.8p AvgLoss=-4.7p AvgHold=0.2h
+    #4: M5@M15 | limit | tp=rr=4.0 sl=zone
+       Trades=2,190 WR=58.4% SQN=36.50 AvgR=1.922 PF=5.59 AvgWin=18.8p AvgLoss=-4.7p AvgHold=0.2h
+    #5: M5@M15 | limit | tp=rr=2.0 sl=zone
+       Trades=2,314 WR=66.5% SQN=33.75 AvgR=0.994 PF=4.07 AvgWin=9.5p AvgLoss=-4.6p AvgHold=0.1h
+    #6: M5@M15 | limit | tp=rr=2.0 sl=zone
+       Trades=2,314 WR=66.5% SQN=33.75 AvgR=0.994 PF=4.07 AvgWin=9.5p AvgLoss=-4.6p AvgHold=0.1h
+    #7: M5@M15 | limit | tp=rr=6.0 sl=zone
+       Trades=2,105 WR=47.5% SQN=30.47 AvgR=2.322 PF=5.43 AvgWin=28.3p AvgLoss=-4.7p AvgHold=0.2h
+    #8: M15@H1 | limit | tp=rr=3.0 sl=zone
+       Trades=1,420 WR=62.7% SQN=29.34 AvgR=1.507 PF=4.87 AvgWin=19.9p AvgLoss=-6.9p AvgHold=0.4h
+    #9: M15@H1 | limit | tp=rr=3.0 sl=zone
+       Trades=1,420 WR=62.7% SQN=29.34 AvgR=1.507 PF=4.87 AvgWin=19.9p AvgLoss=-6.9p AvgHold=0.4h
+    #10: M15@H1 | limit | tp=rr=4.0 sl=zone
+       Trades=1,392 WR=58.1% SQN=28.82 AvgR=1.906 PF=5.24 AvgWin=26.2p AvgLoss=-6.9p AvgHold=0.5h
+
+  Saved 42 partial configs to results\DE40\de40_partial_tp_sweep.csv
+  Saved 70 cross-TF configs to results\DE40\de40_cross_tf_sweep.csv
+
+======================================================================
+  EURAUD -- Cross-TF + Partial TP Sweep
+======================================================================
+
+  [7/38] DE40 done in 1672s OK
+  D1: 5,010 bars (2006-12-06 to 2026-04-02)
+  H1: 100,266 bars (2010-02-08 to 2026-04-02)
+  H4: 30,066 bars (2006-11-20 to 2026-04-02)
+  M15: 101,059 bars (2022-03-10 to 2026-04-02)
+  M5: 103,172 bars (2024-11-12 to 2026-04-02)
+  W1: 716 bars (2012-07-15 to 2026-03-29)
+
+  Completed in 2298.6s (38.3m)
+  Configs with trades: 112/112
+  Total trades across all configs: 115,567
+
+  TOP 10 BY SQN (min 30 trades):
+    #1: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=3,415 WR=61.6% SQN=43.94 AvgR=1.463 PF=4.78 AvgWin=7.0p AvgLoss=-2.3p AvgHold=0.1h
+    #2: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=3,415 WR=61.6% SQN=43.94 AvgR=1.463 PF=4.78 AvgWin=7.0p AvgLoss=-2.3p AvgHold=0.1h
+    #3: M5@M15 | limit | tp=rr=4.0 sl=zone
+       Trades=3,287 WR=55.9% SQN=41.39 AvgR=1.793 PF=4.99 AvgWin=9.2p AvgLoss=-2.3p AvgHold=0.1h
+    #4: M5@M15 | limit | tp=rr=4.0 sl=zone
+       Trades=3,287 WR=55.9% SQN=41.39 AvgR=1.793 PF=4.99 AvgWin=9.2p AvgLoss=-2.3p AvgHold=0.1h
+    #5: M5@M15 | limit | tp=rr=2.0 sl=zone
+       Trades=3,551 WR=65.6% SQN=40.45 AvgR=0.968 PF=3.86 AvgWin=4.7p AvgLoss=-2.3p AvgHold=0.1h
+    #6: M5@M15 | limit | tp=rr=2.0 sl=zone
+       Trades=3,551 WR=65.6% SQN=40.45 AvgR=0.968 PF=3.86 AvgWin=4.7p AvgLoss=-2.3p AvgHold=0.1h
+    #7: M15@H1 | limit | tp=rr=3.0 sl=zone
+       Trades=1,965 WR=62.3% SQN=34.10 AvgR=1.492 PF=4.89 AvgWin=9.6p AvgLoss=-3.2p AvgHold=0.3h
+    #8: M15@H1 | limit | tp=rr=3.0 sl=zone
+       Trades=1,965 WR=62.3% SQN=34.10 AvgR=1.492 PF=4.89 AvgWin=9.6p AvgLoss=-3.2p AvgHold=0.3h
+    #9: M15@H1 | limit | tp=rr=4.0 sl=zone
+       Trades=1,901 WR=56.8% SQN=32.34 AvgR=1.838 PF=5.28 AvgWin=12.9p AvgLoss=-3.2p AvgHold=0.4h
+    #10: M15@H1 | limit | tp=rr=4.0 sl=zone
+       Trades=1,901 WR=56.8% SQN=32.34 AvgR=1.838 PF=5.28 AvgWin=12.9p AvgLoss=-3.2p AvgHold=0.4h
+
+  Saved 42 partial configs to results\ETHUSD\ethusd_partial_tp_sweep.csv
+  Saved 70 cross-TF configs to results\ETHUSD\ethusd_cross_tf_sweep.csv
+
+======================================================================
+  EURCHF -- Cross-TF + Partial TP Sweep
+======================================================================
+
+  [8/38] ETHUSD done in 2331s OK
+  D1: 5,023 bars (2006-11-07 to 2026-04-02)
+  H1: 100,563 bars (2009-12-31 to 2026-04-02)
+  H4: 30,141 bars (2006-10-24 to 2026-04-02)
+  M15: 102,244 bars (2022-02-22 to 2026-04-02)
+  M5: 106,727 bars (2024-10-24 to 2026-04-02)
+  W1: 719 bars (2012-06-10 to 2026-03-29)
+
+  Completed in 2004.7s (33.4m)
+  Configs with trades: 112/112
+  Total trades across all configs: 95,972
+
+  TOP 10 BY SQN (min 30 trades):
+    #1: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=2,208 WR=61.7% SQN=35.45 AvgR=1.467 PF=4.94 AvgWin=5.7p AvgLoss=-1.8p AvgHold=0.2h
+    #2: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=2,208 WR=61.7% SQN=35.45 AvgR=1.467 PF=4.94 AvgWin=5.7p AvgLoss=-1.8p AvgHold=0.2h
+    #3: M5@M15 | limit | tp=rr=4.0 sl=zone
+       Trades=2,139 WR=56.2% SQN=33.78 AvgR=1.812 PF=5.26 AvgWin=7.5p AvgLoss=-1.8p AvgHold=0.2h
+    #4: M5@M15 | limit | tp=rr=4.0 sl=zone
+       Trades=2,139 WR=56.2% SQN=33.78 AvgR=1.812 PF=5.26 AvgWin=7.5p AvgLoss=-1.8p AvgHold=0.2h
+    #5: M5@M15 | limit | tp=rr=2.0 sl=zone
+       Trades=2,271 WR=65.3% SQN=31.94 AvgR=0.958 PF=3.89 AvgWin=3.8p AvgLoss=-1.8p AvgHold=0.1h
+    #6: M5@M15 | limit | tp=rr=2.0 sl=zone
+       Trades=2,271 WR=65.3% SQN=31.94 AvgR=0.958 PF=3.89 AvgWin=3.8p AvgLoss=-1.8p AvgHold=0.1h
+    #7: M15@H1 | limit | tp=rr=3.0 sl=zone
+       Trades=1,588 WR=62.7% SQN=31.01 AvgR=1.506 PF=4.99 AvgWin=9.5p AvgLoss=-3.2p AvgHold=0.4h
+    #8: M15@H1 | limit | tp=rr=3.0 sl=zone
+       Trades=1,588 WR=62.7% SQN=31.01 AvgR=1.506 PF=4.99 AvgWin=9.5p AvgLoss=-3.2p AvgHold=0.4h
+    #9: M15@H1 | limit | tp=rr=4.0 sl=zone
+       Trades=1,541 WR=57.6% SQN=29.82 AvgR=1.878 PF=5.34 AvgWin=12.7p AvgLoss=-3.2p AvgHold=0.4h
+    #10: M15@H1 | limit | tp=rr=4.0 sl=zone
+       Trades=1,541 WR=57.6% SQN=29.82 AvgR=1.878 PF=5.34 AvgWin=12.7p AvgLoss=-3.2p AvgHold=0.4h
+
+  Saved 42 partial configs to results\EURAUD\euraud_partial_tp_sweep.csv
+  Saved 70 cross-TF configs to results\EURAUD\euraud_cross_tf_sweep.csv
+
+======================================================================
+  EURGBP -- Cross-TF + Partial TP Sweep
+======================================================================
+
+  [9/38] EURAUD done in 2007s OK
+  D1: 5,101 bars (2006-07-28 to 2026-04-02)
+  H1: 102,435 bars (2009-09-29 to 2026-04-02)
+  H4: 30,609 bars (2006-07-14 to 2026-04-02)
+  M15: 109,732 bars (2021-11-03 to 2026-04-02)
+  M5: 129,192 bars (2024-07-08 to 2026-04-02)
+  W1: 735 bars (2012-03-04 to 2026-03-29)
+
+  Completed in 1939.4s (32.3m)
+  Configs with trades: 112/112
+  Total trades across all configs: 115,576
+
+  TOP 10 BY SQN (min 30 trades):
+    #1: M15@H1 | limit | tp=rr=3.0 sl=zone
+       Trades=2,091 WR=63.8% SQN=36.91 AvgR=1.552 PF=5.29 AvgWin=4.5p AvgLoss=-1.5p AvgHold=0.5h
+    #2: M15@H1 | limit | tp=rr=3.0 sl=zone
+       Trades=2,091 WR=63.8% SQN=36.91 AvgR=1.552 PF=5.29 AvgWin=4.5p AvgLoss=-1.5p AvgHold=0.5h
+    #3: H1@H4 | limit | tp=rr=3.0 sl=zone
+       Trades=2,245 WR=62.6% SQN=36.84 AvgR=1.505 PF=5.08 AvgWin=8.0p AvgLoss=-2.7p AvgHold=1.7h
+    #4: H1@H4 | limit | tp=rr=3.0 sl=zone
+       Trades=2,245 WR=62.6% SQN=36.84 AvgR=1.505 PF=5.08 AvgWin=8.0p AvgLoss=-2.7p AvgHold=1.7h
+    #5: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=2,366 WR=61.6% SQN=36.57 AvgR=1.463 PF=5.01 AvgWin=2.5p AvgLoss=-0.8p AvgHold=0.4h
+    #6: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=2,366 WR=61.6% SQN=36.57 AvgR=1.463 PF=5.01 AvgWin=2.5p AvgLoss=-0.8p AvgHold=0.4h
+    #7: M15@H1 | limit | tp=rr=4.0 sl=zone
+       Trades=2,033 WR=59.8% SQN=36.55 AvgR=1.988 PF=5.91 AvgWin=5.9p AvgLoss=-1.5p AvgHold=0.5h
+    #8: M15@H1 | limit | tp=rr=4.0 sl=zone
+       Trades=2,033 WR=59.8% SQN=36.55 AvgR=1.988 PF=5.91 AvgWin=5.9p AvgLoss=-1.5p AvgHold=0.5h
+    #9: H1@H4 | limit | tp=rr=4.0 sl=zone
+       Trades=2,163 WR=57.9% SQN=35.72 AvgR=1.896 PF=5.70 AvgWin=10.9p AvgLoss=-2.6p AvgHold=2.1h
+    #10: H1@H4 | limit | tp=rr=4.0 sl=zone
+       Trades=2,163 WR=57.9% SQN=35.72 AvgR=1.896 PF=5.70 AvgWin=10.9p AvgLoss=-2.6p AvgHold=2.1h
+
+  Saved 42 partial configs to results\EURCHF\eurchf_partial_tp_sweep.csv
+  Saved 70 cross-TF configs to results\EURCHF\eurchf_cross_tf_sweep.csv
+
+======================================================================
+  EURJPY -- Cross-TF + Partial TP Sweep
+======================================================================
+
+  [10/38] EURCHF done in 1991s OK
+  D1: 5,101 bars (2006-08-03 to 2026-04-02)
+  H1: 102,435 bars (2009-09-29 to 2026-04-02)
+  H4: 30,609 bars (2006-07-21 to 2026-04-02)
+  M15: 109,732 bars (2021-11-03 to 2026-04-02)
+  M5: 129,191 bars (2024-07-08 to 2026-04-02)
+  W1: 735 bars (2012-03-04 to 2026-03-29)
+
+  Completed in 2205.9s (36.8m)
+  Configs with trades: 112/112
+  Total trades across all configs: 125,037
+
+  TOP 10 BY SQN (min 30 trades):
+    #1: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=3,223 WR=62.9% SQN=44.48 AvgR=1.514 PF=5.04 AvgWin=1.8p AvgLoss=-0.6p AvgHold=0.1h
+    #2: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=3,223 WR=62.9% SQN=44.48 AvgR=1.514 PF=5.04 AvgWin=1.8p AvgLoss=-0.6p AvgHold=0.1h
+    #3: M5@M15 | limit | tp=rr=4.0 sl=zone
+       Trades=3,119 WR=57.8% SQN=42.79 AvgR=1.892 PF=5.35 AvgWin=2.4p AvgLoss=-0.6p AvgHold=0.2h
+    #4: M5@M15 | limit | tp=rr=4.0 sl=zone
+       Trades=3,119 WR=57.8% SQN=42.79 AvgR=1.892 PF=5.35 AvgWin=2.4p AvgLoss=-0.6p AvgHold=0.2h
+    #5: M5@M15 | limit | tp=rr=2.0 sl=zone
+       Trades=3,302 WR=66.5% SQN=40.33 AvgR=0.994 PF=3.97 AvgWin=1.2p AvgLoss=-0.6p AvgHold=0.1h
+    #6: M5@M15 | limit | tp=rr=2.0 sl=zone
+       Trades=3,302 WR=66.5% SQN=40.33 AvgR=0.994 PF=3.97 AvgWin=1.2p AvgLoss=-0.6p AvgHold=0.1h
+    #7: M15@H1 | limit | tp=rr=3.0 sl=zone
+       Trades=1,990 WR=63.9% SQN=36.09 AvgR=1.555 PF=4.82 AvgWin=3.6p AvgLoss=-1.3p AvgHold=0.3h
+    #8: M15@H1 | limit | tp=rr=3.0 sl=zone
+       Trades=1,990 WR=63.9% SQN=36.09 AvgR=1.555 PF=4.82 AvgWin=3.6p AvgLoss=-1.3p AvgHold=0.3h
+    #9: M5@M15 | limit | tp=rr=6.0 sl=zone
+       Trades=2,972 WR=47.2% SQN=35.98 AvgR=2.307 PF=5.22 AvgWin=3.5p AvgLoss=-0.6p AvgHold=0.2h
+    #10: M15@H1 | limit | tp=rr=4.0 sl=zone
+       Trades=1,933 WR=59.6% SQN=35.52 AvgR=1.982 PF=5.15 AvgWin=4.6p AvgLoss=-1.3p AvgHold=0.3h
+
+  Saved 42 partial configs to results\EURGBP\eurgbp_partial_tp_sweep.csv
+  Saved 70 cross-TF configs to results\EURGBP\eurgbp_cross_tf_sweep.csv
+
+======================================================================
+  EURUSD -- Cross-TF + Partial TP Sweep
+======================================================================
+
+  [11/38] EURGBP done in 2209s OK
+  D1: 5,101 bars (2006-08-04 to 2026-04-02)
+  H1: 102,435 bars (2009-09-29 to 2026-04-02)
+  H4: 30,609 bars (2006-07-24 to 2026-04-02)
+  M15: 109,737 bars (2021-11-03 to 2026-04-02)
+  M5: 129,208 bars (2024-07-08 to 2026-04-02)
+  W1: 735 bars (2012-03-04 to 2026-03-29)
+
+  Completed in 3038.1s (50.6m)
+  Configs with trades: 112/112
+  Total trades across all configs: 107,496
+
+  TOP 10 BY SQN (min 30 trades):
+    #1: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=2,733 WR=63.7% SQN=42.12 AvgR=1.550 PF=5.44 AvgWin=6.4p AvgLoss=-2.1p AvgHold=0.1h
+    #2: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=2,733 WR=63.7% SQN=42.12 AvgR=1.550 PF=5.44 AvgWin=6.4p AvgLoss=-2.1p AvgHold=0.1h
+    #3: M5@M15 | limit | tp=rr=4.0 sl=zone
+       Trades=2,645 WR=58.4% SQN=40.03 AvgR=1.919 PF=5.78 AvgWin=8.5p AvgLoss=-2.1p AvgHold=0.1h
+    #4: M5@M15 | limit | tp=rr=4.0 sl=zone
+       Trades=2,645 WR=58.4% SQN=40.03 AvgR=1.919 PF=5.78 AvgWin=8.5p AvgLoss=-2.1p AvgHold=0.1h
+    #5: M5@M15 | limit | tp=rr=2.0 sl=zone
+       Trades=2,804 WR=67.0% SQN=37.97 AvgR=1.011 PF=4.37 AvgWin=4.3p AvgLoss=-2.0p AvgHold=0.1h
+    #6: M5@M15 | limit | tp=rr=2.0 sl=zone
+       Trades=2,804 WR=67.0% SQN=37.97 AvgR=1.011 PF=4.37 AvgWin=4.3p AvgLoss=-2.0p AvgHold=0.1h
+    #7: M15@H1 | limit | tp=rr=3.0 sl=zone
+       Trades=1,681 WR=64.4% SQN=33.76 AvgR=1.577 PF=5.57 AvgWin=10.5p AvgLoss=-3.4p AvgHold=0.3h
+    #8: M15@H1 | limit | tp=rr=3.0 sl=zone
+       Trades=1,681 WR=64.4% SQN=33.76 AvgR=1.577 PF=5.57 AvgWin=10.5p AvgLoss=-3.4p AvgHold=0.3h
+    #9: M15@H1 | limit | tp=rr=4.0 sl=zone
+       Trades=1,631 WR=58.8% SQN=31.82 AvgR=1.940 PF=5.80 AvgWin=14.0p AvgLoss=-3.4p AvgHold=0.4h
+    #10: M15@H1 | limit | tp=rr=4.0 sl=zone
+       Trades=1,631 WR=58.8% SQN=31.82 AvgR=1.940 PF=5.80 AvgWin=14.0p AvgLoss=-3.4p AvgHold=0.4h
+
+  Saved 42 partial configs to results\EURJPY\eurjpy_partial_tp_sweep.csv
+  Saved 70 cross-TF configs to results\EURJPY\eurjpy_cross_tf_sweep.csv
+
+======================================================================
+  F40 -- Cross-TF + Partial TP Sweep
+
+  [12/38] EURJPY done in 3098s OK
+======================================================================
+  D1: 2,252 bars (2017-06-14 to 2026-04-02)
+  H1: 44,908 bars (2012-08-06 to 2026-04-02)
+  H4: 12,852 bars (2012-08-06 to 2026-04-02)
+  M15: 101,295 bars (2020-03-19 to 2026-04-02)
+  M5: 103,875 bars (2024-06-06 to 2026-04-02)
+  W1: 323 bars (2020-01-26 to 2026-03-29)
+
+  Completed in 3041.4s (50.7m)
+  Configs with trades: 112/112
+  Total trades across all configs: 100,331
+
+  TOP 10 BY SQN (min 30 trades):
+    #1: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=2,525 WR=63.6% SQN=40.36 AvgR=1.546 PF=4.86 AvgWin=3.3p AvgLoss=-1.2p AvgHold=0.1h
+    #2: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=2,525 WR=63.6% SQN=40.36 AvgR=1.546 PF=4.86 AvgWin=3.3p AvgLoss=-1.2p AvgHold=0.1h
+    #3: M5@M15 | limit | tp=rr=4.0 sl=zone
+       Trades=2,457 WR=59.0% SQN=39.27 AvgR=1.949 PF=5.31 AvgWin=4.4p AvgLoss=-1.2p AvgHold=0.1h
+    #4: M5@M15 | limit | tp=rr=4.0 sl=zone
+       Trades=2,457 WR=59.0% SQN=39.27 AvgR=1.949 PF=5.31 AvgWin=4.4p AvgLoss=-1.2p AvgHold=0.1h
+    #5: M5@M15 | limit | tp=rr=2.0 sl=zone
+       Trades=2,603 WR=67.3% SQN=37.00 AvgR=1.020 PF=3.91 AvgWin=2.2p AvgLoss=-1.2p AvgHold=0.1h
+    #6: M5@M15 | limit | tp=rr=2.0 sl=zone
+       Trades=2,603 WR=67.3% SQN=37.00 AvgR=1.020 PF=3.91 AvgWin=2.2p AvgLoss=-1.2p AvgHold=0.1h
+    #7: M5@M15 | limit | tp=rr=6.0 sl=zone
+       Trades=2,328 WR=48.6% SQN=33.14 AvgR=2.404 PF=5.19 AvgWin=6.4p AvgLoss=-1.2p AvgHold=0.2h
+    #8: M15@H1 | limit | tp=rr=3.0 sl=zone
+       Trades=1,493 WR=64.2% SQN=31.55 AvgR=1.567 PF=5.21 AvgWin=6.3p AvgLoss=-2.2p AvgHold=0.4h
+    #9: M15@H1 | limit | tp=rr=3.0 sl=zone
+       Trades=1,493 WR=64.2% SQN=31.55 AvgR=1.567 PF=5.21 AvgWin=6.3p AvgLoss=-2.2p AvgHold=0.4h
+    #10: M15@H1 | limit | tp=rr=4.0 sl=zone
+       Trades=1,447 WR=59.6% SQN=30.72 AvgR=1.982 PF=5.63 AvgWin=8.3p AvgLoss=-2.2p AvgHold=0.4h
+
+  Saved 42 partial configs to results\EURUSD\eurusd_partial_tp_sweep.csv
+  Saved 70 cross-TF configs to results\EURUSD\eurusd_cross_tf_sweep.csv
+
+======================================================================
+  GBPAUD -- Cross-TF + Partial TP Sweep
+======================================================================
+
+  [13/38] EURUSD done in 3044s OK
+  D1: 4,818 bars (2007-08-21 to 2026-04-02)
+  H1: 100,266 bars (2010-02-04 to 2026-04-02)
+  H4: 28,863 bars (2007-08-21 to 2026-04-02)
+  M15: 101,059 bars (2022-03-10 to 2026-04-02)
+  M5: 103,173 bars (2024-11-12 to 2026-04-02)
+  W1: 716 bars (2012-07-15 to 2026-03-29)

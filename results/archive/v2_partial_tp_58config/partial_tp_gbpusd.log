@@ -1,0 +1,66 @@
+Partial TP Sweep: 58 configs x 1 symbols
+
+======================================================================
+  GBPUSD — Cross-TF TP Sweep
+======================================================================
+  D1: 5,101 bars (2006-08-03 to 2026-04-02)
+  H1: 102,435 bars (2009-09-29 to 2026-04-02)
+  H4: 30,609 bars (2006-07-21 to 2026-04-02)
+  M15: 109,732 bars (2021-11-03 to 2026-04-02)
+  M5: 129,189 bars (2024-07-08 to 2026-04-02)
+  W1: 735 bars (2012-03-04 to 2026-03-29)
+
+  Completed in 933.1s (15.6m)
+  Configs with trades: 58/58
+  Total trades across all configs: 52,753
+
+  TOP 15 BY SQN (min 30 trades):
+    #1: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=2,402 WR=63.7% SQN=39.43 AvgR=1.548 PF=5.10 TotalPips=0 AvgWin=3.9p AvgLoss=-1.3p AvgHold=0.1h
+    #2: M5@M15 | limit | tp=rr=4.0 sl=zone
+       Trades=2,332 WR=58.2% SQN=37.38 AvgR=1.910 PF=5.35 TotalPips=0 AvgWin=5.1p AvgLoss=-1.3p AvgHold=0.2h
+    #3: M5@M15 | limit | tp=rr=2.0 sl=zone
+       Trades=2,467 WR=66.9% SQN=35.45 AvgR=1.008 PF=3.95 TotalPips=0 AvgWin=2.6p AvgLoss=-1.3p AvgHold=0.1h
+    #4: M15@H1 | limit | tp=rr=3.0 sl=zone
+       Trades=1,522 WR=61.8% SQN=29.56 AvgR=1.473 PF=5.01 TotalPips=0 AvgWin=8.1p AvgLoss=-2.6p AvgHold=0.3h
+    #5: M15@H1 | limit | tp=rr=4.0 sl=zone
+       Trades=1,484 WR=57.2% SQN=28.96 AvgR=1.861 PF=5.43 TotalPips=0 AvgWin=10.8p AvgLoss=-2.6p AvgHold=0.4h
+    #6: H1@H4 | limit | tp=rr=4.0 sl=zone
+       Trades=1,291 WR=57.8% SQN=27.48 AvgR=1.889 PF=5.47 TotalPips=0 AvgWin=21.3p AvgLoss=-5.3p AvgHold=1.7h
+    #7: H1@H4 | limit | tp=rr=3.0 sl=zone
+       Trades=1,315 WR=61.1% SQN=26.81 AvgR=1.443 PF=4.79 TotalPips=0 AvgWin=16.1p AvgLoss=-5.3p AvgHold=1.4h
+    #8: M15@H1 | limit | tp=rr=2.0 sl=zone
+       Trades=1,556 WR=64.7% SQN=25.84 AvgR=0.940 PF=3.75 TotalPips=0 AvgWin=5.4p AvgLoss=-2.6p AvgHold=0.3h
+    #9: H1@H4 | limit | tp=rr=2.0 sl=zone
+       Trades=1,347 WR=64.2% SQN=23.64 AvgR=0.927 PF=3.78 TotalPips=0 AvgWin=11.0p AvgLoss=-5.2p AvgHold=1.2h
+    #10: M5@M15 | limit | tp=partial(70%@rr3.0+H1) sl=zone
+       Trades=1,824 WR=63.7% SQN=21.91 AvgR=1.770 PF=5.55 TotalPips=0 AvgWin=4.4p AvgLoss=-1.4p AvgHold=1.9h
+    #11: M5@M15 | limit | tp=partial(50%@rr3.0+H1) sl=zone
+       Trades=1,824 WR=63.7% SQN=16.13 AvgR=1.918 PF=5.89 TotalPips=0 AvgWin=4.6p AvgLoss=-1.4p AvgHold=1.9h
+    #12: M5@M15 | limit | tp=partial(70%@rr3.0+H4) sl=zone
+       Trades=1,536 WR=63.6% SQN=16.07 AvgR=1.606 PF=5.40 TotalPips=0 AvgWin=4.2p AvgLoss=-1.4p AvgHold=3.5h
+    #13: M15@H1 | limit | tp=partial(70%@rr3.0+H4) sl=zone
+       Trades=1,167 WR=61.1% SQN=15.25 AvgR=1.848 PF=5.77 TotalPips=0 AvgWin=9.9p AvgLoss=-2.7p AvgHold=6.8h
+    #14: M5@M15 | limit | tp=partial(50%@rr2.0+H1) sl=zone
+       Trades=1,844 WR=67.1% SQN=14.30 AvgR=1.637 PF=5.61 TotalPips=0 AvgWin=3.8p AvgLoss=-1.4p AvgHold=1.9h
+    #15: H1@H4 | limit | tp=partial(70%@rr3.0+D1) sl=zone
+       Trades=959 WR=62.3% SQN=13.98 AvgR=1.826 PF=5.82 TotalPips=0 AvgWin=19.2p AvgLoss=-5.4p AvgHold=35.8h
+
+  Saved 58 configs to results\GBPUSD\gbpusd_partial_tp_sweep.csv
+
+======================================================================
+  ALL DONE — 1 symbols in 934s (15.6m)
+======================================================================
+
+Output files:
+  EURUSD/eurusd_cross_tf_sweep.csv (44.1 KB)
+  EURUSD/eurusd_retest_sweep.csv (674.2 KB)
+  GBPJPY/gbpjpy_cross_tf_sweep.csv (43.9 KB)
+  GBPJPY/gbpjpy_retest_sweep.csv (46.3 KB)
+  GBPUSD/gbpusd_cross_tf_sweep.csv (44.0 KB)
+  GBPUSD/gbpusd_partial_tp_sweep.csv (49.3 KB)
+  GBPUSD/gbpusd_retest_sweep.csv (672.9 KB)
+  USDJPY/usdjpy_cross_tf_sweep.csv (43.7 KB)
+  USDJPY/usdjpy_retest_sweep.csv (47.4 KB)
+  XAUUSD/xauusd_cross_tf_sweep.csv (44.0 KB)
+  XAUUSD/xauusd_retest_sweep.csv (672.2 KB)
