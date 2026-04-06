@@ -55,6 +55,8 @@ def default_configs() -> list[RetestConfig]:
             c.max_replacement_count, c.direction, c.session_filter,
             c.cascade_filter, c.cascade_lookback, c.cascade_direction,
             c.entry_mode, c.sl_mode, c.tp_mode, c.fixed_rr, c.sl_atr_mult,
+            c.tp_htf,
+            c.partial_tp, c.partial_unit1_pct, c.partial_unit1_rr, c.partial_unit2_tp,
             c.touch_policy, c.max_concurrent,
             c.birth_pattern_filter, c.retest_number_filter,
             c.time_since_creation_filter, c.parent_tf_boundary_filter,
@@ -483,6 +485,156 @@ def default_configs() -> list[RetestConfig]:
         _add(RetestConfig(tf_pair=pair, entry_mode="limit", sl_mode="zone",
              bias_filter="against_daily", hma_filter="with_hma_h1",
              hma_period=24))
+
+    return configs
+
+
+def cross_tf_tp_configs() -> list[RetestConfig]:
+    """Focused sweep: limit entries with cross-TF TP targets.
+
+    Only limit configs targeting opposing zones on HIGHER TFs.
+    Estimated ~80-100 configs — much smaller than the 797-config discovery sweep.
+    """
+    configs: list[RetestConfig] = []
+    seen: set[str] = set()
+
+    def _add(c: RetestConfig) -> None:
+        key = (
+            c.tf_pair, c.touch_type, c.bias_filter, c.zone_role_filter,
+            c.age_filter, c.test_count_filter, c.min_bias_strength,
+            c.max_replacement_count, c.direction, c.session_filter,
+            c.cascade_filter, c.cascade_lookback, c.cascade_direction,
+            c.entry_mode, c.sl_mode, c.tp_mode, c.fixed_rr, c.sl_atr_mult,
+            c.tp_htf,
+            c.partial_tp, c.partial_unit1_pct, c.partial_unit1_rr, c.partial_unit2_tp,
+            c.touch_policy, c.max_concurrent,
+            c.birth_pattern_filter, c.retest_number_filter,
+            c.time_since_creation_filter, c.parent_tf_boundary_filter,
+            c.inside_w_zone_filter, c.d_to_w_filter,
+            c.near_pdh_pdl, c.premium_discount,
+            c.layered_sl_mode,
+            c.hma_filter, c.hma_cross_trigger, str(c.hma_cross_lookback),
+            c.hma_period, c.hma_source,
+        )
+        if key not in seen:
+            seen.add(key)
+            configs.append(c)
+
+    # Entry pairs and their valid HTF TP targets
+    # (only target TFs that are HIGHER than the context TF)
+    pair_targets = {
+        "M5@M15": ["H1", "H4", "D1"],
+        "M5@H1":  ["H4", "D1"],
+        "M15@H1": ["H4", "D1"],
+        "M15@H4": ["D1"],
+        "H1@H4":  ["D1"],
+    }
+
+    for pair, targets in pair_targets.items():
+        for tp_htf in targets:
+            # Baseline: limit + htf_zone TP
+            _add(RetestConfig(
+                tf_pair=pair, entry_mode="limit", sl_mode="zone",
+                tp_mode="htf_zone", tp_htf=tp_htf))
+
+            # With daily bias
+            _add(RetestConfig(
+                tf_pair=pair, entry_mode="limit", sl_mode="zone",
+                tp_mode="htf_zone", tp_htf=tp_htf, bias_filter="with_daily"))
+
+            # Against daily bias
+            _add(RetestConfig(
+                tf_pair=pair, entry_mode="limit", sl_mode="zone",
+                tp_mode="htf_zone", tp_htf=tp_htf, bias_filter="against_daily"))
+
+            # With retest 4-10 filter (the quality sweet spot)
+            _add(RetestConfig(
+                tf_pair=pair, entry_mode="limit", sl_mode="zone",
+                tp_mode="htf_zone", tp_htf=tp_htf, retest_number_filter="4-10"))
+
+    # Also include the existing best limit configs with fixed R:R for comparison
+    best_pairs = ["M5@M15", "M15@H1", "H1@H4"]
+    for pair in best_pairs:
+        for rr in [2.0, 3.0, 4.0, 6.0, 8.0, 10.0]:
+            _add(RetestConfig(
+                tf_pair=pair, entry_mode="limit", sl_mode="zone",
+                tp_mode="fixed_rr", fixed_rr=rr))
+
+    return configs
+
+
+def partial_tp_configs() -> list[RetestConfig]:
+    """Focused sweep: partial TP (scalp lock + HTF runner) on same entry.
+
+    Combines Profile A (fixed R:R scalp) with Profile B (cross-TF swing)
+    using 2-unit partial exits. Estimated ~60-80 configs.
+    """
+    configs: list[RetestConfig] = []
+    seen: set[str] = set()
+
+    def _add(c: RetestConfig) -> None:
+        key = (
+            c.tf_pair, c.touch_type, c.bias_filter, c.zone_role_filter,
+            c.age_filter, c.test_count_filter, c.min_bias_strength,
+            c.max_replacement_count, c.direction, c.session_filter,
+            c.cascade_filter, c.cascade_lookback, c.cascade_direction,
+            c.entry_mode, c.sl_mode, c.tp_mode, c.fixed_rr, c.sl_atr_mult,
+            c.tp_htf,
+            c.partial_tp, c.partial_unit1_pct, c.partial_unit1_rr, c.partial_unit2_tp,
+            c.touch_policy, c.max_concurrent,
+            c.birth_pattern_filter, c.retest_number_filter,
+            c.time_since_creation_filter, c.parent_tf_boundary_filter,
+            c.inside_w_zone_filter, c.d_to_w_filter,
+            c.near_pdh_pdl, c.premium_discount,
+            c.layered_sl_mode,
+            c.hma_filter, c.hma_cross_trigger, str(c.hma_cross_lookback),
+            c.hma_period, c.hma_source,
+        )
+        if key not in seen:
+            seen.add(key)
+            configs.append(c)
+
+    partial_htf_targets = {
+        "M5@M15": ["H1", "H4"],
+        "M5@H1":  ["H4", "D1"],
+        "M15@H1": ["H4", "D1"],
+        "H1@H4":  ["D1"],
+    }
+
+    for pair, targets in partial_htf_targets.items():
+        for htf in targets:
+            # 50/50 split, Unit 1 at rr=3.0
+            _add(RetestConfig(tf_pair=pair, entry_mode="limit", sl_mode="zone",
+                 partial_tp=True, partial_unit1_rr=3.0, partial_unit2_tp=htf))
+            # 70/30 split
+            _add(RetestConfig(tf_pair=pair, entry_mode="limit", sl_mode="zone",
+                 partial_tp=True, partial_unit1_pct=0.7,
+                 partial_unit1_rr=3.0, partial_unit2_tp=htf))
+            # Unit 1 at rr=2.0
+            _add(RetestConfig(tf_pair=pair, entry_mode="limit", sl_mode="zone",
+                 partial_tp=True, partial_unit1_rr=2.0, partial_unit2_tp=htf))
+            # Bias filters
+            for bias in ["against_daily", "with_daily"]:
+                _add(RetestConfig(tf_pair=pair, entry_mode="limit", sl_mode="zone",
+                     partial_tp=True, partial_unit1_rr=3.0,
+                     partial_unit2_tp=htf, bias_filter=bias))
+            # Retest 4-10
+            _add(RetestConfig(tf_pair=pair, entry_mode="limit", sl_mode="zone",
+                 partial_tp=True, partial_unit1_rr=3.0,
+                 partial_unit2_tp=htf, retest_number_filter="4-10"))
+
+    # Comparison: best pure fixed_rr and pure htf_zone configs
+    best_pairs = ["M5@M15", "M15@H1", "H1@H4"]
+    for pair in best_pairs:
+        # Pure scalp baselines
+        for rr in [2.0, 3.0, 4.0]:
+            _add(RetestConfig(tf_pair=pair, entry_mode="limit", sl_mode="zone",
+                 tp_mode="fixed_rr", fixed_rr=rr))
+    # Pure cross-TF baselines
+    for pair, targets in partial_htf_targets.items():
+        for htf in targets:
+            _add(RetestConfig(tf_pair=pair, entry_mode="limit", sl_mode="zone",
+                 tp_mode="htf_zone", tp_htf=htf))
 
     return configs
 

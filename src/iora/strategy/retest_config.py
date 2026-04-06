@@ -57,9 +57,10 @@ class RetestConfig:
 
     # SL/TP
     sl_mode: str = "zone"                    # "zone", "atr", "period", "structure"
-    tp_mode: str = "fixed_rr"               # "zone", "fixed_rr", "period"
-    fixed_rr: float = 2.0                    # When tp_mode == "fixed_rr"
+    tp_mode: str = "fixed_rr"               # "zone", "fixed_rr", "period", "htf_zone"
+    fixed_rr: float = 2.0                    # When tp_mode == "fixed_rr" (also fallback for htf_zone)
     sl_atr_mult: float = 1.5                # When sl_mode == "atr"
+    tp_htf: str = "H4"                      # Target TF for tp_mode="htf_zone" ("H1", "H4", "D1")
 
     # Phase 2 filters
     birth_pattern_filter: str = "any"        # "compression", "trending", "expansion", "any"
@@ -82,6 +83,12 @@ class RetestConfig:
     hma_cross_lookback: int | str = 20     # entry-TF bars, or "until_reverse"
     hma_period: int = 24                   # HMA period (12 or 24)
     hma_source: str = "close"             # "close" or "ha_close"
+
+    # Partial take-profit (2-unit exit: scalp lock + HTF runner)
+    partial_tp: bool = False                 # Enable partial TP mode
+    partial_unit1_pct: float = 0.5           # Unit 1 fraction (scalp lock)
+    partial_unit1_rr: float = 3.0            # Unit 1 TP as R:R multiple
+    partial_unit2_tp: str = "H1"             # Unit 2 TP target TF ("H1", "H4", "D1")
 
     # Touch policy (spec dimension: first_touch vs until_broken)
     touch_policy: str = "until_broken"       # "first_touch" = zone consumed after one entry;

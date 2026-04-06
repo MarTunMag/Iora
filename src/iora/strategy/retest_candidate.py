@@ -47,6 +47,11 @@ class RetestCandidate:
     next_opposing_zone_price: float = nan  # Nearest opposing zone on context TF (structural TP)
     d1_range_midpoint: float = nan         # Midpoint of D1 supply top + D1 demand bottom
 
+    # Cross-TF TP targets — opposing zones on higher TFs
+    opposing_zone_h1: float = nan          # Nearest H1 opposing zone
+    opposing_zone_h4: float = nan          # Nearest H4 opposing zone
+    opposing_zone_d1: float = nan          # Nearest D1 opposing zone
+
     # Breaker zones inside the context zone (for layered limit orders)
     # Each tuple: (zone_top, zone_bottom, zone_tf) of a broken LTF zone
     breaker_zones: list[tuple[float, float, str]] = field(default_factory=list)
@@ -426,6 +431,23 @@ def build_retest_candidates(
                 ts, event.zone_side, ctx.close,
             )
 
+            # Cross-TF TP targets: opposing zones on H1, H4, D1
+            opp_h1 = nan
+            opp_h4 = nan
+            opp_d1 = nan
+            for target_tf in ["H1", "H4", "D1"]:
+                target_ts = state.tick_states.get(target_tf)
+                if target_ts is not None and target_tf != ctx_tf:
+                    opp_price = _find_opposing_zone_price(
+                        target_ts, event.zone_side, ctx.close,
+                    )
+                    if target_tf == "H1":
+                        opp_h1 = opp_price
+                    elif target_tf == "H4":
+                        opp_h4 = opp_price
+                    else:
+                        opp_d1 = opp_price
+
             # D1 range midpoint for premium/discount filter
             d1_mid = _compute_d1_range_midpoint(state)
 
@@ -463,6 +485,9 @@ def build_retest_candidates(
                 ltf_choch_zone_boundary=ltf_boundary,
                 next_opposing_zone_price=opposing_price,
                 d1_range_midpoint=d1_mid,
+                opposing_zone_h1=opp_h1,
+                opposing_zone_h4=opp_h4,
+                opposing_zone_d1=opp_d1,
                 breaker_zones=breaker_zones,
                 hma_direction_h1=hma_dir_h1,
                 hma_direction_h4=hma_dir_h4,

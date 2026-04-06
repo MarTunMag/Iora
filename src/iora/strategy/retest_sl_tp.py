@@ -97,15 +97,38 @@ def compute_retest_tp(
     sl_price: float,
     mode: str = "fixed_rr",
     fixed_rr: float = 2.0,
+    tp_htf: str = "H4",
 ) -> float:
     """Compute take-profit for a retest entry.
 
     Modes:
         fixed_rr: TP at fixed R:R multiple from SL distance
         period: TP at period tracker extreme (hi for longs, lo for shorts)
+        zone: TP at nearest opposing zone on context TF
+        htf_zone: TP at nearest opposing zone on a higher TF (tp_htf)
     """
     c = candidate
     risk = abs(c.entry_price - sl_price)
+
+    if mode == "htf_zone":
+        # Look up opposing zone on the target HTF
+        htf_price = float('nan')
+        if tp_htf == "H1":
+            htf_price = c.opposing_zone_h1
+        elif tp_htf == "H4":
+            htf_price = c.opposing_zone_h4
+        elif tp_htf == "D1":
+            htf_price = c.opposing_zone_d1
+
+        if not isnan(htf_price):
+            if c.direction == "long" and htf_price > c.entry_price:
+                return htf_price
+            if c.direction == "short" and htf_price < c.entry_price:
+                return htf_price
+        # Fallback to fixed_rr if no HTF zone found
+        if c.direction == "long":
+            return c.entry_price + fixed_rr * risk
+        return c.entry_price - fixed_rr * risk
 
     if mode == "zone":
         if not isnan(c.next_opposing_zone_price):

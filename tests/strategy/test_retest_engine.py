@@ -307,3 +307,121 @@ def test_cascade_layered_sl_modes():
     )
     assert abs(sl_htf_short - (1.2550 + buf)) < 1e-8
     assert sl_htf_short > sl_own_short
+
+
+def test_partial_tp_full_win():
+    """Partial TP: both Unit 1 and Unit 2 hit → blended P&L."""
+    ts = pd.Timestamp("2025-01-15 10:00")
+    # Long demand: entry at zone bottom, opposing H1 zone above
+    c = _candidate(ts=ts, side="demand", entry_price=1.2500,
+                   zone_top=1.2510, zone_bottom=1.2490, atr=0.0030)
+    # Set opposing_zone_h1 for the HTF TP target
+    c = RetestCandidate(
+        event=c.event, zone_top=c.zone_top, zone_bottom=c.zone_bottom,
+        entry_price=c.entry_price, atr=c.atr,
+        period_hi=c.period_hi, period_lo=c.period_lo,
+        opposing_zone_h1=1.2700,  # H1 TP target — 200 pips above entry
+    )
+    # Limit price = zone_bottom + 0.1 * atr = 1.2490 + 0.0003 = 1.2493
+    # SL = zone_bottom - 0.15 * atr = 1.2490 - 0.00045 = 1.24855
+    # Risk = 1.2493 - 1.24855 = 0.00075
+    # Unit 1 TP @ rr=3.0: 1.2493 + 3.0 * 0.00075 = 1.25155
+    # Unit 2 TP @ H1 zone: 1.2700
+    #
+    # Bar 1: entry bar (low reaches limit)
+    # Bar 2: price rises to hit Unit 1 TP (high >= 1.25155)
+    # Bar 3: price keeps rising to hit Unit 2 TP (high >= 1.2700)
+    bar_data = pd.DataFrame(
+        {"open": [1.2510, 1.2510, 1.2600],
+         "high": [1.2520, 1.2520, 1.2750],  # Bar 3 hits H1 TP
+         "low":  [1.2480, 1.2500, 1.2580],  # Bar 1 reaches limit
+         "close": [1.2510, 1.2515, 1.2720],
+         "tick_volume": [100, 100, 100]},
+        index=pd.date_range(ts, periods=3, freq="1h"),
+    )
+    cfg = RetestConfig(
+        tf_pair="H1@H4", touch_type="wick_touch", bias_filter="with_daily",
+        entry_mode="limit", sl_mode="zone",
+        partial_tp=True, partial_unit1_pct=0.5,
+        partial_unit1_rr=3.0, partial_unit2_tp="H1",
+    )
+    result = evaluate_retest_config([c], cfg, symbol="GBPUSD", bar_data=bar_data)
+    assert len(result.trades) == 1
+    trade = result.trades[0]
+    assert trade.exit_reason == "partial_full"
+    assert trade.pnl_pips > 0  # positive — both units won
+
+
+def test_partial_tp_breakeven():
+    """Partial TP: Unit 1 locks profit, Unit 2 hits breakeven → positive P&L."""
+    ts = pd.Timestamp("2025-01-15 10:00")
+    c = _candidate(ts=ts, side="demand", entry_price=1.2500,
+                   zone_top=1.2510, zone_bottom=1.2490, atr=0.0030)
+    c = RetestCandidate(
+        event=c.event, zone_top=c.zone_top, zone_bottom=c.zone_bottom,
+        entry_price=c.entry_price, atr=c.atr,
+        period_hi=c.period_hi, period_lo=c.period_lo,
+        opposing_zone_h1=1.2700,  # Far away — Unit 2 won't reach
+    )
+    # Limit price = 1.2493, SL = 1.24855, risk = 0.00075
+    # Unit 1 TP = 1.2493 + 3.0 * 0.00075 = 1.25155
+    #
+    # Bar 1: entry (low reaches limit)
+    # Bar 2: rises to hit Unit 1 TP → SL moves to breakeven (1.2493)
+    # Bar 3: drops back to breakeven → Unit 2 closed at entry price
+    bar_data = pd.DataFrame(
+        {"open": [1.2510, 1.2510, 1.2520],
+         "high": [1.2520, 1.2520, 1.2530],  # Bar 2 hits Unit 1 TP
+         "low":  [1.2480, 1.2500, 1.2490],  # Bar 3 hits breakeven SL
+         "close": [1.2510, 1.2515, 1.2495],
+         "tick_volume": [100, 100, 100]},
+        index=pd.date_range(ts, periods=3, freq="1h"),
+    )
+    cfg = RetestConfig(
+        tf_pair="H1@H4", touch_type="wick_touch", bias_filter="with_daily",
+        entry_mode="limit", sl_mode="zone",
+        partial_tp=True, partial_unit1_pct=0.5,
+        partial_unit1_rr=3.0, partial_unit2_tp="H1",
+    )
+    result = evaluate_retest_config([c], cfg, symbol="GBPUSD", bar_data=bar_data)
+    assert len(result.trades) == 1
+    trade = result.trades[0]
+    assert trade.exit_reason == "partial_be"
+    # P&L should be positive — Unit 1 profit locked
+    assert trade.pnl_pips > 0
+
+
+def test_partial_tp_sl_hit():
+    """Partial TP: SL hit before Unit 1 locks → full loss."""
+    ts = pd.Timestamp("2025-01-15 10:00")
+    c = _candidate(ts=ts, side="demand", entry_price=1.2500,
+                   zone_top=1.2510, zone_bottom=1.2490, atr=0.0030)
+    c = RetestCandidate(
+        event=c.event, zone_top=c.zone_top, zone_bottom=c.zone_bottom,
+        entry_price=c.entry_price, atr=c.atr,
+        period_hi=c.period_hi, period_lo=c.period_lo,
+        opposing_zone_h1=1.2700,
+    )
+    # Limit price = 1.2493, SL = 1.24855
+    #
+    # Bar 1: entry (low reaches limit)
+    # Bar 2: drops to SL → full loss on both units
+    bar_data = pd.DataFrame(
+        {"open": [1.2510, 1.2495],
+         "high": [1.2520, 1.2500],
+         "low":  [1.2480, 1.2480],  # Bar 2: SL hit
+         "close": [1.2510, 1.2485],
+         "tick_volume": [100, 100]},
+        index=pd.date_range(ts, periods=2, freq="1h"),
+    )
+    cfg = RetestConfig(
+        tf_pair="H1@H4", touch_type="wick_touch", bias_filter="with_daily",
+        entry_mode="limit", sl_mode="zone",
+        partial_tp=True, partial_unit1_pct=0.5,
+        partial_unit1_rr=3.0, partial_unit2_tp="H1",
+    )
+    result = evaluate_retest_config([c], cfg, symbol="GBPUSD", bar_data=bar_data)
+    assert len(result.trades) == 1
+    trade = result.trades[0]
+    assert trade.exit_reason == "sl_hit"
+    assert trade.pnl_pips < 0  # full loss
