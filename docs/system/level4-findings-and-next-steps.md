@@ -474,6 +474,30 @@ The current system enters with LTF precision (M5 limit, 1.5 pip SL) but exits at
 
 **This is where ML enters:** Partial TP at the context-TF zone (guaranteed small win), trail remainder to HTF zone (potential large win). ML learns the optimal partial/trail strategy per context.
 
+### CRITICAL: Limit Order TTL (Time-To-Live)
+
+**Discovery:** The backtest evaluates limit orders on the SAME bar as the retest event — instant fill or nothing. Only 7.1% of M5@M15 retest events fill the limit on that bar (166 out of 2,325). In LIVE trading, the limit order stays pending and may fill on subsequent bars.
+
+**Impact:** The backtest is MISSING fills that a real limit order would catch. Price often reaches the zone edge 1-3 bars later. But stale limit orders (still pending after many bars) may fill in deteriorated conditions (zone losing structural significance).
+
+**What needs testing:**
+
+| Limit TTL | Expected Fill Rate | Expected Quality | Test |
+|:---------:|:------------------:|:----------------:|:----:|
+| 1 bar (current backtest) | 7.1% | Highest — instant fill at fresh zone | ✅ Done |
+| 3 bars (15 min) | ~12-15% | High — zone still fresh | ⬜ Test |
+| 6 bars (30 min) | ~18-22% | Good — zone still valid | ⬜ Test |
+| 12 bars (1 hour) | ~25-30% | Medium — zone may be getting tested | ⬜ Test |
+| Until zone breaks | ~40-50% | Mixed — includes stale fills | ⬜ Test |
+
+**Cancel conditions for live:**
+- TTL expires (configurable bar count)
+- Zone is body-close broken (invalidated)
+- New opposing zone created on same TF (setup invalidated)
+- Price moves more than 2*ATR from zone (R:R degraded)
+
+**For the JoMa live runner:** Must implement limit order cancellation logic. Currently the system places limits but doesn't cancel stale ones. Add `max_pending_bars` config parameter.
+
 ### Immediate (Day 1)
 1. Run 4-symbol sweep (EURUSD, USDJPY, XAUUSD, GBPJPY) with `--parallel-symbols 2`
 2. Analyze cross-symbol results — does limit effect hold?
