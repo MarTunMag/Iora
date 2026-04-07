@@ -72,3 +72,33 @@ HA trailing REDUCES AvgR across all TF pairs. The HA reversal fires before the U
 | `JoMa/configs/production.json` | Updated to v3.0.0 with limit_ttl=0 |
 | `JoMa/docs/strategy/PRODUCTION_CONFIGS.md` | V3 metrics added |
 | `Iora/docs/system/level4-findings-and-next-steps.md` | TTL discovery section |
+
+---
+
+## 6. Live Diagnosis (April 6-7) — Root Cause Found
+
+### The Problem
+31 limits placed, 4 filled, 4 SL hits, 0 TP hits = 0% WR. Balance dropped $889.97 → $788.91 (-$101).
+
+### Root Cause
+Three bugs in the live runner:
+
+1. **Pending limits blocked new entries.** `max_concurrent=1` counted pending orders as "open positions." When a limit sat unfilled, NO new limits could be placed — even when fresher, better zones appeared. The system was stuck on stale limits.
+
+2. **No zone-break cancellation.** When a zone was body-close broken, the pending limit at that zone's edge stayed active. It eventually filled at a zone that was already invalidated → instant SL hit.
+
+3. **Broker-side expiry.** 19 of 31 limits "disappeared" — broker expired them. The system wasn't managing its own order lifecycle.
+
+### Fixes Applied (V3)
+
+1. **Pending limits don't block entries.** Only FILLED positions count toward `max_concurrent`. Pending = "maybe" → doesn't prevent new signals.
+
+2. **Pending limit replacement.** New retest on same symbol → cancel old limit, place new one at fresher zone edge. Logged as `LIMIT_REPLACED`.
+
+3. **Zone-break cancellation.** Every M5 bar, check if the zone behind each pending limit has been body-close broken. If yes → cancel immediately. Logged as `LIMIT_CANCELLED | zone broken`.
+
+### Why This Wasn't Caught in Backtest
+The backtest's `limit_ttl=1` (same-bar fill or discard) never had pending limits carry forward — there was nothing to get "stuck." The V3 `limit_ttl=0` (until zone breaks) requires the cancellation logic that only exists in live. The V3 sweep tested the FILL behavior correctly but didn't simulate the pending-order-management behavior that live requires.
+
+### Lesson
+Backtest parity requires not just matching entry/exit logic but also ORDER LIFECYCLE management: placement, replacement, and cancellation. The V3 sweep engine should be updated to match this behavior for full parity.
