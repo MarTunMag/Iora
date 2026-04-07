@@ -11,6 +11,7 @@ from typing import Optional
 
 import pandas as pd
 
+from iora.indicators.heikin_ashi import calculate_heikin_ashi
 from iora.strategy.retest_candidate import RetestCandidate
 from iora.strategy.retest_config import RetestConfig
 from iora.strategy.filter_funnel import FilterFunnel, apply_filters, apply_filters_with_cascade
@@ -88,6 +89,15 @@ class RetestResult:
 # ---------------------------------------------------------------------------
 
 @dataclass(slots=True)
+class _PendingLimit:
+    """Unfilled limit order waiting to be triggered on subsequent bars."""
+    candidate: RetestCandidate
+    limit_price: float
+    placed_bar_idx: int
+    zone_key: tuple[float, float]
+
+
+@dataclass(slots=True)
 class _OpenTrade:
     """Internal tracking of a live simulated trade."""
     candidate: RetestCandidate
@@ -97,12 +107,21 @@ class _OpenTrade:
     symbol: str
     pip_size: float
 
+    # Spread-adjusted entry (for P&L calculation)
+    effective_entry: float = float('nan')  # Entry + spread cost (nan = same as candidate entry)
+
     # Partial TP state
     partial: bool = False
     unit1_pct: float = 0.5
     unit1_tp: float = float('nan')   # Unit 1 TP price (fixed R:R)
     unit1_closed: bool = False       # Unit 1 has been locked
     original_sl: float = float('nan')  # SL before breakeven move
+    breakeven_sl: float = float('nan')  # BE level after Unit 1 TP (entry + buffer)
+
+    @property
+    def _entry_for_pnl(self) -> float:
+        """Entry price for P&L: effective_entry if spread applied, else candidate entry."""
+        return self.effective_entry if not math.isnan(self.effective_entry) else self.candidate.entry_price
 
     def close_at(
         self,
@@ -113,13 +132,14 @@ class _OpenTrade:
         """Close this trade and produce a RetestTradeRecord."""
         c = self.candidate
         ev = c.event
+        entry = self._entry_for_pnl
 
         direction = 1 if c.direction == "long" else -1
-        raw_pnl = (exit_price - c.entry_price) * direction
+        raw_pnl = (exit_price - entry) * direction
         pnl_pips = raw_pnl / self.pip_size if self.pip_size > 0 else 0.0
 
-        risk_raw = abs(c.entry_price - (self.original_sl if self.partial else self.sl))
-        tp_raw = abs(self.tp - c.entry_price)
+        risk_raw = abs(entry - (self.original_sl if self.partial else self.sl))
+        tp_raw = abs(self.tp - entry)
         risk_pips = risk_raw / self.pip_size if self.pip_size > 0 else 0.0
         reward_pips = tp_raw / self.pip_size if self.pip_size > 0 else 0.0
         return_r = pnl_pips / risk_pips if risk_pips > 0 else 0.0
@@ -131,7 +151,7 @@ class _OpenTrade:
             direction=direction,
             entry_time=ev.timestamp,
             exit_time=exit_time,
-            entry_price=c.entry_price,
+            entry_price=entry,
             exit_price=exit_price,
             sl_price=self.original_sl if self.partial else self.sl,
             tp_price=self.tp,
@@ -169,45 +189,47 @@ class _OpenTrade:
         """
         c = self.candidate
         ev = c.event
+        entry = self._entry_for_pnl
         direction = 1 if c.direction == "long" else -1
-        risk_raw = abs(c.entry_price - self.original_sl)
+        risk_raw = abs(entry - self.original_sl)
         risk_pips = risk_raw / self.pip_size if self.pip_size > 0 else 0.0
 
         unit2_pct = 1.0 - self.unit1_pct
 
         if reason == "sl_hit":
             # Full loss on both units — SL hit before Unit 1 locked
-            raw_pnl = (self.original_sl - c.entry_price) * direction
+            raw_pnl = (self.original_sl - entry) * direction
             pnl_pips = raw_pnl / self.pip_size if self.pip_size > 0 else 0.0
             exit_price = self.original_sl
         elif reason == "partial_full":
             # Both units hit their TPs
-            u1_pnl = (self.unit1_tp - c.entry_price) * direction
-            u2_pnl = (self.tp - c.entry_price) * direction
+            u1_pnl = (self.unit1_tp - entry) * direction
+            u2_pnl = (self.tp - entry) * direction
             raw_pnl = self.unit1_pct * u1_pnl + unit2_pct * u2_pnl
             pnl_pips = raw_pnl / self.pip_size if self.pip_size > 0 else 0.0
             exit_price = self.tp  # Report Unit 2 TP as exit price
         elif reason == "partial_be":
-            # Unit 1 locked profit, Unit 2 at breakeven
-            u1_pnl = (self.unit1_tp - c.entry_price) * direction
-            raw_pnl = self.unit1_pct * u1_pnl  # Unit 2 = 0 (breakeven)
+            # Unit 1 locked profit, Unit 2 at breakeven SL (may include buffer)
+            u1_pnl = (self.unit1_tp - entry) * direction
+            u2_pnl = (self.breakeven_sl - entry) * direction  # 0 if no buffer
+            raw_pnl = self.unit1_pct * u1_pnl + unit2_pct * u2_pnl
             pnl_pips = raw_pnl / self.pip_size if self.pip_size > 0 else 0.0
-            exit_price = c.entry_price  # Breakeven
+            exit_price = self.breakeven_sl
         else:
             # end_of_data or unknown — close at current levels
             # If unit1 was locked, compute blended; otherwise simple close
             if self.unit1_closed:
-                u1_pnl = (self.unit1_tp - c.entry_price) * direction
+                u1_pnl = (self.unit1_tp - entry) * direction
                 # Unit 2 still open — no specific exit price available
                 raw_pnl = self.unit1_pct * u1_pnl  # Conservative: Unit 2 at BE
                 pnl_pips = raw_pnl / self.pip_size if self.pip_size > 0 else 0.0
-                exit_price = c.entry_price
+                exit_price = entry
             else:
                 raw_pnl = 0.0
                 pnl_pips = 0.0
-                exit_price = c.entry_price
+                exit_price = entry
 
-        reward_raw = abs(self.tp - c.entry_price)
+        reward_raw = abs(self.tp - entry)
         reward_pips = reward_raw / self.pip_size if self.pip_size > 0 else 0.0
         return_r = pnl_pips / risk_pips if risk_pips > 0 else 0.0
         rr_ratio = reward_pips / risk_pips if risk_pips > 0 else 0.0
@@ -218,7 +240,7 @@ class _OpenTrade:
             direction=direction,
             entry_time=ev.timestamp,
             exit_time=exit_time,
-            entry_price=c.entry_price,
+            entry_price=entry,
             exit_price=exit_price,
             sl_price=self.original_sl,
             tp_price=self.tp,
@@ -246,6 +268,31 @@ class _OpenTrade:
 # evaluate_retest_config — main entry point
 # ---------------------------------------------------------------------------
 
+def prepare_ha_trail_data(
+    entry_tf_data: pd.DataFrame,
+    trail_tf_data: pd.DataFrame,
+) -> pd.Series:
+    """Compute HA low/high on trail TF and forward-fill onto entry TF index.
+
+    Returns a DataFrame with 'ha_trail_low' and 'ha_trail_high' columns
+    aligned to the entry TF index.
+    """
+    ha = calculate_heikin_ashi(trail_tf_data)
+    # Forward-fill trail TF HA values onto entry TF timestamps
+    trail = pd.DataFrame({
+        "ha_trail_low": ha["low"],
+        "ha_trail_high": ha["high"],
+    }, index=ha.index)
+    # merge_asof: for each entry bar, find the most recent trail bar
+    aligned = pd.merge_asof(
+        entry_tf_data[["open"]],  # Left side: entry TF index
+        trail,
+        left_index=True, right_index=True,
+        direction="backward",
+    )
+    return aligned[["ha_trail_low", "ha_trail_high"]]
+
+
 def evaluate_retest_config(
     candidates: list[RetestCandidate],
     config: RetestConfig,
@@ -253,6 +300,7 @@ def evaluate_retest_config(
     bar_data: Optional[pd.DataFrame] = None,
     pip_size: Optional[float] = None,
     all_candidates: Optional[list[RetestCandidate]] = None,
+    trail_tf_data: Optional[pd.DataFrame] = None,
 ) -> RetestResult:
     """Filter candidates, simulate trades, return RetestResult.
 
@@ -288,8 +336,13 @@ def evaluate_retest_config(
     # Resolve pip size
     ps = pip_size if pip_size is not None else _get_pip_size(symbol)
 
+    # Prepare HA trail data if needed
+    ha_trail: Optional[pd.DataFrame] = None
+    if config.unit2_trail != "none" and trail_tf_data is not None:
+        ha_trail = prepare_ha_trail_data(bar_data, trail_tf_data)
+
     # Simulate trades bar by bar
-    trades = _simulate_with_bars(passed, config, symbol, bar_data, ps)
+    trades = _simulate_with_bars(passed, config, symbol, bar_data, ps, ha_trail)
     result.trades = trades
 
     # Compute metrics
@@ -307,6 +360,7 @@ def _simulate_with_bars(
     symbol: str,
     bar_data: pd.DataFrame,
     pip_size: float,
+    ha_trail: Optional[pd.DataFrame] = None,
 ) -> list[RetestTradeRecord]:
     """Bar-by-bar simulation: entries from candidate map, SL/TP exit checks."""
 
@@ -332,12 +386,17 @@ def _simulate_with_bars(
 
     trades: list[RetestTradeRecord] = []
     open_trades: list[_OpenTrade] = []
+    pending_limits: list[_PendingLimit] = []
     trade_counter = 0
+
+    use_limit = config.entry_mode == "limit"
+    carry_limits = use_limit and config.limit_ttl != 1
 
     for idx, (ts, row) in enumerate(bar_data.iterrows()):
         bar_open = float(row["open"])
         bar_high = float(row["high"])
         bar_low = float(row["low"])
+        bar_close = float(row["close"])
 
         # --- Exit check (all open trades) ---
         still_open: list[_OpenTrade] = []
@@ -374,6 +433,71 @@ def _simulate_with_bars(
                     still_open.append(ot)
         open_trades = still_open
 
+        # --- HA trail SL update (tighten only, never widen) ---
+        if ha_trail is not None and config.unit2_trail != "none":
+            for ot in open_trades:
+                if ot.partial and ot.unit1_closed:
+                    c = ot.candidate
+                    if ts in ha_trail.index:
+                        ha_row = ha_trail.loc[ts]
+                    else:
+                        continue
+                    if c.direction == "long":
+                        trail_level = float(ha_row["ha_trail_low"])
+                        if not math.isnan(trail_level):
+                            ot.sl = max(ot.sl, trail_level)
+                    else:
+                        trail_level = float(ha_row["ha_trail_high"])
+                        if not math.isnan(trail_level):
+                            ot.sl = min(ot.sl, trail_level)
+
+        # --- Pending limit fill check (before new entries) ---
+        if carry_limits and pending_limits and len(open_trades) < max_open:
+            surviving: list[_PendingLimit] = []
+            filled_one = False
+            for pl in pending_limits:
+                if filled_one:
+                    surviving.append(pl)
+                    continue
+
+                bars_pending = idx - pl.placed_bar_idx
+
+                # TTL expiry: 0 = until zone breaks (no bar limit)
+                if config.limit_ttl > 0 and bars_pending > config.limit_ttl:
+                    continue  # Expired — drop
+
+                # Zone break cancellation (body-close through boundary)
+                if pl.candidate.direction == "long" and bar_close < pl.candidate.zone_bottom:
+                    continue  # Zone broken
+                if pl.candidate.direction == "short" and bar_close > pl.candidate.zone_top:
+                    continue  # Zone broken
+
+                # Check fill
+                if pl.candidate.direction == "long" and bar_low <= pl.limit_price:
+                    _enter_from_pending(
+                        pl, config, symbol, pip_size, ts,
+                        open_trades, trade_counter,
+                    )
+                    trade_counter += 1
+                    filled_one = True
+                    if config.touch_policy == "first_touch":
+                        consumed_zones.add(pl.zone_key)
+                    continue  # Don't re-add to surviving
+
+                if pl.candidate.direction == "short" and bar_high >= pl.limit_price:
+                    _enter_from_pending(
+                        pl, config, symbol, pip_size, ts,
+                        open_trades, trade_counter,
+                    )
+                    trade_counter += 1
+                    filled_one = True
+                    if config.touch_policy == "first_touch":
+                        consumed_zones.add(pl.zone_key)
+                    continue
+
+                surviving.append(pl)
+            pending_limits = surviving
+
         # --- Entry check ---
         if len(open_trades) >= max_open or ts not in entry_map:
             continue
@@ -395,18 +519,39 @@ def _simulate_with_bars(
             trade_counter += len(open_trades) - before
         else:
             # Standard market or limit entry
-            use_limit = config.entry_mode == "limit"
             if use_limit:
                 limit_buf = _LIMIT_BUFFER_ATR * candidate.atr
-                if candidate.direction == "long":
-                    limit_price = candidate.zone_bottom + limit_buf
-                    filled = bar_low <= limit_price
+                if config.limit_edge == "top":
+                    # Entry near zone top (where price first enters zone)
+                    if candidate.direction == "long":
+                        limit_price = candidate.zone_top - limit_buf
+                        filled = bar_low <= limit_price
+                    else:
+                        limit_price = candidate.zone_bottom + limit_buf
+                        filled = bar_high >= limit_price
                 else:
-                    limit_price = candidate.zone_top - limit_buf
-                    filled = bar_high >= limit_price
+                    # Default "bottom": deepest entry near zone boundary
+                    if candidate.direction == "long":
+                        limit_price = candidate.zone_bottom + limit_buf
+                        filled = bar_low <= limit_price
+                    else:
+                        limit_price = candidate.zone_top - limit_buf
+                        filled = bar_high >= limit_price
 
                 if not filled:
-                    continue  # Limit order not reached — no entry
+                    if carry_limits:
+                        # Don't replace existing pending for same zone
+                        already_pending = any(
+                            p.zone_key == zone_key for p in pending_limits
+                        )
+                        if not already_pending:
+                            pending_limits.append(_PendingLimit(
+                                candidate=candidate,
+                                limit_price=limit_price,
+                                placed_bar_idx=idx,
+                                zone_key=zone_key,
+                            ))
+                    continue  # Limit order not reached — no entry this bar
 
                 # Override entry price on candidate for SL/TP computation
                 candidate = RetestCandidate(
@@ -427,20 +572,30 @@ def _simulate_with_bars(
                     inside_w_zone=candidate.inside_w_zone,
                 )
 
-            # Compute SL
+            # Compute SL (with configurable buffer)
             sl = compute_retest_sl(
                 candidate,
                 mode=config.sl_mode,
                 atr_mult=config.sl_atr_mult,
+                buffer_atr=config.sl_buffer_atr,
             )
+            # Enforce minimum SL distance
+            sl = _apply_min_sl(candidate.entry_price, sl, candidate.direction,
+                               config.min_sl_pips, pip_size)
+            # Compute spread-adjusted entry
+            eff_entry = _compute_effective_entry(
+                candidate.entry_price, candidate.direction,
+                config.spread_pips, pip_size)
 
             if config.partial_tp:
                 # Partial TP: Unit 1 at fixed R:R, Unit 2 at HTF zone
                 risk = abs(candidate.entry_price - sl)
                 if candidate.direction == "long":
                     unit1_tp = candidate.entry_price + config.partial_unit1_rr * risk
+                    be_sl = candidate.entry_price - config.breakeven_buffer_atr * candidate.atr
                 else:
                     unit1_tp = candidate.entry_price - config.partial_unit1_rr * risk
+                    be_sl = candidate.entry_price + config.breakeven_buffer_atr * candidate.atr
 
                 # Unit 2 TP: HTF opposing zone
                 tp = compute_retest_tp(
@@ -461,11 +616,13 @@ def _simulate_with_bars(
                     trade_id=trade_id,
                     symbol=symbol,
                     pip_size=pip_size,
+                    effective_entry=eff_entry,
                     partial=True,
                     unit1_pct=config.partial_unit1_pct,
                     unit1_tp=unit1_tp,
                     unit1_closed=False,
                     original_sl=sl,
+                    breakeven_sl=be_sl,
                 ))
             else:
                 tp = compute_retest_tp(
@@ -486,6 +643,7 @@ def _simulate_with_bars(
                     trade_id=trade_id,
                     symbol=symbol,
                     pip_size=pip_size,
+                    effective_entry=eff_entry,
                 ))
 
         if config.touch_policy == "first_touch":
@@ -526,7 +684,7 @@ def _check_partial_exit(
         u1_hit = (bar_high >= ot.unit1_tp) if direction == 1 else (bar_low <= ot.unit1_tp)
         if u1_hit:
             ot.unit1_closed = True
-            ot.sl = c.entry_price  # Move SL to breakeven
+            ot.sl = ot.breakeven_sl  # Move SL to breakeven (+ optional buffer)
 
             # Also check if Unit 2 TP hit on the same bar
             u2_hit = (bar_high >= ot.tp) if direction == 1 else (bar_low <= ot.tp)
@@ -558,6 +716,108 @@ def _check_partial_exit(
             return True
 
         return False
+
+
+def _apply_min_sl(
+    entry_price: float,
+    sl: float,
+    direction: str,
+    min_sl_pips: float,
+    pip_size: float,
+) -> float:
+    """Enforce minimum SL distance. Returns adjusted SL if too tight."""
+    if min_sl_pips <= 0:
+        return sl
+    sl_dist_pips = abs(entry_price - sl) / pip_size if pip_size > 0 else 0.0
+    if sl_dist_pips >= min_sl_pips:
+        return sl
+    if direction == "long":
+        return entry_price - min_sl_pips * pip_size
+    return entry_price + min_sl_pips * pip_size
+
+
+def _compute_effective_entry(
+    entry_price: float,
+    direction: str,
+    spread_pips: float,
+    pip_size: float,
+) -> float:
+    """Compute spread-adjusted entry price for P&L calculation."""
+    if spread_pips <= 0:
+        return float('nan')  # nan = no adjustment
+    spread_cost = spread_pips * pip_size
+    if direction == "long":
+        return entry_price + spread_cost  # Buy at ask
+    return entry_price - spread_cost  # Sell at bid
+
+
+def _enter_from_pending(
+    pl: _PendingLimit,
+    config: RetestConfig,
+    symbol: str,
+    pip_size: float,
+    fill_ts: pd.Timestamp,
+    open_trades: list[_OpenTrade],
+    trade_counter: int,
+) -> None:
+    """Convert a filled pending limit into an open trade."""
+    # Override entry price on candidate with the limit price
+    candidate = RetestCandidate(
+        event=pl.candidate.event,
+        zone_top=pl.candidate.zone_top,
+        zone_bottom=pl.candidate.zone_bottom,
+        entry_price=pl.limit_price,
+        atr=pl.candidate.atr,
+        period_hi=pl.candidate.period_hi,
+        period_lo=pl.candidate.period_lo,
+        ltf_choch_zone_boundary=pl.candidate.ltf_choch_zone_boundary,
+        next_opposing_zone_price=pl.candidate.next_opposing_zone_price,
+        opposing_zone_h1=pl.candidate.opposing_zone_h1,
+        opposing_zone_h4=pl.candidate.opposing_zone_h4,
+        opposing_zone_d1=pl.candidate.opposing_zone_d1,
+        breaker_zones=pl.candidate.breaker_zones,
+        d_to_w_relationship=pl.candidate.d_to_w_relationship,
+        inside_w_zone=pl.candidate.inside_w_zone,
+    )
+
+    sl = compute_retest_sl(candidate, mode=config.sl_mode, atr_mult=config.sl_atr_mult,
+                           buffer_atr=config.sl_buffer_atr)
+    sl = _apply_min_sl(candidate.entry_price, sl, candidate.direction,
+                       config.min_sl_pips, pip_size)
+    eff_entry = _compute_effective_entry(
+        candidate.entry_price, candidate.direction, config.spread_pips, pip_size)
+
+    if config.partial_tp:
+        risk = abs(candidate.entry_price - sl)
+        if candidate.direction == "long":
+            unit1_tp = candidate.entry_price + config.partial_unit1_rr * risk
+            be_sl = candidate.entry_price - config.breakeven_buffer_atr * candidate.atr
+        else:
+            unit1_tp = candidate.entry_price - config.partial_unit1_rr * risk
+            be_sl = candidate.entry_price + config.breakeven_buffer_atr * candidate.atr
+
+        tp = compute_retest_tp(
+            candidate, sl_price=sl, mode="htf_zone",
+            fixed_rr=config.partial_unit1_rr, tp_htf=config.partial_unit2_tp,
+        )
+        trade_id = f"{symbol}_{config.tf_pair}_{trade_counter + 1:04d}"
+        open_trades.append(_OpenTrade(
+            candidate=candidate, sl=sl, tp=tp, trade_id=trade_id,
+            symbol=symbol, pip_size=pip_size, effective_entry=eff_entry,
+            partial=True, unit1_pct=config.partial_unit1_pct,
+            unit1_tp=unit1_tp, unit1_closed=False, original_sl=sl,
+            breakeven_sl=be_sl,
+        ))
+    else:
+        tp = compute_retest_tp(
+            candidate, sl_price=sl, mode=config.tp_mode,
+            fixed_rr=config.fixed_rr, tp_htf=config.tp_htf,
+        )
+        trade_id = f"{symbol}_{config.tf_pair}_{trade_counter + 1:04d}"
+        open_trades.append(_OpenTrade(
+            candidate=candidate, sl=sl, tp=tp, trade_id=trade_id,
+            symbol=symbol, pip_size=pip_size, effective_entry=eff_entry,
+        ))
 
 
 def _enter_layered(

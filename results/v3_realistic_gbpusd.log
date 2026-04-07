@@ -11,3 +11,44 @@ Symbols: GBPUSD
   M15: 109,732 bars (2021-11-03 to 2026-04-02)
   M5: 129,189 bars (2024-07-08 to 2026-04-02)
   W1: 735 bars (2012-03-04 to 2026-03-29)
+
+  Completed in 2260.8s (37.7m)
+  Configs with trades: 105/105
+  Total trades across all configs: 258,584
+
+  TOP 10 BY SQN (min 30 trades):
+    #1: M5@M15 | limit | tp=rr=3.0 sl=zone ttl=0
+       Trades=6,493 WR=52.6% SQN=44.61 AvgR=1.106 PF=3.28 AvgWin=3.5p AvgLoss=-1.2p AvgHold=56.6h
+    #2: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=2,402 WR=63.7% SQN=39.43 AvgR=1.548 PF=5.10 AvgWin=3.9p AvgLoss=-1.3p AvgHold=0.1h
+    #3: M5@M15 | limit | tp=rr=3.0 sl=zone ttl=12
+       Trades=4,501 WR=54.2% SQN=39.36 AvgR=1.169 PF=3.56 AvgWin=3.6p AvgLoss=-1.2p AvgHold=0.6h
+    #4: M5@M15 | limit | tp=rr=3.0 sl=zone ttl=6
+       Trades=3,951 WR=55.7% SQN=38.85 AvgR=1.228 PF=3.79 AvgWin=3.7p AvgLoss=-1.2p AvgHold=0.4h
+    #5: M5@M15 | limit | tp=rr=3.0 sl=zone ttl=3
+       Trades=3,419 WR=57.0% SQN=37.76 AvgR=1.279 PF=3.97 AvgWin=3.8p AvgLoss=-1.3p AvgHold=0.3h
+    #6: M15@H1 | limit | tp=rr=3.0 sl=zone ttl=0
+       Trades=4,233 WR=50.5% SQN=33.13 AvgR=1.018 PF=3.11 AvgWin=7.0p AvgLoss=-2.3p AvgHold=194.6h
+    #7: M15@H1 | limit | tp=partial(50%@rr3.0+H1) sl=zone ttl=0
+       Trades=4,233 WR=50.5% SQN=33.13 AvgR=1.018 PF=3.11 AvgWin=7.0p AvgLoss=-2.3p AvgHold=194.6h
+    #8: M15@H1 | limit | tp=partial(50%@rr3.0+H1) sl=zone ttl=0 be_buf=0.25 trail=ha_m15
+       Trades=4,233 WR=50.5% SQN=33.13 AvgR=1.018 PF=3.11 AvgWin=7.0p AvgLoss=-2.3p AvgHold=194.6h
+    #9: M15@H1 | limit | tp=partial(50%@rr3.0+H1) sl=zone ttl=0 be_buf=0.25 trail=ha_h1
+       Trades=4,233 WR=50.5% SQN=33.13 AvgR=1.018 PF=3.11 AvgWin=7.0p AvgLoss=-2.3p AvgHold=194.6h
+    #10: M15@H1 | limit | tp=partial(50%@rr3.0+H1) sl=zone ttl=0 be_buf=0.25
+       Trades=4,233 WR=50.5% SQN=33.13 AvgR=1.018 PF=3.11 AvgWin=7.0p AvgLoss=-2.3p AvgHold=194.6h
+
+  Saved 105 configs to results\GBPUSD\gbpusd_v3_realistic_sweep.csv
+
+  [1/1] done
+
+======================================================================
+  ALL DONE -- 1 symbols in 2264s (37.7m)
+======================================================================
+
+Output files:
+  F40/f40_cross_tf_sweep.csv (57.3 KB)
+  F40/f40_partial_tp_sweep.csv (35.7 KB)
+  GBPAUD/gbpaud_cross_tf_sweep.csv (57.7 KB)
+  GBPAUD/gbpaud_partial_tp_sweep.csv (36.2 KB)
+  GBPUSD/gbpusd_v3_realistic_sweep.csv (90.2 KB)

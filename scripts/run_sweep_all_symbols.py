@@ -61,9 +61,17 @@ def run_symbol(symbol: str, storage: ParquetStorage, configs: list[RetestConfig]
         for i, r in enumerate(top, 1):
             m = r.metrics
             cfg = r.config
-            print(f"    #{i}: {cfg.tf_pair} | touch={cfg.touch_type} "
+            hma_info = ""
+            if cfg.hma_filter != "any":
+                hma_info += f" hma={cfg.hma_filter}"
+            if cfg.hma_cross_trigger != "none":
+                hma_info += f" cross={cfg.hma_cross_trigger}@{cfg.hma_cross_lookback}"
+            entry_info = cfg.entry_mode
+            if cfg.entry_mode == "cascade_layered":
+                entry_info += f"/{cfg.layered_sl_mode}"
+            print(f"    #{i}: {cfg.tf_pair} | entry={entry_info} "
                   f"bias={cfg.bias_filter} role={cfg.zone_role_filter} "
-                  f"age={cfg.age_filter} sl={cfg.sl_mode} rr={cfg.fixed_rr}",
+                  f"sl={cfg.sl_mode} rr={cfg.fixed_rr}{hma_info}",
                   flush=True)
             print(f"       Trades={m.get('total_trades',0):,} "
                   f"WR={m.get('win_rate',0)*100:.1f}% "
@@ -108,6 +116,12 @@ def run_symbol(symbol: str, storage: ParquetStorage, configs: list[RetestConfig]
             "d_to_w_filter": r.config.d_to_w_filter,
             "near_pdh_pdl": r.config.near_pdh_pdl,
             "premium_discount": r.config.premium_discount,
+            "layered_sl_mode": r.config.layered_sl_mode,
+            "hma_filter": r.config.hma_filter,
+            "hma_cross_trigger": r.config.hma_cross_trigger,
+            "hma_cross_lookback": str(r.config.hma_cross_lookback),
+            "hma_period": r.config.hma_period,
+            "hma_source": r.config.hma_source,
             "total_candidates": r.total_candidates,
             "passed_filters": len(r.funnel.passed) if r.funnel else 0,
             "num_trades": len(r.trades),

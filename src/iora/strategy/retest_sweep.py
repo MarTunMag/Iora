@@ -709,9 +709,15 @@ def run_retest_sweep(
     results: list[RetestResult] = []
     for cfg in configs:
         bar_data = bar_data_by_entry_tf.get(cfg.entry_tf)
+        # Resolve HA trail TF data if needed
+        trail_tf_data = None
+        if cfg.unit2_trail != "none":
+            trail_tf = cfg.unit2_trail.replace("ha_", "").upper()
+            trail_tf_data = data_by_tf.get(trail_tf)
         result = evaluate_retest_config(
             candidates=all_candidates, config=cfg, symbol=symbol,
             bar_data=bar_data, all_candidates=all_candidates,
+            trail_tf_data=trail_tf_data,
         )
         results.append(result)
 

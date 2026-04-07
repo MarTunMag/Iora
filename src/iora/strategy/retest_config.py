@@ -51,6 +51,8 @@ class RetestConfig:
     # Entry mode
     entry_mode: str = "market"              # "market" = close price, "limit" = zone edge,
                                              # "cascade_layered" = limit at breaker zones
+    limit_edge: str = "bottom"              # "bottom" = deepest entry (tightest SL, low fill rate),
+                                             # "top" = zone top entry (wider SL, high fill rate)
     # Layered cascade SL mode (only used when entry_mode == "cascade_layered")
     layered_sl_mode: str = "own"            # "own" = SL behind each breaker zone,
                                              # "htf" = SL behind HTF context zone
@@ -89,6 +91,21 @@ class RetestConfig:
     partial_unit1_pct: float = 0.5           # Unit 1 fraction (scalp lock)
     partial_unit1_rr: float = 3.0            # Unit 1 TP as R:R multiple
     partial_unit2_tp: str = "H1"             # Unit 2 TP target TF ("H1", "H4", "D1")
+    breakeven_buffer_atr: float = 0.0        # Buffer below breakeven after Unit 1 TP lock
+                                             # 0.0 = exact BE, 0.25 = entry - 0.25*ATR for longs
+                                             # (gives room for wicks below entry)
+    unit2_trail: str = "none"                # Unit 2 trailing stop: "none" = fixed TP (current),
+                                             # "ha_m5", "ha_m15", "ha_m30", "ha_h1" = HA trail on TF
+
+    # Spread and SL reality modeling
+    spread_pips: float = 0.0                 # Spread cost in pips (0 = no spread, 1.5 = typical FX)
+    min_sl_pips: float = 0.0                 # Minimum SL distance in pips (0 = no floor)
+    sl_buffer_atr: float = 0.15              # ATR fraction buffer beyond zone edge for SL
+                                             # Default 0.15 matches _ZONE_BUFFER_ATR
+
+    # Limit order TTL (time-to-live in entry-TF bars)
+    limit_ttl: int = 1                       # 1 = same-bar only (current), 3/6/12 = carry forward,
+                                             # 0 = until zone breaks (body-close)
 
     # Touch policy (spec dimension: first_touch vs until_broken)
     touch_policy: str = "until_broken"       # "first_touch" = zone consumed after one entry;

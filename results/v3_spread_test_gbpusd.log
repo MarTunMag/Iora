@@ -1,0 +1,103 @@
+V3 Spread Reality Test Sweep: 125 configs x 1 symbols
+Parallel workers: 1
+Symbols: GBPUSD
+
+======================================================================
+  GBPUSD -- V3 Spread Reality Test Sweep
+======================================================================
+  D1: 5,101 bars (2006-08-03 to 2026-04-02)
+  H1: 102,435 bars (2009-09-29 to 2026-04-02)
+  H4: 30,609 bars (2006-07-21 to 2026-04-02)
+  M15: 109,732 bars (2021-11-03 to 2026-04-02)
+  M5: 129,189 bars (2024-07-08 to 2026-04-02)
+  W1: 735 bars (2012-03-04 to 2026-03-29)
+
+  Completed in 2742.8s (45.7m)
+  Configs with trades: 125/125
+  Total trades across all configs: 402,932
+
+  TOP 10 BY SQN (min 30 trades):
+    #1: M5@M15 | limit | tp=rr=3.0 sl=zone ttl=0
+       Trades=6,493 WR=52.6% SQN=44.61 AvgR=1.106 PF=3.28 AvgWin=3.5p AvgLoss=-1.2p AvgHold=56.6h
+    #2: M5@M15 | limit | tp=rr=3.0 sl=zone ttl=0
+       Trades=6,493 WR=52.6% SQN=44.61 AvgR=1.106 PF=3.28 AvgWin=3.5p AvgLoss=-1.2p AvgHold=56.6h
+    #3: M15@H1 | limit | tp=rr=3.0 sl=zone ttl=0
+       Trades=4,233 WR=50.5% SQN=33.13 AvgR=1.018 PF=3.11 AvgWin=7.0p AvgLoss=-2.3p AvgHold=194.6h
+    #4: M15@H1 | limit | tp=rr=3.0 sl=zone ttl=0
+       Trades=4,233 WR=50.5% SQN=33.13 AvgR=1.018 PF=3.11 AvgWin=7.0p AvgLoss=-2.3p AvgHold=194.6h
+    #5: H1@H4 | limit | tp=rr=3.0 sl=zone ttl=0 minSL=5.0p
+       Trades=3,577 WR=51.8% SQN=32.08 AvgR=1.072 PF=3.23 AvgWin=17.7p AvgLoss=-5.9p AvgHold=523.1h
+    #6: H1@H4 | limit | tp=rr=3.0 sl=zone ttl=0
+       Trades=3,614 WR=51.5% SQN=31.93 AvgR=1.062 PF=3.21 AvgWin=15.5p AvgLoss=-5.2p AvgHold=520.4h
+    #7: H1@H4 | limit | tp=rr=3.0 sl=zone ttl=0
+       Trades=3,614 WR=51.5% SQN=31.93 AvgR=1.062 PF=3.21 AvgWin=15.5p AvgLoss=-5.2p AvgHold=520.4h
+    #8: H1@H4 | limit | tp=rr=3.0 sl=zone ttl=0 spread=0.5p minSL=5.0p
+       Trades=3,577 WR=51.8% SQN=29.41 AvgR=0.903 PF=2.89 AvgWin=17.2p AvgLoss=-6.4p AvgHold=523.1h
+    #9: H1@H4 | limit | tp=rr=3.0 sl=zone ttl=0 spread=0.5p
+       Trades=3,614 WR=51.5% SQN=28.56 AvgR=0.856 PF=2.83 AvgWin=15.0p AvgLoss=-5.7p AvgHold=520.4h
+    #10: H1@H4 | limit | tp=rr=3.0 sl=zone ttl=0 spread=1.0p minSL=5.0p
+       Trades=3,577 WR=51.8% SQN=26.75 AvgR=0.760 PF=2.60 AvgWin=16.7p AvgLoss=-6.9p AvgHold=523.1h
+
+  Saved 125 configs to results\GBPUSD\gbpusd_v3_spread_test_sweep.csv
+
+  [1/1] done
+
+======================================================================
+  ALL DONE -- 1 symbols in 2748s (45.8m)
+======================================================================
+
+Output files:
+  F40/f40_cross_tf_sweep.csv (57.3 KB)
+  F40/f40_partial_tp_sweep.csv (35.7 KB)
+  GBPAUD/gbpaud_cross_tf_sweep.csv (57.7 KB)
+  GBPAUD/gbpaud_partial_tp_sweep.csv (36.2 KB)
+  GBPJPY/gbpjpy_cross_tf_sweep.csv (57.8 KB)
+  GBPJPY/gbpjpy_partial_tp_sweep.csv (35.9 KB)
+  GBPJPY/gbpjpy_retest_sweep.csv (674.7 KB)
+  GBPNZD/gbpnzd_cross_tf_sweep.csv (58.4 KB)
+  GBPNZD/gbpnzd_partial_tp_sweep.csv (35.9 KB)
+  GBPUSD/gbpusd_cross_tf_sweep.csv (57.9 KB)
+  GBPUSD/gbpusd_partial_tp_sweep.csv (36.0 KB)
+  GBPUSD/gbpusd_v3_m1_precision_sweep.csv (28.8 KB)
+  GBPUSD/gbpusd_v3_realistic_sweep.csv (90.2 KB)
+  GBPUSD/gbpusd_v3_spread_test_sweep.csv (115.6 KB)
+  HK50/hk50_cross_tf_sweep.csv (57.2 KB)
+  HK50/hk50_partial_tp_sweep.csv (35.5 KB)
+  JP225/jp225_cross_tf_sweep.csv (57.0 KB)
+  JP225/jp225_partial_tp_sweep.csv (35.4 KB)
+  NZDJPY/nzdjpy_cross_tf_sweep.csv (57.7 KB)
+  NZDJPY/nzdjpy_partial_tp_sweep.csv (35.9 KB)
+  NZDUSD/nzdusd_cross_tf_sweep.csv (57.6 KB)
+  NZDUSD/nzdusd_partial_tp_sweep.csv (36.0 KB)
+  UK100/uk100_cross_tf_sweep.csv (57.9 KB)
+  UK100/uk100_partial_tp_sweep.csv (35.8 KB)
+  US30/us30_cross_tf_sweep.csv (57.7 KB)
+  US30/us30_partial_tp_sweep.csv (35.8 KB)
+  US500/us500_cross_tf_sweep.csv (57.6 KB)
+  US500/us500_partial_tp_sweep.csv (35.8 KB)
+  USDCAD/usdcad_cross_tf_sweep.csv (56.0 KB)
+  USDCAD/usdcad_partial_tp_sweep.csv (35.0 KB)
+  USDCHF/usdchf_cross_tf_sweep.csv (57.7 KB)
+  USDCHF/usdchf_partial_tp_sweep.csv (35.7 KB)
+  USDJPY/usdjpy_cross_tf_sweep.csv (57.4 KB)
+  USDJPY/usdjpy_partial_tp_sweep.csv (35.9 KB)
+  USDMXN/usdmxn_cross_tf_sweep.csv (56.6 KB)
+  USDMXN/usdmxn_partial_tp_sweep.csv (35.6 KB)
+  USDTRY/usdtry_cross_tf_sweep.csv (56.4 KB)
+  USDTRY/usdtry_partial_tp_sweep.csv (35.5 KB)
+  USDZAR/usdzar_cross_tf_sweep.csv (57.1 KB)
+  USDZAR/usdzar_partial_tp_sweep.csv (35.4 KB)
+  USTEC/ustec_cross_tf_sweep.csv (57.5 KB)
+  USTEC/ustec_partial_tp_sweep.csv (35.7 KB)
+  XAGUSD/xagusd_cross_tf_sweep.csv (58.0 KB)
+  XAGUSD/xagusd_partial_tp_sweep.csv (35.9 KB)
+  XAUUSD/xauusd_cross_tf_sweep.csv (57.9 KB)
+  XAUUSD/xauusd_partial_tp_sweep.csv (35.9 KB)
+  XBRUSD/xbrusd_cross_tf_sweep.csv (58.4 KB)
+  XBRUSD/xbrusd_partial_tp_sweep.csv (35.8 KB)
+  XNGUSD/xngusd_cross_tf_sweep.csv (57.8 KB)
+  XNGUSD/xngusd_partial_tp_sweep.csv (35.9 KB)
+  XPTUSD/xptusd_cross_tf_sweep.csv (58.2 KB)
+  XPTUSD/xptusd_partial_tp_sweep.csv (36.1 KB)
+  XTIUSD/xtiusd_cross_tf_sweep.csv (57.9 KB)
+  XTIUSD/xtiusd_partial_tp_sweep.csv (35.8 KB)
