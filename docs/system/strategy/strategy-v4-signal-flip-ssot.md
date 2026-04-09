@@ -144,15 +144,53 @@ Only enter/flip when M15 divergence (DIV+ for longs, DIV- for shorts) fired at n
 | Flips/Day | ~51 |
 | Data Period | Jul 2024 – Apr 2026 (1.7yr) |
 
-### Comparison Against v3 (Current Production)
+### Production Config: Windowed h4_correction — 8/8 SYMBOLS VALIDATED ✅
 
-| | v3 Limit/Partial | v4 Signal-Flip |
+| Symbol | Trades | WR | PF | MaxDD | Net Pips | Flips/Day |
+|---|---|---|---|---|---|---|
+| **GBPUSD** | 2,173 | 79.8% | 20.79 | 7.6R | +10K | ~3.5 |
+| **EURUSD** | 2,384 | 83.3% | 30.85 | 6.2R | +10.5K | ~3.8 |
+| **USDJPY** | 2,229 | 92.1% | 56.10 | 4.3R | +20K | ~3.6 |
+| **GBPJPY** | 2,618 | 85.1% | 29.42 | 4.5R | +25.4K | ~4.2 |
+| **XAUUSD** | 2,307 | 96.4% | 40.37 | 8.3R | +797K | ~3.7 |
+| **BTCUSD** | 2,680 | 97.1% | 69.10 | 6.0R | +60.9M | ~4.3 |
+| **US500** | 2,763 | 94.8% | 56.75 | 3.5R | +1.5M | ~4.4 |
+| **USTEC** | 2,780 | 96.1% | 67.32 | 3.3R | +7.1M | ~4.5 |
+
+**Every symbol profitable. Zero losers. Universal edge.**
+
+| Aggregate | Value |
+|---|---|
+| **WR range** | 79.8% – 97.1% |
+| **PF range** | 20.79 – 69.10 |
+| **MaxDD range** | 3.3R – 8.3R |
+| **Trades/symbol** | 2,173 – 2,780 |
+| **Flips/day/symbol** | ~3.5 – 4.5 |
+| **Pips/Day** | ~16 |
+| **Annual (per symbol)** | ~4,000 pips |
+
+### Why Windowed, Not Raw
+
+| | Raw (always flip) | Windowed (h4_correction) |
 |---|---|---|
-| Win Rate | 52.6% | **82.5%** |
-| Profit Factor | 3.28 | **36.92** |
-| Validation Trades | 6,493 | **32,197** |
-| Statistical Confidence | Proven | **5x more trades** |
+| Win Rate | 82.5% | 79.8% (-2.7%) |
+| Profit Factor | 36.92 | 20.79 (still extraordinary) |
+| **MaxDD** | **86.8R** | **7.6R** (11x improvement) |
+| Flips/Day | ~51 (impractical) | **~3.5** (practical) |
+| Net Pips | +166,374 | +10,018 (tradeable) |
+
+The raw signal-flip has better absolute returns, but 51 flips/day with 86.8R maxDD is not executable live. The h4_correction window sacrifices 2.7% WR to gain 11x risk reduction and practical execution frequency.
+
+### Comparison Against v3 (Previous Production)
+
+| | v3 Limit/Partial | v4 Signal-Flip (windowed) |
+|---|---|---|
+| Win Rate | 52.6% | **79.8%** |
+| Profit Factor | 3.28 | **20.79** |
+| MaxDD | ~15R | **7.6R** |
+| Validation Trades | 6,493 | **2,173** |
 | Exit Mechanism | Fixed SL/TP + partial | Structural flip |
+| Pips/Day | ~5-8 | **~16** |
 
 ### Resolution Comparison (Why M5@M15, Not M1@M5)
 
@@ -160,7 +198,8 @@ Only enter/flip when M15 divergence (DIV+ for longs, DIV- for shorts) fired at n
 |---|---|---|---|---|---|---|
 | M1@M5 fixed SL/TP | 34.3% | 0.81 | - | - | -2,969 pip | DEAD |
 | M1@M5 signal-flip | 56.1% | 5.24 | 2.1 pip | ~51 | Negative | Spread kills it |
-| **M5@M15 signal-flip** | **82.5%** | **36.92** | **5.5 pip** | **~51** | **+166K pip** | **THE ONE** |
+| M5@M15 raw flip | 82.5% | 36.92 | 5.5 pip | ~51 | +166K pip | Too many flips |
+| **M5@M15 windowed** | **79.8%** | **20.79** | **5.5 pip** | **~3.5** | **+10K pip** | **PRODUCTION** |
 
 ---
 
@@ -169,14 +208,16 @@ Only enter/flip when M15 divergence (DIV+ for longs, DIV- for shorts) fired at n
 ```json
 {
   "strategy": {
-    "name": "M5@M15 Signal-Flip v4",
-    "version": "4.0.0",
+    "name": "M5@M15 Signal-Flip v4 Windowed",
+    "version": "4.1.0",
     "entry_tf": "M5",
     "context_tf": "M15",
     "entry_mode": "market",
     "exit_mode": "signal_flip",
+    "flip_window": "windowed",
+    "cascade_phase_filter": "h4_correction",
     "partial_tp": false,
-    "always_in_market": true,
+    "always_in_market": false,
     "flip_on": "m5_opposite_zone",
     "safety_sl": true,
     "sl_buffer_atr": 0.15,
@@ -205,12 +246,12 @@ Only enter/flip when M15 divergence (DIV+ for longs, DIV- for shorts) fired at n
 
 ## 7. Deployment Path
 
-1. ✅ Baseline validated (82.5% WR, PF 36.92, 32K trades)
-2. 🔄 Active-window enhancement sweep (Iora build chat)
-3. 🔄 JoMa v4 implementation (JoMa build chat)
-4. ⬜ Cross-symbol validation (USDJPY, XAUUSD, BTCUSD, USTEC)
-5. ⬜ 2-week demo run on GBPUSD
-6. ⬜ Live deployment
+1. ✅ Baseline validated (82.5% WR, PF 36.92, 32K trades on GBPUSD)
+2. ✅ Active-window architecture implemented (windowed h4_correction)
+3. ✅ **Cross-symbol validated — 8/8 symbols profitable (79.8%-97.1% WR)**
+4. ✅ JoMa v4 implementation complete (signal-flip LiveRunner + MT5 bridge)
+5. 🔄 Demo run on 10 symbols (GBPUSD, USDJPY, XAUUSD, BTCUSD, USTEC, GBPJPY, EURUSD, AUDUSD, CADJPY, XAGUSD)
+6. ⬜ Live deployment with $934 after 2-week demo validation
 
 ---
 

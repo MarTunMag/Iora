@@ -83,12 +83,24 @@ Additional filtering based on:
 
 ## Production Deployment Path
 
-1. ✅ **Baseline validated:** 82.5% WR, PF 36.92, 32K trades
-2. 🔄 **Active-window sweep:** Running now — will show if windowed mode enhances results
-3. ⬜ **Cross-symbol validation:** Run M5@M15 signal-flip on USDJPY, XAUUSD, BTCUSD, USTEC
-4. ⬜ **JoMa v4 build:** Implementation in progress (parallel JoMa chat)
-5. ⬜ **Demo run:** 2 weeks on GBPUSD demo to verify live execution matches backtest
-6. ⬜ **Live deployment:** After demo validates
+1. ✅ **Baseline validated:** 82.5% WR, PF 36.92, 32K trades on GBPUSD
+2. ✅ **Active-window validated:** Windowed h4_correction — 79.8% WR, PF 20.79, 7.6R maxDD
+3. ✅ **Cross-symbol validated — 8/8 symbols profitable:**
+
+| Symbol | WR | PF | MaxDD |
+|---|---|---|---|
+| GBPUSD | 79.8% | 20.79 | 7.6R |
+| EURUSD | 83.3% | 30.85 | 6.2R |
+| USDJPY | 92.1% | 56.10 | 4.3R |
+| GBPJPY | 85.1% | 29.42 | 4.5R |
+| XAUUSD | 96.4% | 40.37 | 8.3R |
+| BTCUSD | 97.1% | 69.10 | 6.0R |
+| US500 | 94.8% | 56.75 | 3.5R |
+| USTEC | 96.1% | 67.32 | 3.3R |
+
+4. ✅ **JoMa v4 built:** Signal-flip LiveRunner deployed
+5. 🔄 **Demo run:** 10 symbols running on demo now
+6. ⬜ **Live deployment:** After 2-week demo validation with $934
 
 ---
 

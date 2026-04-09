@@ -206,6 +206,7 @@ def run_one_symbol(
     symbol: str,
     storage: ParquetStorage,
     output_dir: Path,
+    m5_only: bool = False,
 ) -> pd.DataFrame | None:
     """Run signal-flip sweep for one symbol."""
     print(f"\n{'='*60}")
@@ -213,11 +214,15 @@ def run_one_symbol(
     print(f"{'='*60}")
 
     configs = signal_flip_configs(symbol)
+    if m5_only:
+        configs = [c for c in configs if c.entry_tf != "M1"]
     print(f"  {len(configs)} configs")
 
-    # Need M1 for signal-flip entry TF
     all_tfs = ["M1", "M5", "M15", "H1", "H4", "D1", "W1"]
-    entry_tfs = ["M1", "M5"]
+    if m5_only:
+        entry_tfs = ["M5"]
+    else:
+        entry_tfs = ["M1", "M5"]
 
     data_by_tf = {}
     for tf in all_tfs:
@@ -228,8 +233,8 @@ def run_one_symbol(
         else:
             print(f"    {tf}: MISSING")
 
-    if "M1" not in data_by_tf or "M5" not in data_by_tf:
-        print(f"  SKIP {symbol} — missing M1 or M5 data")
+    if "M5" not in data_by_tf:
+        print(f"  SKIP {symbol} — missing M5 data")
         return None
 
     print(f"  Running sweep...")
@@ -377,6 +382,8 @@ def main():
                         help="Comma-separated symbols (default: all 8)")
     parser.add_argument("--output", type=str, default="results/sweeps/signal_flip",
                         help="Output directory for CSV results")
+    parser.add_argument("--m5-only", action="store_true",
+                        help="Skip M1 configs, only run M5@M15+ (much faster)")
     args = parser.parse_args()
 
     symbols = args.symbols.split(",") if args.symbols else DEFAULT_SYMBOLS
@@ -387,7 +394,7 @@ def main():
 
     all_results = []
     for symbol in symbols:
-        df = run_one_symbol(symbol, storage, output_dir)
+        df = run_one_symbol(symbol, storage, output_dir, m5_only=args.m5_only)
         if df is not None:
             all_results.append(df)
 
