@@ -23,15 +23,43 @@ from iora.strategy.retest_config import RetestConfig
 from iora.strategy.retest_sweep import run_retest_sweep
 
 DEFAULT_SYMBOLS = [
-    "GBPUSD", "EURUSD", "USDJPY", "GBPJPY",
-    "XAUUSD", "BTCUSD", "US500", "USTEC",
+    # Majors
+    "GBPUSD", "EURUSD", "USDJPY", "USDCHF", "USDCAD", "AUDUSD", "NZDUSD",
+    # Crosses
+    "GBPJPY", "GBPAUD", "GBPNZD", "EURJPY", "EURGBP", "EURAUD", "EURCHF",
+    "AUDJPY", "AUDNZD", "CADJPY", "CADCHF", "NZDJPY",
+    # Exotics
+    "USDMXN", "USDTRY", "USDZAR",
+    # Metals
+    "XAUUSD", "XAGUSD", "XPTUSD",
+    # Energy
+    "XBRUSD", "XTIUSD", "XNGUSD",
+    # Crypto
+    "BTCUSD", "ETHUSD",
+    # Indices
+    "US500", "USTEC", "US30", "DE40", "UK100", "F40", "JP225", "HK50",
 ]
 
 # Default spreads per symbol (in pips)
 SPREAD_MAP: dict[str, float] = {
-    "GBPUSD": 1.5, "EURUSD": 1.0, "USDJPY": 1.0,
-    "GBPJPY": 2.5, "XAUUSD": 2.5, "BTCUSD": 10.0,
-    "US500": 1.0, "USTEC": 1.5,
+    # Majors
+    "GBPUSD": 1.5, "EURUSD": 1.0, "USDJPY": 1.0, "USDCHF": 1.5,
+    "USDCAD": 1.5, "AUDUSD": 1.2, "NZDUSD": 1.5,
+    # Crosses
+    "GBPJPY": 2.5, "GBPAUD": 3.0, "GBPNZD": 4.0, "EURJPY": 1.5,
+    "EURGBP": 1.5, "EURAUD": 2.5, "EURCHF": 2.0,
+    "AUDJPY": 2.0, "AUDNZD": 2.5, "CADJPY": 2.0, "CADCHF": 2.5, "NZDJPY": 2.5,
+    # Exotics
+    "USDMXN": 50.0, "USDTRY": 100.0, "USDZAR": 50.0,
+    # Metals
+    "XAUUSD": 2.5, "XAGUSD": 2.0, "XPTUSD": 3.0,
+    # Energy
+    "XBRUSD": 3.0, "XTIUSD": 3.0, "XNGUSD": 5.0,
+    # Crypto
+    "BTCUSD": 10.0, "ETHUSD": 5.0,
+    # Indices
+    "US500": 1.0, "USTEC": 1.5, "US30": 3.0, "DE40": 2.0,
+    "UK100": 2.0, "F40": 2.0, "JP225": 10.0, "HK50": 10.0,
 }
 
 
@@ -399,6 +427,90 @@ def main():
             all_results.append(df)
 
     total_time = time.time() - t_start
+
+    # --- Master Summary ---
+    if all_results:
+        master = pd.concat(all_results, ignore_index=True)
+        master_path = output_dir / "_master_summary.csv"
+        master.to_csv(master_path, index=False)
+        print(f"\n  Master CSV: {master_path}")
+
+        # Print master comparison table: raw vs h4_correction windowed
+        print(f"\n{'='*120}")
+        print(f"  MASTER SUMMARY — M5@M15 Signal-Flip: Raw vs [W] h4_correction")
+        print(f"{'='*120}")
+        print(f"  {'Symbol':10s} | {'--- Raw (unwindowed) ---':^48s} | {'--- [W] h4_correction ---':^56s}")
+        print(f"  {'':10s} | {'Trades':>7s} {'WR':>7s} {'PF':>8s} {'Net':>12s} {'MaxDD':>7s} | "
+              f"{'Trades':>7s} {'WR':>7s} {'PF':>8s} {'Net':>12s} {'MaxDD':>7s} {'Streak':>7s} {'Flips/d':>8s}")
+        print(f"  {'-'*10}-+-{'-'*48}-+-{'-'*56}")
+
+        total_raw_trades = 0
+        total_raw_net = 0.0
+        total_win_trades = 0
+        total_win_net = 0.0
+        profitable_raw = 0
+        profitable_win = 0
+        symbol_count = 0
+
+        for sym in master["symbol"].unique():
+            sym_df = master[master["symbol"] == sym]
+
+            # Raw (unwindowed)
+            raw = sym_df[(sym_df["exit_mode"] == "signal_flip") &
+                         (sym_df.get("flip_window", "always") == "always")]
+            if raw.empty:
+                raw = sym_df[(sym_df["exit_mode"] == "signal_flip")].head(1)
+
+            # [W] h4_correction
+            win = sym_df[(sym_df["cascade_phase_filter"] == "h4_correction") &
+                         (sym_df.get("flip_window", "always") == "windowed") &
+                         (sym_df["tl_break_filter"] == "any") &
+                         (sym_df.get("htf_level_break_context", "any") == "any") &
+                         (sym_df.get("m15_tl_state", "any") == "any")]
+
+            symbol_count += 1
+
+            if not raw.empty:
+                r = raw.iloc[0]
+                r_trades = int(r["total_trades"])
+                r_wr = r["win_rate"]
+                r_pf = r["profit_factor"]
+                r_net = r.get("net_after_spread", r.get("total_pnl_pips", 0))
+                r_dd = r["max_dd_r"]
+                total_raw_trades += r_trades
+                total_raw_net += r_net
+                if r_net > 0:
+                    profitable_raw += 1
+            else:
+                r_trades = r_wr = r_pf = r_net = r_dd = 0
+
+            if not win.empty:
+                w = win.iloc[0]
+                w_trades = int(w["total_trades"])
+                w_wr = w["win_rate"]
+                w_pf = w["profit_factor"]
+                w_net = w.get("net_after_spread", w.get("total_pnl_pips", 0))
+                w_dd = w["max_dd_r"]
+                w_streak = int(w["max_loss_streak"])
+                w_flips = w.get("flip_count", w_trades)
+                # Estimate flips per day (1.7yr ~ 440 trading days)
+                fpd = w_flips / 440 if w_flips > 0 else 0
+                total_win_trades += w_trades
+                total_win_net += w_net
+                if w_net > 0:
+                    profitable_win += 1
+            else:
+                w_trades = w_wr = w_pf = w_net = w_dd = w_streak = fpd = 0
+
+            print(f"  {sym:10s} | {r_trades:7d} {r_wr:6.1%} {r_pf:8.1f} {r_net:+12.0f} {r_dd:6.1f}R | "
+                  f"{w_trades:7d} {w_wr:6.1%} {w_pf:8.1f} {w_net:+12.0f} {w_dd:6.1f}R {w_streak:5d}L {fpd:7.1f}")
+
+        print(f"  {'-'*10}-+-{'-'*48}-+-{'-'*56}")
+        print(f"  {'TOTAL':10s} | {total_raw_trades:7d} {'':7s} {'':8s} {total_raw_net:+12.0f} {'':7s} | "
+              f"{total_win_trades:7d} {'':7s} {'':8s} {total_win_net:+12.0f}")
+        print(f"\n  Raw profitable: {profitable_raw}/{symbol_count} symbols")
+        print(f"  [W] h4_correction profitable: {profitable_win}/{symbol_count} symbols")
+
     print(f"\n{'='*60}")
     print(f"  Complete: {len(symbols)} symbols in {total_time:.0f}s")
     print(f"{'='*60}")
