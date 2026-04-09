@@ -1,0 +1,278 @@
+//@version=6
+indicator("JoMa Structural FVG", shorttitle="JoMa sFVG", overlay=true, max_boxes_count=200, max_labels_count=200)
+
+// =============================================================================
+// STRUCTURAL FVG: The gap between an HTF pivot and the first LTF counter-swing
+// that didn't reach it. Price is structurally expected to return and fill these.
+//
+// Example: H4 Lo at 4765, H1 bounces but only reaches 4763
+//          → Structural FVG from 4763 to 4765 (2-point gap)
+//          → Price is expected to return to 4765 to test the H4 structural level
+//
+// Source: docs/system/mechanical-fvg-reversal-leg-model.md
+// =============================================================================
+
+// =============================================================================
+// S1 — TYPES
+// =============================================================================
+
+type StructFVG
+    float   top       = 0.0
+    float   bottom    = 0.0
+    bool    is_bull   = false
+    int     start_bar = 0
+    bool    filled    = false
+    int     fill_bar  = 0
+    box     bx
+    label   lbl
+
+// =============================================================================
+// S2 — INPUTS
+// =============================================================================
+
+string GRP_P = "TF Pairs (HTF / LTF)"
+bool   i_p1  = input.bool(true,  "D1 / H4",   group = GRP_P, tooltip = "Chart TF must be < H4 for this pair")
+bool   i_p2  = input.bool(true,  "H4 / H1",   group = GRP_P, tooltip = "Chart TF must be < H1 for this pair")
+bool   i_p3  = input.bool(true,  "H1 / M15",  group = GRP_P, tooltip = "Chart TF must be < M15 for this pair")
+bool   i_p4  = input.bool(true,  "M15 / M5",  group = GRP_P, tooltip = "Chart TF must be < M5 for this pair")
+
+string GRP_S = "Settings"
+int    i_wait     = input.int(2, "LTF Periods to Wait",  minval = 1, maxval = 10, group = GRP_S, tooltip = "LTF periods after HTF change before checking for gap. Higher = more accurate swing detection, lower = faster detection")
+int    i_max      = input.int(3, "Max FVGs per Pair",    minval = 1, maxval = 10, group = GRP_S)
+bool   i_filled   = input.bool(true, "Show Filled FVGs", group = GRP_S)
+bool   i_labels   = input.bool(true, "Show Labels",      group = GRP_S)
+
+string GRP_C = "Colors"
+color  i_bull_bg  = input.color(color.new(#26A69A, 80), "Bull Fill",   group = GRP_C)
+color  i_bull_br  = input.color(color.new(#26A69A, 30), "Bull Border", group = GRP_C)
+color  i_bear_bg  = input.color(color.new(#EF5350, 80), "Bear Fill",   group = GRP_C)
+color  i_bear_br  = input.color(color.new(#EF5350, 30), "Bear Border", group = GRP_C)
+
+// =============================================================================
+// S3 — PERIOD TRACKING
+// Each TF tracks current period hi/lo and previous period hi/lo.
+// No request.security needed — runs on chart TF.
+// =============================================================================
+
+track_tf(string tf) =>
+    bool np = ta.change(time(tf)) != 0
+    var float ch  = na
+    var int   cht = na
+    var float cl  = na
+    var int   clt = na
+    var float ph  = na
+    var int   pht = na
+    var float pl  = na
+    var int   plt = na
+
+    if np
+        ph  := ch
+        pht := cht
+        pl  := cl
+        plt := clt
+        ch  := high
+        cht := time
+        cl  := low
+        clt := time
+    else
+        if high >= nz(ch)
+            ch  := high
+            cht := time
+        if low <= nz(cl, 1e18)
+            cl  := low
+            clt := time
+
+    [ph, pht, pl, plt, np]
+
+[d1_hi,  d1_hi_t,  d1_lo,  d1_lo_t,  d1_new]  = track_tf("1D")
+[h4_hi,  h4_hi_t,  h4_lo,  h4_lo_t,  h4_new]  = track_tf("240")
+[h1_hi,  h1_hi_t,  h1_lo,  h1_lo_t,  h1_new]  = track_tf("60")
+[m15_hi, m15_hi_t, m15_lo, m15_lo_t, m15_new] = track_tf("15")
+[m5_hi,  m5_hi_t,  m5_lo,  m5_lo_t,  m5_new]  = track_tf("5")
+
+// =============================================================================
+// S4 — FVG DETECTION
+// After HTF period changes, track running max/min across bars.
+// When enough LTF periods pass, check if the swing reached the HTF pivot.
+// If not → structural FVG exists.
+//
+// Bullish FVG: after HTF Lo, LTF high didn't reach HTF Lo → gap pulling UP
+// Bearish FVG: after HTF Hi, LTF low didn't reach HTF Hi → gap pulling DOWN
+// =============================================================================
+
+detect_fvg(bool htf_new, float htf_hi, float htf_lo, bool ltf_new, int wait) =>
+    var bool  w_bull    = false
+    var bool  w_bear    = false
+    var float max_hi    = na
+    var float min_lo    = na
+    var int   cnt       = 0
+    var float target_lo = na
+    var float target_hi = na
+
+    bool  found_bull = false
+    bool  found_bear = false
+    float bull_top   = na
+    float bull_bot   = na
+    float bear_top   = na
+    float bear_bot   = na
+
+    // HTF period changed — new structural levels confirmed
+    if htf_new
+        w_bull    := not na(htf_lo)
+        w_bear    := not na(htf_hi)
+        target_lo := htf_lo
+        target_hi := htf_hi
+        max_hi    := high
+        min_lo    := low
+        cnt       := 0
+
+    // Track running extremes while watching
+    if w_bull or w_bear
+        max_hi := math.max(nz(max_hi, high), high)
+        min_lo := math.min(nz(min_lo, low), low)
+
+    // LTF period completed — increment counter and check
+    if ltf_new and (w_bull or w_bear)
+        cnt += 1
+        if cnt >= wait
+            // Bullish: LTF high didn't reach HTF Lo → gap above pulling price up
+            if w_bull and not na(target_lo) and max_hi < target_lo
+                found_bull := true
+                bull_top   := target_lo
+                bull_bot   := max_hi
+            w_bull := false
+
+            // Bearish: LTF low didn't reach HTF Hi → gap below pulling price down
+            if w_bear and not na(target_hi) and min_lo > target_hi
+                found_bear := true
+                bear_top   := min_lo
+                bear_bot   := target_hi
+            w_bear := false
+
+    [found_bull, bull_top, bull_bot, found_bear, bear_top, bear_bot]
+
+// =============================================================================
+// S5 — DETECT PER PAIR
+// =============================================================================
+
+[p1_bull, p1_bt, p1_bb, p1_bear, p1_brt, p1_brb] = detect_fvg(d1_new,  d1_hi,  d1_lo,  h4_new,  i_wait)
+[p2_bull, p2_bt, p2_bb, p2_bear, p2_brt, p2_brb] = detect_fvg(h4_new,  h4_hi,  h4_lo,  h1_new,  i_wait)
+[p3_bull, p3_bt, p3_bb, p3_bear, p3_brt, p3_brb] = detect_fvg(h1_new,  h1_hi,  h1_lo,  m15_new, i_wait)
+[p4_bull, p4_bt, p4_bb, p4_bear, p4_brt, p4_brb] = detect_fvg(m15_new, m15_hi, m15_lo, m5_new,  i_wait)
+
+// =============================================================================
+// S6 — FVG MANAGEMENT: ADD, EXTEND, FILL, TRIM
+// =============================================================================
+
+method add_fvg(array<StructFVG> self, bool found, float top, float bot, bool is_bull, string name, int max_count) =>
+    if found and top > bot
+        color bg  = is_bull ? i_bull_bg : i_bear_bg
+        color br  = is_bull ? i_bull_br : i_bear_br
+        box   bx  = box.new(bar_index, top, bar_index, bot, bgcolor = bg, border_color = br, border_width = 1)
+        label lbl = label(na)
+        if i_labels
+            string side = is_bull ? " BULL" : " BEAR"
+            string txt  = "sFVG " + name + side
+            color  tc   = is_bull ? i_bull_br : i_bear_br
+            string sty  = is_bull ? label.style_label_up : label.style_label_down
+            float  y    = is_bull ? bot : top
+            lbl := label.new(bar_index, y, txt, style = sty, color = color.new(color.white, 100), textcolor = tc, size = size.tiny)
+        self.push(StructFVG.new(top, bot, is_bull, bar_index, false, 0, bx, lbl))
+        // Trim oldest
+        while self.size() > max_count
+            StructFVG old = self.shift()
+            if not na(old.bx)
+                box.delete(old.bx)
+            if not na(old.lbl)
+                label.delete(old.lbl)
+
+method manage(array<StructFVG> self) =>
+    if self.size() > 0
+        for i = self.size() - 1 to 0
+            StructFVG f = self.get(i)
+            if not f.filled
+                // Extend box to current bar
+                box.set_right(f.bx, bar_index)
+                // Fill check: close trades through the gap
+                bool fill = f.is_bull ? (close > f.top) : (close < f.bottom)
+                if fill
+                    f.filled  := true
+                    f.fill_bar := bar_index
+                    // Dim the box
+                    color dim_bg = f.is_bull ? color.new(#26A69A, 93) : color.new(#EF5350, 93)
+                    color dim_br = f.is_bull ? color.new(#26A69A, 70) : color.new(#EF5350, 70)
+                    box.set_bgcolor(f.bx, dim_bg)
+                    box.set_border_color(f.bx, dim_br)
+                    box.set_border_style(f.bx, line.style_dashed)
+                    if not na(f.lbl)
+                        label.set_textcolor(f.lbl, dim_br)
+            // Remove filled if not showing
+            if f.filled and not i_filled
+                if not na(f.bx)
+                    box.delete(f.bx)
+                if not na(f.lbl)
+                    label.delete(f.lbl)
+                self.remove(i)
+
+// =============================================================================
+// S7 — FVG ARRAYS + EXECUTION
+// =============================================================================
+
+var array<StructFVG> fvgs_p1 = array.new<StructFVG>()
+var array<StructFVG> fvgs_p2 = array.new<StructFVG>()
+var array<StructFVG> fvgs_p3 = array.new<StructFVG>()
+var array<StructFVG> fvgs_p4 = array.new<StructFVG>()
+
+// Add new FVGs
+if i_p1
+    fvgs_p1.add_fvg(p1_bull, p1_bt, p1_bb, true,  "D1/H4", i_max)
+    fvgs_p1.add_fvg(p1_bear, p1_brt, p1_brb, false, "D1/H4", i_max)
+if i_p2
+    fvgs_p2.add_fvg(p2_bull, p2_bt, p2_bb, true,  "H4/H1", i_max)
+    fvgs_p2.add_fvg(p2_bear, p2_brt, p2_brb, false, "H4/H1", i_max)
+if i_p3
+    fvgs_p3.add_fvg(p3_bull, p3_bt, p3_bb, true,  "H1/M15", i_max)
+    fvgs_p3.add_fvg(p3_bear, p3_brt, p3_brb, false, "H1/M15", i_max)
+if i_p4
+    fvgs_p4.add_fvg(p4_bull, p4_bt, p4_bb, true,  "M15/M5", i_max)
+    fvgs_p4.add_fvg(p4_bear, p4_brt, p4_brb, false, "M15/M5", i_max)
+
+// Manage (extend, fill, trim)
+fvgs_p1.manage()
+fvgs_p2.manage()
+fvgs_p3.manage()
+fvgs_p4.manage()
+
+// =============================================================================
+// S8 — INFO TABLE
+// =============================================================================
+
+bool i_info = input.bool(false, "Info Table", group = "Display")
+
+if i_info and barstate.islast
+    int total = fvgs_p1.size() + fvgs_p2.size() + fvgs_p3.size() + fvgs_p4.size()
+    int unfilled = 0
+    if fvgs_p1.size() > 0
+        for i = 0 to fvgs_p1.size() - 1
+            if not fvgs_p1.get(i).filled
+                unfilled += 1
+    if fvgs_p2.size() > 0
+        for i = 0 to fvgs_p2.size() - 1
+            if not fvgs_p2.get(i).filled
+                unfilled += 1
+    if fvgs_p3.size() > 0
+        for i = 0 to fvgs_p3.size() - 1
+            if not fvgs_p3.get(i).filled
+                unfilled += 1
+    if fvgs_p4.size() > 0
+        for i = 0 to fvgs_p4.size() - 1
+            if not fvgs_p4.get(i).filled
+                unfilled += 1
+
+    var table tbl = table.new(position.bottom_right, 2, 3, border_color = color.new(color.gray, 60), border_width = 1)
+    table.cell(tbl, 0, 0, "sFVG",     text_color = color.gray, text_size = size.tiny, bgcolor = color.new(color.gray, 90))
+    table.cell(tbl, 1, 0, "Count",    text_color = color.gray, text_size = size.tiny, bgcolor = color.new(color.gray, 90))
+    table.cell(tbl, 0, 1, "Active",   text_color = color.white, text_size = size.tiny)
+    table.cell(tbl, 1, 1, str.tostring(unfilled), text_color = color.white, text_size = size.tiny)
+    table.cell(tbl, 0, 2, "Total",    text_color = color.gray, text_size = size.tiny)
+    table.cell(tbl, 1, 2, str.tostring(total),    text_color = color.gray, text_size = size.tiny)

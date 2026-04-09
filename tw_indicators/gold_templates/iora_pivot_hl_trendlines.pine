@@ -1,0 +1,631 @@
+//@version=6
+indicator("Iora Pivot HL Trendlines", shorttitle="Pivot HL+TL", overlay=true, max_labels_count=500, max_lines_count=500)
+
+// ═══════════════════════════════════════════════════════════════
+// CONSTANTS
+// ═══════════════════════════════════════════════════════════════
+color TRANS = color.new(#000000, 100)
+
+// ═══════════════════════════════════════════════════════════════
+// INPUTS
+// ═══════════════════════════════════════════════════════════════
+string i_lv1 = input.string("M15", "Level 1", options=["Off","M1","M5","M15","M30","H1","H2","H3","H4","D1","W1","MN","3MN","6MN","12MN"], group="Pivot Levels")
+string i_lv2 = input.string("H1",  "Level 2", options=["Off","M1","M5","M15","M30","H1","H2","H3","H4","D1","W1","MN","3MN","6MN","12MN"], group="Pivot Levels")
+string i_lv3 = input.string("H4",  "Level 3", options=["Off","M1","M5","M15","M30","H1","H2","H3","H4","D1","W1","MN","3MN","6MN","12MN"], group="Pivot Levels")
+string i_lv4 = input.string("D1",  "Level 4", options=["Off","M1","M5","M15","M30","H1","H2","H3","H4","D1","W1","MN","3MN","6MN","12MN"], group="Pivot Levels")
+string i_lv5 = input.string("Off", "Level 5", options=["Off","M1","M5","M15","M30","H1","H2","H3","H4","D1","W1","MN","3MN","6MN","12MN"], group="Pivot Levels")
+string i_lv6 = input.string("Off", "Level 6", options=["Off","M1","M5","M15","M30","H1","H2","H3","H4","D1","W1","MN","3MN","6MN","12MN"], group="Pivot Levels")
+
+int    i_rightLen   = input.int(1, "Right Lookback", minval=0, maxval=5, group="Settings")
+int    i_confKeep   = input.int(3, "Confirmed History", minval=1, maxval=20, tooltip="Confirmed pivots to keep visible per level per side", group="Settings")
+int    i_tlHistory  = input.int(3, "TL History", minval=0, maxval=10, tooltip="Broken TLs to keep per TF per side. Auto-reduces to 2 when 5+ levels active", group="Settings")
+string i_breakType  = input.string("Close", "TL Break Detection", options=["Close", "Wick"], group="Settings")
+
+bool   i_showLbls   = input.bool(true, "Labels", group="Display")
+bool   i_showLines  = input.bool(true, "Lines", group="Display")
+bool   i_showTL     = input.bool(true, "Show Trendlines", group="Display")
+bool   i_showDiv    = input.bool(true, "Show Divergence", group="Display")
+int    i_tlWidth    = input.int(1, "TL Width", minval=1, maxval=4, group="Display")
+bool   i_showInfo   = input.bool(false, "Info Table", group="Display")
+
+color i_c1Hi = input.color(#ef5350, "Hi", inline="c1", group="L1 Colors")
+color i_c1Lo = input.color(#26a69a, "Lo", inline="c1", group="L1 Colors")
+color i_c2Hi = input.color(#ff9800, "Hi", inline="c2", group="L2 Colors")
+color i_c2Lo = input.color(#00897b, "Lo", inline="c2", group="L2 Colors")
+color i_c3Hi = input.color(#ab47bc, "Hi", inline="c3", group="L3 Colors")
+color i_c3Lo = input.color(#42a5f5, "Lo", inline="c3", group="L3 Colors")
+color i_c4Hi = input.color(#ec407a, "Hi", inline="c4", group="L4 Colors")
+color i_c4Lo = input.color(#26c6da, "Lo", inline="c4", group="L4 Colors")
+color i_c5Hi = input.color(#ffa726, "Hi", inline="c5", group="L5 Colors")
+color i_c5Lo = input.color(#66bb6a, "Lo", inline="c5", group="L5 Colors")
+color i_c6Hi = input.color(#8d6e63, "Hi", inline="c6", group="L6 Colors")
+color i_c6Lo = input.color(#78909c, "Lo", inline="c6", group="L6 Colors")
+
+// ═══════════════════════════════════════════════════════════════
+// TIMEFRAME MATH
+// ═══════════════════════════════════════════════════════════════
+tfToMin(string tf) =>
+    switch tf
+        "M1"   => 1
+        "M5"   => 5
+        "M15"  => 15
+        "M30"  => 30
+        "H1"   => 60
+        "H2"   => 120
+        "H3"   => 180
+        "H4"   => 240
+        "D1"   => 1440
+        "W1"   => 10080
+        "MN"   => 43200
+        "3MN"  => 129600
+        "6MN"  => 259200
+        "12MN" => 518400
+        => 0
+
+int _chartMin = math.max(1, timeframe.in_seconds(timeframe.period) / 60)
+
+int _maxLeft = 4999 - i_rightLen
+int left1 = math.min(_maxLeft, math.max(2, tfToMin(i_lv1) / _chartMin))
+int left2 = math.min(_maxLeft, math.max(2, tfToMin(i_lv2) / _chartMin))
+int left3 = math.min(_maxLeft, math.max(2, tfToMin(i_lv3) / _chartMin))
+int left4 = math.min(_maxLeft, math.max(2, tfToMin(i_lv4) / _chartMin))
+int left5 = math.min(_maxLeft, math.max(2, tfToMin(i_lv5) / _chartMin))
+int left6 = math.min(_maxLeft, math.max(2, tfToMin(i_lv6) / _chartMin))
+
+// ═══════════════════════════════════════════════════════════════
+// PIVOT DETECTION
+// ═══════════════════════════════════════════════════════════════
+max_bars_back(high, 5000)
+max_bars_back(low, 5000)
+
+float ph1 = i_lv1 != "Off" ? ta.pivothigh(high, left1, i_rightLen) : na
+float pl1 = i_lv1 != "Off" ? ta.pivotlow(low,   left1, i_rightLen) : na
+float ph2 = i_lv2 != "Off" ? ta.pivothigh(high, left2, i_rightLen) : na
+float pl2 = i_lv2 != "Off" ? ta.pivotlow(low,   left2, i_rightLen) : na
+float ph3 = i_lv3 != "Off" ? ta.pivothigh(high, left3, i_rightLen) : na
+float pl3 = i_lv3 != "Off" ? ta.pivotlow(low,   left3, i_rightLen) : na
+float ph4 = i_lv4 != "Off" ? ta.pivothigh(high, left4, i_rightLen) : na
+float pl4 = i_lv4 != "Off" ? ta.pivotlow(low,   left4, i_rightLen) : na
+float ph5 = i_lv5 != "Off" ? ta.pivothigh(high, left5, i_rightLen) : na
+float pl5 = i_lv5 != "Off" ? ta.pivotlow(low,   left5, i_rightLen) : na
+float ph6 = i_lv6 != "Off" ? ta.pivothigh(high, left6, i_rightLen) : na
+float pl6 = i_lv6 != "Off" ? ta.pivotlow(low,   left6, i_rightLen) : na
+
+// ═══════════════════════════════════════════════════════════════
+// AUTO-SCALING TL HISTORY
+// ═══════════════════════════════════════════════════════════════
+int _activeLevels = (i_lv1 != "Off" ? 1 : 0) + (i_lv2 != "Off" ? 1 : 0) + (i_lv3 != "Off" ? 1 : 0) + (i_lv4 != "Off" ? 1 : 0) + (i_lv5 != "Off" ? 1 : 0) + (i_lv6 != "Off" ? 1 : 0)
+int _maxTLHist = _activeLevels >= 5 ? math.min(i_tlHistory, 2) : i_tlHistory
+
+// ═══════════════════════════════════════════════════════════════
+// CLASSIFICATION
+// ═══════════════════════════════════════════════════════════════
+classifyHi(float price, float prev) =>
+    na(prev) ? "PH" : price > prev ? "HH" : "LH"
+
+classifyLo(float price, float prev) =>
+    na(prev) ? "PL" : price < prev ? "LL" : "HL"
+
+float _atrOff = ta.atr(14) * 0.3
+
+// ═══════════════════════════════════════════════════════════════
+// TRENDLINE STATE UDT
+// ═══════════════════════════════════════════════════════════════
+type TLState
+    bool        descending = true
+    color       clr        = #ef5350
+    string      tfName     = ""
+    float       a1p        = na
+    int         a1b        = 0
+    float       a2p        = na
+    int         a2b        = 0
+    line        activeTL   = na
+    bool        broken     = false
+    label       lbl1       = na
+    label       lbl2       = na
+    array<line> history    = na
+
+// ═══════════════════════════════════════════════════════════════
+// TL HELPERS
+// ═══════════════════════════════════════════════════════════════
+projPrice(float p1, int b1, float p2, int b2, int atBar) =>
+    int dBars = b2 - b1
+    float slope = dBars != 0 ? (p2 - p1) / dBars : 0.0
+    float result = p2 + slope * (atBar - b2)
+    result
+
+freezeTL(line tl, color clr, int breakBar, float breakPrice) =>
+    if not na(tl)
+        line.set_style(tl, line.style_dashed)
+        line.set_color(tl, color.new(clr, 65))
+        line.set_extend(tl, extend.none)
+        line.set_x2(tl, breakBar)
+        line.set_y2(tl, breakPrice)
+    tl
+
+trimHistory(array<line> arr, int maxKeep) =>
+    while arr.size() > maxKeep
+        line old = arr.shift()
+        if not na(old)
+            line.delete(old)
+    true
+
+styleHistory(array<line> arr, color clr) =>
+    int sz = arr.size()
+    if sz > 0
+        for i = 0 to sz - 1
+            line ln = arr.get(i)
+            if not na(ln)
+                int age = sz - 1 - i
+                if age == 0
+                    line.set_style(ln, line.style_dashed)
+                    line.set_color(ln, color.new(clr, 65))
+                else if age == 1
+                    line.set_style(ln, line.style_dotted)
+                    line.set_color(ln, color.new(clr, 75))
+                else
+                    line.set_style(ln, line.style_dotted)
+                    line.set_color(ln, color.new(clr, 85))
+    true
+
+delLabel(label lbl) =>
+    if not na(lbl)
+        label.delete(lbl)
+    label(na)
+
+// ═══════════════════════════════════════════════════════════════
+// TL METHODS
+// ═══════════════════════════════════════════════════════════════
+method checkBreak(TLState self, float breakPrice, int barIdx, int maxHist) =>
+    if not na(self.a2p) and not self.broken
+        float proj = projPrice(self.a1p, self.a1b, self.a2p, self.a2b, barIdx)
+        bool broke = self.descending ? (breakPrice > proj) : (breakPrice < proj)
+        if broke
+            self.broken := true
+            line frozen = freezeTL(self.activeTL, self.clr, barIdx, proj)
+            self.history.push(frozen)
+            trimHistory(self.history, maxHist)
+            styleHistory(self.history, self.clr)
+    true
+
+method addAnchor(TLState self, float price, int bar, int maxHist, bool showTL, bool showDiv, int tlWidth) =>
+    if na(price)
+        false
+    else if not showTL
+        false
+    else
+        // Transition 1: No A1 — set first anchor
+        if na(self.a1p)
+            self.a1p := price
+            self.a1b := bar
+            self.lbl1 := label.new(bar, price, self.tfName, style=(self.descending ? label.style_label_down : label.style_label_up), color=TRANS, textcolor=color.new(self.clr, 30), size=size.tiny)
+
+        // Transition 2: A1 set, no A2 — set second anchor, draw TL
+        else if na(self.a2p)
+            self.a2p := price
+            self.a2b := bar
+            self.broken := false
+            self.activeTL := line.new(self.a1b, self.a1p, self.a2b, self.a2p, color=self.clr, width=tlWidth)
+            self.lbl2 := label.new(bar, price, self.tfName, style=(self.descending ? label.style_label_down : label.style_label_up), color=TRANS, textcolor=color.new(self.clr, 30), size=size.tiny)
+            // Divergence check
+            if showDiv
+                bool div = self.descending ? (self.a2p > self.a1p) : (self.a2p < self.a1p)
+                if div
+                    string divTxt = self.tfName + (self.descending ? " DIV-" : " DIV+")
+                    label.new(bar, price, divTxt, style=(self.descending ? label.style_label_down : label.style_label_up), color=TRANS, textcolor=self.clr, size=size.small)
+
+        // Transition 3: Broken — reset to fresh A1
+        else if self.broken
+            self.lbl1 := delLabel(self.lbl1)
+            self.lbl2 := delLabel(self.lbl2)
+            self.a1p := price
+            self.a1b := bar
+            self.a2p := na
+            self.a2b := 0
+            self.broken := false
+            self.activeTL := na
+            self.lbl1 := label.new(bar, price, self.tfName, style=(self.descending ? label.style_label_down : label.style_label_up), color=TRANS, textcolor=color.new(self.clr, 30), size=size.tiny)
+
+        // Transitions 4 & 5: Active TL — re-anchor or break
+        else
+            float proj = projPrice(self.a1p, self.a1b, self.a2p, self.a2b, bar)
+            bool onOrInside = self.descending ? (price <= proj) : (price >= proj)
+
+            if onOrInside
+                // Transition 4: Re-anchor — shift A2→A1, new→A2
+                self.lbl1 := delLabel(self.lbl1)
+                self.a1p := self.a2p
+                self.a1b := self.a2b
+                self.a2p := price
+                self.a2b := bar
+                self.lbl1 := self.lbl2
+                self.lbl2 := label.new(bar, price, self.tfName, style=(self.descending ? label.style_label_down : label.style_label_up), color=TRANS, textcolor=color.new(self.clr, 30), size=size.tiny)
+                if not na(self.activeTL)
+                    line.delete(self.activeTL)
+                self.activeTL := line.new(self.a1b, self.a1p, self.a2b, self.a2p, color=self.clr, width=tlWidth)
+                // Divergence check
+                if showDiv
+                    bool div = self.descending ? (self.a2p > self.a1p) : (self.a2p < self.a1p)
+                    if div
+                        string divTxt = self.tfName + (self.descending ? " DIV-" : " DIV+")
+                        label.new(bar, price, divTxt, style=(self.descending ? label.style_label_down : label.style_label_up), color=TRANS, textcolor=self.clr, size=size.small)
+            else
+                // Transition 5: Break — freeze, push to history, fresh A1
+                float projNow = projPrice(self.a1p, self.a1b, self.a2p, self.a2b, bar_index)
+                self.broken := true
+                line frozen = freezeTL(self.activeTL, self.clr, bar_index, projNow)
+                self.history.push(frozen)
+                trimHistory(self.history, maxHist)
+                styleHistory(self.history, self.clr)
+                // Dim old anchor labels
+                if not na(self.lbl1)
+                    label.set_textcolor(self.lbl1, color.new(self.clr, 75))
+                if not na(self.lbl2)
+                    label.set_textcolor(self.lbl2, color.new(self.clr, 75))
+                // Fresh A1
+                self.a1p := price
+                self.a1b := bar
+                self.a2p := na
+                self.a2b := 0
+                self.activeTL := na
+                self.lbl1 := label.new(bar, price, self.tfName, style=(self.descending ? label.style_label_down : label.style_label_up), color=TRANS, textcolor=color.new(self.clr, 30), size=size.tiny)
+                self.lbl2 := na
+        true
+
+method extendTL(TLState self, int barIdx) =>
+    if not na(self.activeTL) and not self.broken
+        line.set_x2(self.activeTL, barIdx)
+        float proj = projPrice(self.a1p, self.a1b, self.a2p, self.a2b, barIdx)
+        line.set_y2(self.activeTL, proj)
+    true
+
+// ═══════════════════════════════════════════════════════════════
+// PIVOT LEVEL UDT
+// ═══════════════════════════════════════════════════════════════
+type PivotLevel
+    string tfName     = ""
+    bool   active     = false
+    int    lvIdx      = 0
+    color  hiClr      = #ef5350
+    color  loClr      = #26a69a
+    // Active/pending state
+    float  pendHi     = na
+    int    pendHiBar  = 0
+    float  pendLo     = na
+    int    pendLoBar  = 0
+    bool   lastHi     = false
+    bool   started    = false
+    // Last confirmed (for HH/LH/HL/LL classification)
+    float  lastCHi    = na
+    float  lastCLo    = na
+    // Active drawings
+    label  phLbl      = na
+    line   phLn       = na
+    label  plLbl      = na
+    line   plLn       = na
+    // Confirming pivot
+    label  cfHiLbl    = na
+    line   cfHiLn     = na
+    label  cfLoLbl    = na
+    line   cfLoLn     = na
+    // Confirmed history
+    array<label> cHiLbls = na
+    array<line>  cHiLns  = na
+    array<label> cLoLbls = na
+    array<line>  cLoLns  = na
+    // Trendline state (NEW)
+    TLState hiTL      = na
+    TLState loTL      = na
+
+// ═══════════════════════════════════════════════════════════════
+// PIVOT METHODS
+// ═══════════════════════════════════════════════════════════════
+method handleHigh(PivotLevel self, float ph, int pivotBar, int maxConf, bool showLbls, bool showLns, float atrOff, int maxTLHist, bool showTL, bool showDiv, int tlWidth) =>
+    if not self.active or na(ph)
+        false
+    else
+        string txt = self.tfName + " " + classifyHi(ph, self.lastCHi)
+        float yOff = nz(atrOff) * self.lvIdx
+
+        if not self.started
+            self.pendHi    := ph
+            self.pendHiBar := pivotBar
+            self.lastHi    := true
+            self.started   := true
+            if showLbls
+                self.phLbl := label.new(pivotBar, ph + yOff, txt, style=label.style_label_down, color=TRANS, textcolor=self.hiClr, size=size.tiny)
+            if showLns
+                self.phLn := line.new(pivotBar, ph, bar_index, ph, color=color.new(self.hiClr, 40), style=line.style_dashed, width=1)
+
+        else if self.lastHi
+            if ph > self.pendHi
+                if na(self.cfHiLbl) and not na(self.phLbl)
+                    self.cfHiLbl := self.phLbl
+                    self.cfHiLn  := self.phLn
+                    if showLbls and not na(self.cfHiLbl)
+                        label.set_textcolor(self.cfHiLbl, color.new(self.hiClr, 60))
+                    if showLns and not na(self.cfHiLn)
+                        line.set_color(self.cfHiLn, color.new(self.hiClr, 70))
+                else
+                    if not na(self.phLbl)
+                        label.delete(self.phLbl)
+                    if not na(self.phLn)
+                        line.delete(self.phLn)
+
+                self.pendHi    := ph
+                self.pendHiBar := pivotBar
+                string updTxt = self.tfName + " " + classifyHi(ph, self.lastCHi)
+                if showLbls
+                    self.phLbl := label.new(pivotBar, ph + yOff, updTxt, style=label.style_label_down, color=TRANS, textcolor=self.hiClr, size=size.tiny)
+                if showLns
+                    self.phLn := line.new(pivotBar, ph, bar_index, ph, color=color.new(self.hiClr, 40), style=line.style_dashed, width=1)
+
+        else
+            // Direction change: confirm pending low, then start new high
+            if not na(self.pendLo)
+                string loTxt = self.tfName + " " + classifyLo(self.pendLo, self.lastCLo)
+                if showLbls and not na(self.plLbl)
+                    label.set_text(self.plLbl, loTxt)
+                    label.set_textcolor(self.plLbl, color.new(self.loClr, 30))
+                if showLns and not na(self.plLn)
+                    line.set_color(self.plLn, color.new(self.loClr, 50))
+                    line.set_style(self.plLn, line.style_solid)
+                    line.set_x2(self.plLn, bar_index)
+                self.cLoLbls.push(self.plLbl)
+                self.cLoLns.push(self.plLn)
+                while self.cLoLbls.size() > maxConf
+                    label.delete(self.cLoLbls.shift())
+                while self.cLoLns.size() > maxConf
+                    line.delete(self.cLoLns.shift())
+                self.lastCLo := self.pendLo
+                // >>> TL INTEGRATION: confirmed low feeds ascending TL <<<
+                self.loTL.addAnchor(self.pendLo, self.pendLoBar, maxTLHist, showTL, showDiv, tlWidth)
+
+            if not na(self.cfLoLbl)
+                label.delete(self.cfLoLbl)
+                self.cfLoLbl := na
+            if not na(self.cfLoLn)
+                line.delete(self.cfLoLn)
+                self.cfLoLn := na
+            self.cfHiLbl := na
+            self.cfHiLn  := na
+
+            self.pendHi    := ph
+            self.pendHiBar := pivotBar
+            self.lastHi    := true
+            if showLbls
+                self.phLbl := label.new(pivotBar, ph + yOff, txt, style=label.style_label_down, color=TRANS, textcolor=self.hiClr, size=size.tiny)
+            if showLns
+                self.phLn := line.new(pivotBar, ph, bar_index, ph, color=color.new(self.hiClr, 40), style=line.style_dashed, width=1)
+        true
+
+method handleLow(PivotLevel self, float pl, int pivotBar, int maxConf, bool showLbls, bool showLns, float atrOff, int maxTLHist, bool showTL, bool showDiv, int tlWidth) =>
+    if not self.active or na(pl)
+        false
+    else
+        string txt = self.tfName + " " + classifyLo(pl, self.lastCLo)
+        float yOff = nz(atrOff) * self.lvIdx
+
+        if not self.started
+            self.pendLo    := pl
+            self.pendLoBar := pivotBar
+            self.lastHi    := false
+            self.started   := true
+            if showLbls
+                self.plLbl := label.new(pivotBar, pl - yOff, txt, style=label.style_label_up, color=TRANS, textcolor=self.loClr, size=size.tiny)
+            if showLns
+                self.plLn := line.new(pivotBar, pl, bar_index, pl, color=color.new(self.loClr, 40), style=line.style_dashed, width=1)
+
+        else if not self.lastHi
+            if pl < self.pendLo
+                if na(self.cfLoLbl) and not na(self.plLbl)
+                    self.cfLoLbl := self.plLbl
+                    self.cfLoLn  := self.plLn
+                    if showLbls and not na(self.cfLoLbl)
+                        label.set_textcolor(self.cfLoLbl, color.new(self.loClr, 60))
+                    if showLns and not na(self.cfLoLn)
+                        line.set_color(self.cfLoLn, color.new(self.loClr, 70))
+                else
+                    if not na(self.plLbl)
+                        label.delete(self.plLbl)
+                    if not na(self.plLn)
+                        line.delete(self.plLn)
+
+                self.pendLo    := pl
+                self.pendLoBar := pivotBar
+                string updTxt = self.tfName + " " + classifyLo(pl, self.lastCLo)
+                if showLbls
+                    self.plLbl := label.new(pivotBar, pl - yOff, updTxt, style=label.style_label_up, color=TRANS, textcolor=self.loClr, size=size.tiny)
+                if showLns
+                    self.plLn := line.new(pivotBar, pl, bar_index, pl, color=color.new(self.loClr, 40), style=line.style_dashed, width=1)
+
+        else
+            // Direction change: confirm pending high, then start new low
+            if not na(self.pendHi)
+                string hiTxt = self.tfName + " " + classifyHi(self.pendHi, self.lastCHi)
+                if showLbls and not na(self.phLbl)
+                    label.set_text(self.phLbl, hiTxt)
+                    label.set_textcolor(self.phLbl, color.new(self.hiClr, 30))
+                if showLns and not na(self.phLn)
+                    line.set_color(self.phLn, color.new(self.hiClr, 50))
+                    line.set_style(self.phLn, line.style_solid)
+                    line.set_x2(self.phLn, bar_index)
+                self.cHiLbls.push(self.phLbl)
+                self.cHiLns.push(self.phLn)
+                while self.cHiLbls.size() > maxConf
+                    label.delete(self.cHiLbls.shift())
+                while self.cHiLns.size() > maxConf
+                    line.delete(self.cHiLns.shift())
+                self.lastCHi := self.pendHi
+                // >>> TL INTEGRATION: confirmed high feeds descending TL <<<
+                self.hiTL.addAnchor(self.pendHi, self.pendHiBar, maxTLHist, showTL, showDiv, tlWidth)
+
+            if not na(self.cfHiLbl)
+                label.delete(self.cfHiLbl)
+                self.cfHiLbl := na
+            if not na(self.cfHiLn)
+                line.delete(self.cfHiLn)
+                self.cfHiLn := na
+            self.cfLoLbl := na
+            self.cfLoLn  := na
+
+            self.pendLo    := pl
+            self.pendLoBar := pivotBar
+            self.lastHi    := false
+            if showLbls
+                self.plLbl := label.new(pivotBar, pl - yOff, txt, style=label.style_label_up, color=TRANS, textcolor=self.loClr, size=size.tiny)
+            if showLns
+                self.plLn := line.new(pivotBar, pl, bar_index, pl, color=color.new(self.loClr, 40), style=line.style_dashed, width=1)
+        true
+
+method extendLines(PivotLevel self, bool showLns) =>
+    if self.active and showLns
+        if not na(self.phLn) and self.lastHi
+            line.set_x2(self.phLn, bar_index)
+        if not na(self.plLn) and not self.lastHi
+            line.set_x2(self.plLn, bar_index)
+    true
+
+// ═══════════════════════════════════════════════════════════════
+// INITIALIZATION
+// ═══════════════════════════════════════════════════════════════
+initLevel(string tf, color hiClr, color loClr, int idx) =>
+    PivotLevel lv = PivotLevel.new()
+    lv.tfName  := tf
+    lv.active  := tf != "Off"
+    lv.lvIdx   := idx
+    lv.hiClr   := hiClr
+    lv.loClr   := loClr
+    lv.cHiLbls := array.new<label>(0)
+    lv.cHiLns  := array.new<line>(0)
+    lv.cLoLbls := array.new<label>(0)
+    lv.cLoLns  := array.new<line>(0)
+    // TLState initialization
+    TLState hiTL = TLState.new()
+    hiTL.descending := true
+    hiTL.clr        := hiClr
+    hiTL.tfName     := tf
+    hiTL.history    := array.new<line>(0)
+    lv.hiTL := hiTL
+    TLState loTL = TLState.new()
+    loTL.descending := false
+    loTL.clr        := loClr
+    loTL.tfName     := tf
+    loTL.history    := array.new<line>(0)
+    lv.loTL := loTL
+    lv
+
+var PivotLevel lv0 = initLevel(i_lv1, i_c1Hi, i_c1Lo, 0)
+var PivotLevel lv1 = initLevel(i_lv2, i_c2Hi, i_c2Lo, 1)
+var PivotLevel lv2 = initLevel(i_lv3, i_c3Hi, i_c3Lo, 2)
+var PivotLevel lv3 = initLevel(i_lv4, i_c4Hi, i_c4Lo, 3)
+var PivotLevel lv4 = initLevel(i_lv5, i_c5Hi, i_c5Lo, 4)
+var PivotLevel lv5 = initLevel(i_lv6, i_c6Hi, i_c6Lo, 5)
+
+// ═══════════════════════════════════════════════════════════════
+// MAIN PROCESSING
+// ═══════════════════════════════════════════════════════════════
+int pivotBar = bar_index - i_rightLen
+
+// Break detection prices
+float breakHi = i_breakType == "Close" ? close : high
+float breakLo = i_breakType == "Close" ? close : low
+
+// --- Level 0 ---
+if lv0.active and i_showTL
+    lv0.hiTL.checkBreak(breakHi, bar_index, _maxTLHist)
+    lv0.loTL.checkBreak(breakLo, bar_index, _maxTLHist)
+lv0.handleHigh(ph1, pivotBar, i_confKeep, i_showLbls, i_showLines, _atrOff, _maxTLHist, i_showTL, i_showDiv, i_tlWidth)
+lv0.handleLow(pl1,  pivotBar, i_confKeep, i_showLbls, i_showLines, _atrOff, _maxTLHist, i_showTL, i_showDiv, i_tlWidth)
+lv0.extendLines(i_showLines)
+if lv0.active and i_showTL
+    lv0.hiTL.extendTL(bar_index)
+    lv0.loTL.extendTL(bar_index)
+
+// --- Level 1 ---
+if lv1.active and i_showTL
+    lv1.hiTL.checkBreak(breakHi, bar_index, _maxTLHist)
+    lv1.loTL.checkBreak(breakLo, bar_index, _maxTLHist)
+lv1.handleHigh(ph2, pivotBar, i_confKeep, i_showLbls, i_showLines, _atrOff, _maxTLHist, i_showTL, i_showDiv, i_tlWidth)
+lv1.handleLow(pl2,  pivotBar, i_confKeep, i_showLbls, i_showLines, _atrOff, _maxTLHist, i_showTL, i_showDiv, i_tlWidth)
+lv1.extendLines(i_showLines)
+if lv1.active and i_showTL
+    lv1.hiTL.extendTL(bar_index)
+    lv1.loTL.extendTL(bar_index)
+
+// --- Level 2 ---
+if lv2.active and i_showTL
+    lv2.hiTL.checkBreak(breakHi, bar_index, _maxTLHist)
+    lv2.loTL.checkBreak(breakLo, bar_index, _maxTLHist)
+lv2.handleHigh(ph3, pivotBar, i_confKeep, i_showLbls, i_showLines, _atrOff, _maxTLHist, i_showTL, i_showDiv, i_tlWidth)
+lv2.handleLow(pl3,  pivotBar, i_confKeep, i_showLbls, i_showLines, _atrOff, _maxTLHist, i_showTL, i_showDiv, i_tlWidth)
+lv2.extendLines(i_showLines)
+if lv2.active and i_showTL
+    lv2.hiTL.extendTL(bar_index)
+    lv2.loTL.extendTL(bar_index)
+
+// --- Level 3 ---
+if lv3.active and i_showTL
+    lv3.hiTL.checkBreak(breakHi, bar_index, _maxTLHist)
+    lv3.loTL.checkBreak(breakLo, bar_index, _maxTLHist)
+lv3.handleHigh(ph4, pivotBar, i_confKeep, i_showLbls, i_showLines, _atrOff, _maxTLHist, i_showTL, i_showDiv, i_tlWidth)
+lv3.handleLow(pl4,  pivotBar, i_confKeep, i_showLbls, i_showLines, _atrOff, _maxTLHist, i_showTL, i_showDiv, i_tlWidth)
+lv3.extendLines(i_showLines)
+if lv3.active and i_showTL
+    lv3.hiTL.extendTL(bar_index)
+    lv3.loTL.extendTL(bar_index)
+
+// --- Level 4 ---
+if lv4.active and i_showTL
+    lv4.hiTL.checkBreak(breakHi, bar_index, _maxTLHist)
+    lv4.loTL.checkBreak(breakLo, bar_index, _maxTLHist)
+lv4.handleHigh(ph5, pivotBar, i_confKeep, i_showLbls, i_showLines, _atrOff, _maxTLHist, i_showTL, i_showDiv, i_tlWidth)
+lv4.handleLow(pl5,  pivotBar, i_confKeep, i_showLbls, i_showLines, _atrOff, _maxTLHist, i_showTL, i_showDiv, i_tlWidth)
+lv4.extendLines(i_showLines)
+if lv4.active and i_showTL
+    lv4.hiTL.extendTL(bar_index)
+    lv4.loTL.extendTL(bar_index)
+
+// --- Level 5 ---
+if lv5.active and i_showTL
+    lv5.hiTL.checkBreak(breakHi, bar_index, _maxTLHist)
+    lv5.loTL.checkBreak(breakLo, bar_index, _maxTLHist)
+lv5.handleHigh(ph6, pivotBar, i_confKeep, i_showLbls, i_showLines, _atrOff, _maxTLHist, i_showTL, i_showDiv, i_tlWidth)
+lv5.handleLow(pl6,  pivotBar, i_confKeep, i_showLbls, i_showLines, _atrOff, _maxTLHist, i_showTL, i_showDiv, i_tlWidth)
+lv5.extendLines(i_showLines)
+if lv5.active and i_showTL
+    lv5.hiTL.extendTL(bar_index)
+    lv5.loTL.extendTL(bar_index)
+
+// ═══════════════════════════════════════════════════════════════
+// INFO TABLE
+// ═══════════════════════════════════════════════════════════════
+if i_showInfo and barstate.islast
+    var table infoTbl = table.new(position.top_right, 3, 7, border_color=color.new(color.gray, 60), border_width=1)
+    table.cell(infoTbl, 0, 0, "Level",  text_color=color.gray, text_size=size.tiny, bgcolor=color.new(color.gray, 90))
+    table.cell(infoTbl, 1, 0, "Left",   text_color=color.gray, text_size=size.tiny, bgcolor=color.new(color.gray, 90))
+    table.cell(infoTbl, 2, 0, "Right",  text_color=color.gray, text_size=size.tiny, bgcolor=color.new(color.gray, 90))
+    if lv0.active
+        table.cell(infoTbl, 0, 1, lv0.tfName, text_color=lv0.hiClr, text_size=size.tiny)
+        table.cell(infoTbl, 1, 1, str.tostring(left1), text_color=color.gray, text_size=size.tiny)
+        table.cell(infoTbl, 2, 1, str.tostring(i_rightLen), text_color=color.gray, text_size=size.tiny)
+    if lv1.active
+        table.cell(infoTbl, 0, 2, lv1.tfName, text_color=lv1.hiClr, text_size=size.tiny)
+        table.cell(infoTbl, 1, 2, str.tostring(left2), text_color=color.gray, text_size=size.tiny)
+        table.cell(infoTbl, 2, 2, str.tostring(i_rightLen), text_color=color.gray, text_size=size.tiny)
+    if lv2.active
+        table.cell(infoTbl, 0, 3, lv2.tfName, text_color=lv2.hiClr, text_size=size.tiny)
+        table.cell(infoTbl, 1, 3, str.tostring(left3), text_color=color.gray, text_size=size.tiny)
+        table.cell(infoTbl, 2, 3, str.tostring(i_rightLen), text_color=color.gray, text_size=size.tiny)
+    if lv3.active
+        table.cell(infoTbl, 0, 4, lv3.tfName, text_color=lv3.hiClr, text_size=size.tiny)
+        table.cell(infoTbl, 1, 4, str.tostring(left4), text_color=color.gray, text_size=size.tiny)
+        table.cell(infoTbl, 2, 4, str.tostring(i_rightLen), text_color=color.gray, text_size=size.tiny)
+    if lv4.active
+        table.cell(infoTbl, 0, 5, lv4.tfName, text_color=lv4.hiClr, text_size=size.tiny)
+        table.cell(infoTbl, 1, 5, str.tostring(left5), text_color=color.gray, text_size=size.tiny)
+        table.cell(infoTbl, 2, 5, str.tostring(i_rightLen), text_color=color.gray, text_size=size.tiny)
+    if lv5.active
+        table.cell(infoTbl, 0, 6, lv5.tfName, text_color=lv5.hiClr, text_size=size.tiny)
+        table.cell(infoTbl, 1, 6, str.tostring(left6), text_color=color.gray, text_size=size.tiny)
+        table.cell(infoTbl, 2, 6, str.tostring(i_rightLen), text_color=color.gray, text_size=size.tiny)

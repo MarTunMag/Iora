@@ -36,6 +36,10 @@ class PushZone:
     test_count: int = 0                  # Times price touched this zone
     first_test_time: pd.Timestamp | None = None  # Timestamp of first retest
 
+    # --- Zone attribution (Level 4: which zone caused a structural event) ---
+    caused_bos_choch: str = ""           # "BOS" or "CHoCH" if this zone caused an event
+    caused_event_tf: str = ""            # The TF where the structural event occurred
+
     def contains_price(self, price: float) -> bool:
         return self.bottom <= price <= self.top
 
@@ -113,3 +117,9 @@ class PushZoneTickState:
     dem_count: int = 0
     sup_reset_time: pd.Timestamp | None = None
     dem_reset_time: pd.Timestamp | None = None
+
+    # Breaker zones (broken zones with flipped polarity)
+    # When a supply zone breaks, it becomes a demand breaker; vice versa.
+    supply_breakers: list[PushZone] = field(default_factory=list)  # Former demand zones
+    demand_breakers: list[PushZone] = field(default_factory=list)  # Former supply zones
+    MAX_BREAKERS_PER_SIDE: int = 5

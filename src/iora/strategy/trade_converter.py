@@ -9,29 +9,92 @@ requires flint to be importable.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
 
 import pandas as pd
 
 
-# Pip sizes for common symbols (avoids flint dependency)
-_PIP_SIZES: dict[str, float] = {}
-_DEFAULT_PIP_SIZE = 0.0001
-_JPY_PIP_SIZE = 0.01
+# ---------------------------------------------------------------------------
+# Spec-driven pip size lookup
+# ---------------------------------------------------------------------------
+
+_SPECS_PATH = Path(__file__).resolve().parents[3] / "config" / "symbol_specifications.json"
+_spec_cache: dict[str, dict] | None = None
+
+
+def _load_specs() -> dict[str, dict]:
+    """Load symbol specifications from config/symbol_specifications.json."""
+    global _spec_cache
+    if _spec_cache is not None:
+        return _spec_cache
+    if _SPECS_PATH.exists():
+        with open(_SPECS_PATH) as f:
+            data = json.load(f)
+        _spec_cache = data.get("symbols", {})
+    else:
+        _spec_cache = {}
+    return _spec_cache
 
 
 def _get_pip_size(symbol: str) -> float:
-    """Get pip size for a symbol without flint dependency."""
+    """Get pip size for a symbol from broker specifications.
+
+    For 3/5-digit instruments (FX): pip = point * 10 (e.g., 0.00001 → 0.0001).
+    For 2-digit instruments (metals, crypto, oil): pip = point (e.g., 0.01).
+    For indices with 0-1 digits: pip = point.
+    """
     symbol = symbol.upper()
-    if symbol in _PIP_SIZES:
-        return _PIP_SIZES[symbol]
-    if symbol.endswith("JPY") or symbol in ("XAUUSD",):
-        return _JPY_PIP_SIZE
-    if symbol in ("DE40", "US30", "US500", "US100", "UK100", "JP225"):
-        return 1.0
+    specs = _load_specs()
+    if symbol in specs:
+        s = specs[symbol]
+        point = s.get("point", 0.0001)
+        digits = s.get("digits", 5)
+        # 3-digit (JPY pairs) and 5-digit (standard FX): pip = 10 * point
+        # 2-digit or fewer (metals, crypto, oil, indices): pip = point
+        if digits in (3, 5):
+            return point * 10
+        return point
+    # Fallback for symbols not in specs
+    if symbol.endswith("JPY"):
+        return 0.01
+    return 0.0001
+
+
+def get_typical_spread_pips(symbol: str) -> float:
+    """Get realistic typical spread in pips for a symbol.
+
+    Uses broker specs as a floor, then applies minimums by instrument class.
+    ECN snapshot spreads are often 0 or near-0 — not realistic for backtesting.
+    """
+    symbol = symbol.upper()
+    specs = _load_specs()
+
+    # Compute spec-based spread in pips
+    spec_spread = 0.0
+    if symbol in specs:
+        s = specs[symbol]
+        spread_points = s.get("spread", 0)
+        point = s.get("point", 0.0001)
+        digits = s.get("digits", 5)
+        pip_size = point * 10 if digits in (3, 5) else point
+        if pip_size > 0:
+            spec_spread = spread_points * point / pip_size
+
+    # Realistic minimums by instrument class
+    if symbol in ("XAUUSD",):
+        return max(spec_spread, 2.0)   # Gold: ~$0.20 typical
     if symbol in ("BTCUSD", "ETHUSD"):
-        return 1.0
-    return _DEFAULT_PIP_SIZE
+        return max(spec_spread, 120.0)  # Crypto: ~$12 typical
+    if symbol in ("XBRUSD", "XTIUSD"):
+        return max(spec_spread, 3.0)    # Oil: ~$0.03 typical
+    if symbol.endswith("JPY"):
+        return max(spec_spread, 1.5)    # JPY pairs: 1.5 pips typical
+    if symbol in ("DE40", "US30", "US500", "US100", "USTEC", "UK100", "JP225"):
+        return max(spec_spread, 100.0)  # Indices: varies widely
+    # Standard FX
+    return max(spec_spread, 1.0)        # FX majors: ~1.0 pip typical
 
 
 @dataclass(frozen=True, slots=True)

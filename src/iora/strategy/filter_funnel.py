@@ -261,6 +261,118 @@ def _make_hma_filter(cfg: RetestConfig):
     return fn
 
 
+def _make_cascade_phase_filter(cfg: RetestConfig):
+    if cfg.cascade_phase_filter == "any":
+        return None
+    val = cfg.cascade_phase_filter
+    return lambda c: c.cascade_phase == val
+
+
+def _make_tl_break_filter(cfg: RetestConfig):
+    if cfg.tl_break_filter == "any":
+        return None
+    lookback = cfg.tl_break_lookback
+
+    def _check_recency(bars_since: int) -> bool:
+        """Check if a TL break is recent enough. bars_since: -1=never, 0+=bars ago."""
+        if bars_since < 0:
+            return False  # Never broken
+        if lookback <= 0:
+            return True   # Any time (sticky mode)
+        return bars_since <= lookback
+
+    if cfg.tl_break_filter == "after_impulse_break":
+        return lambda c: (_check_recency(c.h1_impulse_bars_since_break)
+                          or _check_recency(c.h4_impulse_bars_since_break))
+    if cfg.tl_break_filter == "after_correction_break":
+        return lambda c: (_check_recency(c.h1_correction_bars_since_break)
+                          or _check_recency(c.h4_correction_bars_since_break))
+    return None
+
+
+def _make_h1_zone_count_filter(cfg: RetestConfig):
+    if cfg.h1_zone_count_filter == "any":
+        return None
+    val = cfg.h1_zone_count_filter
+    if val == "1-3":
+        return lambda c: 1 <= c.h1_push_zone_count <= 3
+    if val == "4-7":
+        return lambda c: 4 <= c.h1_push_zone_count <= 7
+    if val == "8+":
+        return lambda c: c.h1_push_zone_count >= 8
+    return None
+
+
+def _make_reversal_target_filter(cfg: RetestConfig):
+    if not cfg.reversal_target_entry:
+        return None
+    return lambda c: c.is_reversal_target_zone
+
+
+def _make_ew_overlap_filter(cfg: RetestConfig):
+    if cfg.ew_overlap_filter == "any":
+        return None
+    if cfg.ew_overlap_filter == "no_overlap":
+        return lambda c: not c.h1_zone4_overlaps_zone1
+    if cfg.ew_overlap_filter == "overlap_only":
+        return lambda c: c.h1_zone4_overlaps_zone1
+    return None
+
+
+def _make_ew_extension_filter(cfg: RetestConfig):
+    if cfg.ew_extension_filter == "any":
+        return None
+    if cfg.ew_extension_filter == "extended":
+        return lambda c: not isnan(c.h1_wave3_extension_ratio) and c.h1_wave3_extension_ratio > 1.618
+    if cfg.ew_extension_filter == "not_extended":
+        return lambda c: isnan(c.h1_wave3_extension_ratio) or c.h1_wave3_extension_ratio <= 1.618
+    return None
+
+
+def _make_choch_conviction_filter(cfg: RetestConfig):
+    if cfg.choch_conviction_filter == "any":
+        return None
+    if cfg.choch_conviction_filter == "strong_only":
+        # At least one of H4 or H1 has a strong CHoCH
+        return lambda c: c.h4_choch_conviction == "strong" or c.h1_choch_conviction == "strong"
+    if cfg.choch_conviction_filter == "weak_only":
+        return lambda c: c.h4_choch_conviction == "weak" or c.h1_choch_conviction == "weak"
+    return None
+
+
+def _make_consumption_count_filter(cfg: RetestConfig):
+    if cfg.min_consumption_count <= 0:
+        return None
+    min_c = cfg.min_consumption_count
+    return lambda c: c.h4_consumption_count >= min_c
+
+
+def _make_fvg_at_entry_filter(cfg: RetestConfig):
+    if not cfg.require_fvg_at_entry:
+        return None
+    return lambda c: c.fvg_at_candidate
+
+
+def _make_pivot_cascade_depth_filter(cfg: RetestConfig):
+    if cfg.min_pivot_cascade_depth <= 0:
+        return None
+    min_d = cfg.min_pivot_cascade_depth
+    return lambda c: c.pivot_cascade_depth >= min_d
+
+
+def _make_breaker_zone_filter(cfg: RetestConfig):
+    if not cfg.require_breaker_zone:
+        return None
+    return lambda c: c.breaker_at_candidate
+
+
+def _make_structural_fvg_filter(cfg: RetestConfig):
+    if cfg.structural_fvg_filter == "any":
+        return None
+    val = cfg.structural_fvg_filter
+    return lambda c: c.structural_fvg_position == val
+
+
 def _make_hma_cross_trigger(cfg: RetestConfig):
     if cfg.hma_cross_trigger == "none":
         return None
@@ -315,6 +427,18 @@ _FILTER_FACTORIES = [
     ("premium_discount", _make_premium_discount_filter),
     ("hma_filter", _make_hma_filter),
     ("hma_cross_trigger", _make_hma_cross_trigger),
+    ("cascade_phase", _make_cascade_phase_filter),
+    ("tl_break", _make_tl_break_filter),
+    ("h1_zone_count", _make_h1_zone_count_filter),
+    ("reversal_target", _make_reversal_target_filter),
+    ("ew_overlap", _make_ew_overlap_filter),
+    ("ew_extension", _make_ew_extension_filter),
+    ("choch_conviction", _make_choch_conviction_filter),
+    ("consumption_count", _make_consumption_count_filter),
+    ("fvg_at_entry", _make_fvg_at_entry_filter),
+    ("pivot_cascade_depth", _make_pivot_cascade_depth_filter),
+    ("breaker_zone", _make_breaker_zone_filter),
+    ("structural_fvg", _make_structural_fvg_filter),
 ]
 
 

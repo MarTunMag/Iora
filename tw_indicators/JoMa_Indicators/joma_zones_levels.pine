@@ -1,0 +1,458 @@
+//@version=6
+indicator("JoMa Zones + Levels", overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, calc_bars_count = 2000)
+
+// =============================================================================
+// MERGED INDICATOR: iora_zones + iora_bos_choch (Structure Levels)
+// Zones: M1/M5/M15 HA run-transition zones for entry/exit
+// Levels: HTF previous-period Hi/Lo with break detection
+// =============================================================================
+
+// =============================================================================
+// S1 — TYPES
+// =============================================================================
+
+type Zone
+    float   top       = 0.0
+    float   bottom    = 0.0
+    bool    is_supply = false
+    int     origin_time = 0
+    box     bx
+
+// =============================================================================
+// S2 — INPUTS: ZONES
+// =============================================================================
+
+string GRP_ZONE  = "Zone Detection"
+float  i_doji    = input.float(5.0, "Doji Body %", group = GRP_ZONE, minval = 0.1, maxval = 50.0, tooltip = "Max body/range % to classify as doji candle")
+
+string GRP_ZTF   = "Zone Timeframes"
+bool   i_tf0_on  = input.bool(true,  "M1",     group = GRP_ZTF, inline = "t0")
+string i_tf0     = input.timeframe("1",   "",   group = GRP_ZTF, inline = "t0")
+bool   i_tf1_on  = input.bool(true,  "M5",     group = GRP_ZTF, inline = "t1")
+string i_tf1     = input.timeframe("5",   "",   group = GRP_ZTF, inline = "t1")
+bool   i_tf2_on  = input.bool(true,  "M15",    group = GRP_ZTF, inline = "t2")
+string i_tf2     = input.timeframe("15",  "",   group = GRP_ZTF, inline = "t2")
+bool   i_tf3_on  = input.bool(false, "H1",     group = GRP_ZTF, inline = "t3")
+string i_tf3     = input.timeframe("60",  "",   group = GRP_ZTF, inline = "t3")
+bool   i_tf4_on  = input.bool(false, "H4",     group = GRP_ZTF, inline = "t4")
+string i_tf4     = input.timeframe("240", "",   group = GRP_ZTF, inline = "t4")
+
+string GRP_AGE   = "Zone Age (max bars per TF)"
+int    i_age_m1  = input.int(50, "M1",  group = GRP_AGE, minval = 1)
+int    i_age_m5  = input.int(50, "M5",  group = GRP_AGE, minval = 1)
+int    i_age_m15 = input.int(50, "M15", group = GRP_AGE, minval = 1)
+int    i_age_h1  = input.int(50, "H1",  group = GRP_AGE, minval = 1)
+int    i_age_h4  = input.int(50, "H4",  group = GRP_AGE, minval = 1)
+
+string GRP_ZCLR  = "Zone Colors"
+color  i_sup_bg  = input.color(color.new(#FF4444, 85), "Supply Fill",   group = GRP_ZCLR)
+color  i_sup_br  = input.color(color.new(#FF4444, 20), "Supply Border", group = GRP_ZCLR)
+color  i_dem_bg  = input.color(color.new(#2196F3, 85), "Demand Fill",   group = GRP_ZCLR)
+color  i_dem_br  = input.color(color.new(#2196F3, 20), "Demand Border", group = GRP_ZCLR)
+bool   i_zlabels = input.bool(true, "Show Zone Labels", group = GRP_ZCLR)
+
+string GRP_HL    = "HA Sequence HH / LL Lines"
+bool   i_show_hl = input.bool(true,  "Show Sequence HH/LL", group = GRP_HL)
+color  i_hh_clr  = input.color(color.new(#FF9800, 0), "HH Color", group = GRP_HL)
+color  i_ll_clr  = input.color(color.new(#26C6DA, 0), "LL Color", group = GRP_HL)
+
+// =============================================================================
+// S3 — INPUTS: STRUCTURE LEVELS (HTF Hi/Lo)
+// =============================================================================
+
+string GRP_LVL   = "Structure Levels (Previous Period Hi/Lo)"
+bool   i_m15_on  = input.bool(true,  "M15",       group = GRP_LVL, inline = "m15")
+color  i_m15_clr = input.color(color.new(#90A4AE, 0), "", group = GRP_LVL, inline = "m15")
+bool   i_h1_on   = input.bool(true,  "H1",        group = GRP_LVL, inline = "h1")
+color  i_h1_clr  = input.color(color.new(#CE93D8, 0), "", group = GRP_LVL, inline = "h1")
+bool   i_h4_on   = input.bool(true,  "H4",        group = GRP_LVL, inline = "h4")
+color  i_h4_clr  = input.color(color.new(#BA68C8, 0), "", group = GRP_LVL, inline = "h4")
+bool   i_dy_on   = input.bool(true,  "Daily",     group = GRP_LVL, inline = "dy")
+color  i_dy_clr  = input.color(color.new(#9C27B0, 0), "", group = GRP_LVL, inline = "dy")
+bool   i_wk_on   = input.bool(true,  "Weekly",    group = GRP_LVL, inline = "wk")
+color  i_wk_clr  = input.color(color.new(#2196F3, 0), "", group = GRP_LVL, inline = "wk")
+bool   i_mn_on   = input.bool(false, "Monthly",   group = GRP_LVL, inline = "mn")
+color  i_mn_clr  = input.color(color.new(#FF9800, 0), "", group = GRP_LVL, inline = "mn")
+bool   i_qt_on   = input.bool(false, "Quarterly", group = GRP_LVL, inline = "qt")
+color  i_qt_clr  = input.color(color.new(#4CAF50, 0), "", group = GRP_LVL, inline = "qt")
+
+// =============================================================================
+// S4 — ZONE HELPERS
+// =============================================================================
+
+tf_max_age(string tf) =>
+    int sec = timeframe.in_seconds(tf)
+    int out = sec <= 60 ? i_age_m1 : sec <= 300 ? i_age_m5 : sec <= 900 ? i_age_m15 : sec <= 3600 ? i_age_h1 : i_age_h4
+    out
+
+tf_label(string tf) =>
+    int sec = timeframe.in_seconds(tf)
+    string out = sec <= 60 ? "M1" : sec <= 300 ? "M5" : sec <= 900 ? "M15" : sec <= 3600 ? "H1" : "H4"
+    out
+
+// =============================================================================
+// S5 — HA ZONE DETECTION + SEQUENCE TRACKING
+// =============================================================================
+
+ha_detect(float doji_pct) =>
+    float haC = (open + high + low + close) / 4.0
+    float haO = float(na)
+    haO := na(haO[1]) ? (open + close) / 2.0 : (nz(haO[1]) + nz(haC[1])) / 2.0
+    float haH = math.max(high, math.max(haO, haC))
+    float haL = math.min(low, math.min(haO, haC))
+
+    bool is_blue = haC >= haO
+    bool is_red  = haC < haO
+
+    int max_run = math.min(50, bar_index)
+
+    var float prev_run_hi   = na
+    var float prev_run_lo   = na
+    var float seq_hh        = na
+    var float seq_ll        = na
+    var int   seq_hh_time   = na
+    var int   seq_ll_time   = na
+    var string hi1_txt      = ""
+    var string lo1_txt      = ""
+
+    bool  fire      = false
+    float ztop      = 0.0
+    float zbot      = 0.0
+    bool  is_sup    = false
+    int   zt_origin = time
+
+    if is_blue and is_red[1]
+        float run_lo_ohlc = low[1]
+        int   ext_time    = time[1]
+        int   k           = 2
+        while k < max_run and is_red[k]
+            if low[k] < run_lo_ohlc
+                run_lo_ohlc := low[k]
+                ext_time    := time[k]
+            k += 1
+
+        bool is_new_ll = na(prev_run_lo) or run_lo_ohlc < prev_run_lo
+        seq_ll      := run_lo_ohlc
+        seq_ll_time := ext_time
+        prev_run_lo := run_lo_ohlc
+        lo1_txt     := is_new_ll ? "LL" : "HL"
+
+        float body = math.abs(haC - haO)
+        float rng  = haH - haL
+        bool  doji = rng > 0.0 and (body / rng * 100.0) < doji_pct
+
+        ztop      := doji ? nz(haH, high) : nz(haH[1], high[1])
+        zbot      := nz(run_lo_ohlc, low[1])
+        zt_origin := nz(ext_time, time[1])
+        fire      := true
+
+    else if is_red and is_blue[1]
+        float run_hi_ohlc = high[1]
+        int   ext_time    = time[1]
+        int   k           = 2
+        while k < max_run and is_blue[k]
+            if high[k] > run_hi_ohlc
+                run_hi_ohlc := high[k]
+                ext_time    := time[k]
+            k += 1
+
+        bool is_new_hh = na(prev_run_hi) or run_hi_ohlc > prev_run_hi
+        seq_hh      := run_hi_ohlc
+        seq_hh_time := ext_time
+        prev_run_hi := run_hi_ohlc
+        hi1_txt     := is_new_hh ? "HH" : "LH"
+
+        float body = math.abs(haC - haO)
+        float rng  = haH - haL
+        bool  doji = rng > 0.0 and (body / rng * 100.0) < doji_pct
+
+        ztop      := nz(run_hi_ohlc, high[1])
+        zbot      := doji ? nz(haL, low) : nz(haL[1], low[1])
+        zt_origin := nz(ext_time, time[1])
+        fire      := true
+        is_sup    := true
+
+    [fire, ztop, zbot, is_sup, zt_origin, seq_hh, seq_ll, seq_hh_time, seq_ll_time, hi1_txt, lo1_txt]
+
+// =============================================================================
+// S6 — ZONE MANAGEMENT
+// =============================================================================
+
+method delete_zone(array<Zone> zones, int idx) =>
+    Zone z = zones.get(idx)
+    if not na(z.bx)
+        box.delete(z.bx)
+    zones.remove(idx)
+
+method process(array<Zone> zones, bool fire, float ztop, float zbot, bool is_sup, int z_time, string hi_txt, string lo_txt, string tf_str) =>
+    int tf_ms  = timeframe.in_seconds(tf_str) * 1000
+    int max_ms = tf_max_age(tf_str) * tf_ms
+
+    if zones.size() > 0
+        for i = zones.size() - 1 to 0
+            Zone z = zones.get(i)
+            bool expired = (time - z.origin_time) > max_ms
+            if expired
+                zones.delete_zone(i)
+                continue
+            bool broken = z.is_supply ? (close > z.top) : (close < z.bottom)
+            if broken
+                zones.delete_zone(i)
+
+    bool valid = not na(ztop) and not na(zbot) and not na(z_time) and ztop > zbot
+    if fire and (time - z_time) < max_ms and valid
+        string cls     = is_sup ? hi_txt : lo_txt
+        string lbl_txt = i_zlabels ? tf_label(tf_str) + (is_sup ? " S " : " D ") + cls : na
+        color  bg_clr  = is_sup ? i_sup_bg : i_dem_bg
+        color  br_clr  = is_sup ? i_sup_br : i_dem_br
+        color  tx_clr  = is_sup ? color.new(#FF4444, 0) : color.new(#2196F3, 0)
+        box new_box    = box.new(z_time, ztop, z_time + tf_ms * 6, zbot, xloc = xloc.bar_time, extend = extend.right, bgcolor = bg_clr, border_color = br_clr, border_width = 1, text = lbl_txt, text_size = size.tiny, text_color = tx_clr, text_halign = text.align_right, text_valign = text.align_top)
+        zones.push(Zone.new(ztop, zbot, is_sup, z_time, new_box))
+
+// =============================================================================
+// S7 — HH/LL LINE HELPERS
+// =============================================================================
+
+update_hl_line(line ln, float lvl, int origin, color clr) =>
+    if na(lvl) or na(origin)
+        ln
+    else if na(ln)
+        line.new(origin, lvl, time, lvl, xloc = xloc.bar_time, extend = extend.right, color = clr, style = line.style_dashed, width = 1)
+    else
+        ln.set_y1(lvl)
+        ln.set_y2(lvl)
+        ln.set_x1(origin)
+        ln.set_x2(time)
+        ln
+
+// =============================================================================
+// S8 — ZONE DATA REQUESTS (5 TFs via request.security)
+// =============================================================================
+
+string _base_sym = ticker.standard(syminfo.tickerid)
+
+[f0_raw, zt0, zb0, s0, tm0, hh0, ll0, hht0, llt0, h1s0, l1s0] = request.security(_base_sym, i_tf0, ha_detect(i_doji))
+[f1_raw, zt1, zb1, s1, tm1, hh1, ll1, hht1, llt1, h1s1, l1s1] = request.security(_base_sym, i_tf1, ha_detect(i_doji))
+[f2_raw, zt2, zb2, s2, tm2, hh2, ll2, hht2, llt2, h1s2, l1s2] = request.security(_base_sym, i_tf2, ha_detect(i_doji))
+[f3_raw, zt3, zb3, s3, tm3, hh3, ll3, hht3, llt3, h1s3, l1s3] = request.security(_base_sym, i_tf3, ha_detect(i_doji))
+[f4_raw, zt4, zb4, s4, tm4, hh4, ll4, hht4, llt4, h1s4, l1s4] = request.security(_base_sym, i_tf4, ha_detect(i_doji))
+
+bool f0 = f0_raw and not f0_raw[1]
+bool f1 = f1_raw and not f1_raw[1]
+bool f2 = f2_raw and not f2_raw[1]
+bool f3 = f3_raw and not f3_raw[1]
+bool f4 = f4_raw and not f4_raw[1]
+
+// =============================================================================
+// S9 — ZONE ARRAYS + EXECUTION
+// =============================================================================
+
+var array<Zone> zones0 = array.new<Zone>()
+var array<Zone> zones1 = array.new<Zone>()
+var array<Zone> zones2 = array.new<Zone>()
+var array<Zone> zones3 = array.new<Zone>()
+var array<Zone> zones4 = array.new<Zone>()
+
+if i_tf0_on
+    zones0.process(f0, zt0, zb0, s0, tm0, h1s0, l1s0, i_tf0)
+if i_tf1_on
+    zones1.process(f1, zt1, zb1, s1, tm1, h1s1, l1s1, i_tf1)
+if i_tf2_on
+    zones2.process(f2, zt2, zb2, s2, tm2, h1s2, l1s2, i_tf2)
+if i_tf3_on
+    zones3.process(f3, zt3, zb3, s3, tm3, h1s3, l1s3, i_tf3)
+if i_tf4_on
+    zones4.process(f4, zt4, zb4, s4, tm4, h1s4, l1s4, i_tf4)
+
+// =============================================================================
+// S10 — HA SEQUENCE HH / LL LINES
+// =============================================================================
+
+var line ln_hh0 = na, var line ln_ll0 = na
+var line ln_hh1 = na, var line ln_ll1 = na
+var line ln_hh2 = na, var line ln_ll2 = na
+var line ln_hh3 = na, var line ln_ll3 = na
+var line ln_hh4 = na, var line ln_ll4 = na
+
+if i_show_hl
+    if i_tf0_on
+        ln_hh0 := update_hl_line(ln_hh0, hh0, hht0, i_hh_clr)
+        ln_ll0 := update_hl_line(ln_ll0, ll0, llt0, i_ll_clr)
+    if i_tf1_on
+        ln_hh1 := update_hl_line(ln_hh1, hh1, hht1, i_hh_clr)
+        ln_ll1 := update_hl_line(ln_ll1, ll1, llt1, i_ll_clr)
+    if i_tf2_on
+        ln_hh2 := update_hl_line(ln_hh2, hh2, hht2, i_hh_clr)
+        ln_ll2 := update_hl_line(ln_ll2, ll2, llt2, i_ll_clr)
+    if i_tf3_on
+        ln_hh3 := update_hl_line(ln_hh3, hh3, hht3, i_hh_clr)
+        ln_ll3 := update_hl_line(ln_ll3, ll3, llt3, i_ll_clr)
+    if i_tf4_on
+        ln_hh4 := update_hl_line(ln_hh4, hh4, hht4, i_hh_clr)
+        ln_ll4 := update_hl_line(ln_ll4, ll4, llt4, i_ll_clr)
+
+// =============================================================================
+// S11 — STRUCTURE LEVELS: PERIOD Hi/Lo TRACKING
+// Runs on chart TF — no request.security needed.
+// Tracks previous closed period Hi/Lo. Broken lines get cross mark.
+// =============================================================================
+
+track_period(string tf) =>
+    bool new_period = ta.change(time(tf)) != 0
+
+    var float cur_hi   = na
+    var int   cur_hi_t = na
+    var float cur_lo   = na
+    var int   cur_lo_t = na
+    var float prev_hi   = na
+    var int   prev_hi_t = na
+    var float prev_lo   = na
+    var int   prev_lo_t = na
+    var int   hi_brk_t  = na
+    var int   lo_brk_t  = na
+
+    if new_period
+        prev_hi   := cur_hi
+        prev_hi_t := cur_hi_t
+        prev_lo   := cur_lo
+        prev_lo_t := cur_lo_t
+        cur_hi    := high
+        cur_hi_t  := time
+        cur_lo    := low
+        cur_lo_t  := time
+        hi_brk_t  := na
+        lo_brk_t  := na
+    else
+        if high >= nz(cur_hi)
+            cur_hi   := high
+            cur_hi_t := time
+        if low <= nz(cur_lo, 1e18)
+            cur_lo   := low
+            cur_lo_t := time
+
+    if na(hi_brk_t) and not na(prev_hi) and high > prev_hi
+        hi_brk_t := time
+    if na(lo_brk_t) and not na(prev_lo) and low < prev_lo
+        lo_brk_t := time
+
+    [prev_hi, prev_hi_t, prev_lo, prev_lo_t, hi_brk_t, lo_brk_t]
+
+[m15_hi, m15_hi_t, m15_lo, m15_lo_t, m15_hi_brk, m15_lo_brk] = track_period("15")
+[h1_hi,  h1_hi_t,  h1_lo,  h1_lo_t,  h1_hi_brk,  h1_lo_brk]  = track_period("60")
+[h4_hi,  h4_hi_t,  h4_lo,  h4_lo_t,  h4_hi_brk,  h4_lo_brk]  = track_period("240")
+[dy_hi,  dy_hi_t,  dy_lo,  dy_lo_t,  dy_hi_brk,  dy_lo_brk]  = track_period("1D")
+[wk_hi,  wk_hi_t,  wk_lo,  wk_lo_t,  wk_hi_brk,  wk_lo_brk]  = track_period("1W")
+[mn_hi,  mn_hi_t,  mn_lo,  mn_lo_t,  mn_hi_brk,  mn_lo_brk]  = track_period("1M")
+[qt_hi,  qt_hi_t,  qt_lo,  qt_lo_t,  qt_hi_brk,  qt_lo_brk]  = track_period("3M")
+
+// =============================================================================
+// S12 — STRUCTURE LEVEL DRAWING
+// =============================================================================
+
+draw_level(line ln, label lbl, float lvl, int origin, int brk_time, color base_clr, string txt, bool is_hi, float frac) =>
+    if na(lvl) or na(origin)
+        [ln, lbl]
+    else
+        bool   broken = not na(brk_time)
+        color  clr    = base_clr
+        int    wid    = 2
+        string stl    = line.style_solid
+        string full   = txt + (broken ? " X" : "")
+        int    x2     = broken ? brk_time : time
+        string ext    = broken ? extend.none : extend.right
+        int    lx     = int(origin + (x2 - origin) * frac)
+        string lsty   = is_hi ? label.style_label_down : label.style_label_up
+        if na(ln)
+            line  new_ln  = line.new(origin, lvl, x2, lvl, xloc = xloc.bar_time, extend = ext, color = clr, style = stl, width = wid)
+            label new_lbl = label.new(lx, lvl, full, xloc = xloc.bar_time, style = lsty, color = color.new(color.white, 100), textcolor = clr, size = size.tiny)
+            [new_ln, new_lbl]
+        else
+            ln.set_x1(origin)
+            ln.set_y1(lvl)
+            ln.set_x2(x2)
+            ln.set_y2(lvl)
+            ln.set_color(clr)
+            ln.set_width(wid)
+            ln.set_style(stl)
+            ln.set_extend(ext)
+            lbl.set_x(lx)
+            lbl.set_y(lvl)
+            lbl.set_text(full)
+            lbl.set_textcolor(clr)
+            lbl.set_style(lsty)
+            [ln, lbl]
+
+// =============================================================================
+// S13 — STRUCTURE LEVEL STATE + DRAWING
+// =============================================================================
+
+var line ln_m15_hi = na, var label lb_m15_hi = na
+var line ln_m15_lo = na, var label lb_m15_lo = na
+var line ln_h1_hi  = na, var label lb_h1_hi  = na
+var line ln_h1_lo  = na, var label lb_h1_lo  = na
+var line ln_h4_hi  = na, var label lb_h4_hi  = na
+var line ln_h4_lo  = na, var label lb_h4_lo  = na
+var line ln_dy_hi  = na, var label lb_dy_hi  = na
+var line ln_dy_lo  = na, var label lb_dy_lo  = na
+var line ln_wk_hi  = na, var label lb_wk_hi  = na
+var line ln_wk_lo  = na, var label lb_wk_lo  = na
+var line ln_mn_hi  = na, var label lb_mn_hi  = na
+var line ln_mn_lo  = na, var label lb_mn_lo  = na
+var line ln_qt_hi  = na, var label lb_qt_hi  = na
+var line ln_qt_lo  = na, var label lb_qt_lo  = na
+
+if i_m15_on
+    [a, b] = draw_level(ln_m15_hi, lb_m15_hi, m15_hi, m15_hi_t, m15_hi_brk, i_m15_clr, "M15 Hi", true, 0.06)
+    ln_m15_hi := a
+    lb_m15_hi := b
+    [c, d] = draw_level(ln_m15_lo, lb_m15_lo, m15_lo, m15_lo_t, m15_lo_brk, i_m15_clr, "M15 Lo", false, 0.06)
+    ln_m15_lo := c
+    lb_m15_lo := d
+
+if i_h1_on
+    [a, b] = draw_level(ln_h1_hi, lb_h1_hi, h1_hi, h1_hi_t, h1_hi_brk, i_h1_clr, "H1 Hi", true, 0.08)
+    ln_h1_hi := a
+    lb_h1_hi := b
+    [c, d] = draw_level(ln_h1_lo, lb_h1_lo, h1_lo, h1_lo_t, h1_lo_brk, i_h1_clr, "H1 Lo", false, 0.08)
+    ln_h1_lo := c
+    lb_h1_lo := d
+
+if i_h4_on
+    [a, b] = draw_level(ln_h4_hi, lb_h4_hi, h4_hi, h4_hi_t, h4_hi_brk, i_h4_clr, "H4 Hi", true, 0.09)
+    ln_h4_hi := a
+    lb_h4_hi := b
+    [c, d] = draw_level(ln_h4_lo, lb_h4_lo, h4_lo, h4_lo_t, h4_lo_brk, i_h4_clr, "H4 Lo", false, 0.09)
+    ln_h4_lo := c
+    lb_h4_lo := d
+
+if i_dy_on
+    [a, b] = draw_level(ln_dy_hi, lb_dy_hi, dy_hi, dy_hi_t, dy_hi_brk, i_dy_clr, "DY Hi", true, 0.10)
+    ln_dy_hi := a
+    lb_dy_hi := b
+    [c, d] = draw_level(ln_dy_lo, lb_dy_lo, dy_lo, dy_lo_t, dy_lo_brk, i_dy_clr, "DY Lo", false, 0.10)
+    ln_dy_lo := c
+    lb_dy_lo := d
+
+if i_wk_on
+    [a, b] = draw_level(ln_wk_hi, lb_wk_hi, wk_hi, wk_hi_t, wk_hi_brk, i_wk_clr, "WK Hi", true, 0.15)
+    ln_wk_hi := a
+    lb_wk_hi := b
+    [c, d] = draw_level(ln_wk_lo, lb_wk_lo, wk_lo, wk_lo_t, wk_lo_brk, i_wk_clr, "WK Lo", false, 0.15)
+    ln_wk_lo := c
+    lb_wk_lo := d
+
+if i_mn_on
+    [a, b] = draw_level(ln_mn_hi, lb_mn_hi, mn_hi, mn_hi_t, mn_hi_brk, i_mn_clr, "MN Hi", true, 0.20)
+    ln_mn_hi := a
+    lb_mn_hi := b
+    [c, d] = draw_level(ln_mn_lo, lb_mn_lo, mn_lo, mn_lo_t, mn_lo_brk, i_mn_clr, "MN Lo", false, 0.20)
+    ln_mn_lo := c
+    lb_mn_lo := d
+
+if i_qt_on
+    [a, b] = draw_level(ln_qt_hi, lb_qt_hi, qt_hi, qt_hi_t, qt_hi_brk, i_qt_clr, "QT Hi", true, 0.25)
+    ln_qt_hi := a
+    lb_qt_hi := b
+    [c, d] = draw_level(ln_qt_lo, lb_qt_lo, qt_lo, qt_lo_t, qt_lo_brk, i_qt_clr, "QT Lo", false, 0.25)
+    ln_qt_lo := c
+    lb_qt_lo := d

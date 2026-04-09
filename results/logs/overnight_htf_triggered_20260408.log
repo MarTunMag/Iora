@@ -1,0 +1,178 @@
+Overnight sweep: 8 symbols
+Symbols: GBPUSD, EURUSD, USDJPY, GBPJPY, XAUUSD, BTCUSD, US500, USTEC
+Output: results\sweeps\htf_triggered
+Start: 2026-04-08 05:40:38
+
+============================================================
+  GBPUSD
+============================================================
+  488 configs
+    D1: 5,104 bars
+    H1: 102,517 bars
+    H4: 30,630 bars
+    M1: 250,636 bars
+    M15: 110,057 bars
+    M5: 130,163 bars
+    W1: 736 bars
+  Running sweep...
+  Done in 2538.8s — 488 results
+  Saved: results\sweeps\htf_triggered\GBPUSD.csv
+  Top 5 by SQN (min 30 trades):
+    H1@H4 nest=none sp=0.0 partial=True | SQN=30.74 WR=55% trades=3747
+    H1@H4 nest=none sp=1.0 partial=True | SQN=29.93 WR=55% trades=3747
+    H1@H4 nest=none sp=1.5 partial=True | SQN=29.52 WR=55% trades=3747
+    H1@H4 nest=none sp=2.0 partial=True | SQN=29.12 WR=55% trades=3747
+    H1@H4 nest=static sp=0.0 partial=True | SQN=14.47 WR=45% trades=1436
+
+============================================================
+  EURUSD
+============================================================
+  488 configs
+    D1: 5,104 bars
+    H1: 102,517 bars
+    H4: 30,630 bars
+    M1: 250,728 bars
+    M15: 110,062 bars
+    M5: 130,182 bars
+    W1: 736 bars
+  Running sweep...
+  Done in 2537.5s — 488 results
+  Saved: results\sweeps\htf_triggered\EURUSD.csv
+  Top 5 by SQN (min 30 trades):
+    H1@H4 nest=none sp=0.0 partial=True | SQN=29.12 WR=53% trades=3830
+    H1@H4 nest=none sp=1.0 partial=True | SQN=28.09 WR=53% trades=3830
+    H1@H4 nest=none sp=1.5 partial=True | SQN=27.57 WR=53% trades=3830
+    H1@H4 nest=none sp=2.0 partial=True | SQN=27.05 WR=53% trades=3830
+    H1@H4 nest=static sp=0.0 partial=True | SQN=14.90 WR=46% trades=1341
+
+============================================================
+  USDJPY
+============================================================
+  488 configs
+    D1: 5,104 bars
+    H1: 102,517 bars
+    H4: 30,630 bars
+    M1: 250,652 bars
+    M15: 110,057 bars
+    M5: 130,164 bars
+    W1: 736 bars
+  Running sweep...
+  Done in 2670.5s — 488 results
+  Saved: results\sweeps\htf_triggered\USDJPY.csv
+  Top 5 by SQN (min 30 trades):
+    H1@H4 nest=none sp=0.0 partial=True | SQN=30.14 WR=55% trades=3556
+    H1@H4 nest=none sp=1.5 partial=True | SQN=28.72 WR=55% trades=3556
+    H1@H4 nest=none sp=2.25 partial=True | SQN=28.01 WR=55% trades=3556
+    H1@H4 nest=none sp=3.0 partial=True | SQN=27.30 WR=55% trades=3556
+    H1@H4 nest=static sp=0.0 partial=True | SQN=12.84 WR=44% trades=1296
+
+============================================================
+  GBPJPY
+============================================================
+  488 configs
+    D1: 5,104 bars
+    H1: 102,517 bars
+    H4: 30,630 bars
+    M1: 250,623 bars
+    M15: 110,057 bars
+    M5: 130,160 bars
+    W1: 736 bars
+  Running sweep...
+  Done in 2711.6s — 488 results
+  Saved: results\sweeps\htf_triggered\GBPJPY.csv
+  Top 5 by SQN (min 30 trades):
+    H1@H4 nest=none sp=0.0 partial=True | SQN=31.98 WR=55% trades=4065
+    H1@H4 nest=none sp=1.5 partial=True | SQN=31.06 WR=55% trades=4065
+    H1@H4 nest=none sp=2.25 partial=True | SQN=30.60 WR=55% trades=4065
+    H1@H4 nest=none sp=3.0 partial=True | SQN=30.14 WR=55% trades=4065
+    H1@H4 nest=static sp=0.0 partial=True | SQN=14.52 WR=45% trades=1450
+
+============================================================
+  XAUUSD
+============================================================
+  488 configs
+    D1: 3,266 bars
+    H1: 65,328 bars
+    H4: 19,598 bars
+    M1: 242,220 bars
+    M15: 109,498 bars
+    M5: 128,483 bars
+    W1: 471 bars
+  Running sweep...
+  Done in 2274.4s — 488 results
+  Saved: results\sweeps\htf_triggered\XAUUSD.csv
+  Top 5 by SQN (min 30 trades):
+    H1@H4 nest=none sp=0.0 partial=True | SQN=21.54 WR=51% trades=2399
+    H1@H4 nest=none sp=12.0 partial=True | SQN=21.17 WR=51% trades=2399
+    H1@H4 nest=none sp=18.0 partial=True | SQN=20.98 WR=51% trades=2399
+    H1@H4 nest=none sp=24.0 partial=True | SQN=20.80 WR=51% trades=2399
+    H1@H4 nest=static sp=0.0 partial=True | SQN=12.93 WR=44% trades=1359
+
+============================================================
+  BTCUSD
+============================================================
+  488 configs
+    D1: 3,538 bars
+    H1: 70,783 bars
+    H4: 19,002 bars
+    M1: 314,096 bars
+    M15: 114,337 bars
+    M5: 142,910 bars
+    W1: 505 bars
+  Running sweep...
+  Done in 2806.4s — 488 results
+  Saved: results\sweeps\htf_triggered\BTCUSD.csv
+  Top 5 by SQN (min 30 trades):
+    H1@H4 nest=none sp=0.0 partial=True | SQN=20.05 WR=54% trades=1724
+    H1@H4 nest=none sp=1200.0 partial=True | SQN=19.22 WR=54% trades=1724
+    H1@H4 nest=none sp=1800.0 partial=True | SQN=18.93 WR=54% trades=1724
+    H1@H4 nest=none sp=2400.0 partial=True | SQN=18.65 WR=54% trades=1724
+    H1@H4 nest=static sp=0.0 partial=True | SQN=14.29 WR=45% trades=1534
+
+============================================================
+  US500
+============================================================
+  488 configs
+    D1: 3,067 bars
+    H1: 61,352 bars
+    H4: 16,618 bars
+    M1: 242,093 bars
+    M15: 109,498 bars
+    M5: 128,455 bars
+    W1: 443 bars
+  Running sweep...
+  Done in 2266.2s — 488 results
+  Saved: results\sweeps\htf_triggered\US500.csv
+  Top 5 by SQN (min 30 trades):
+    H1@H4 nest=none sp=0.0 partial=True | SQN=23.99 WR=56% trades=2019
+    H1@H4 nest=none sp=100.0 partial=True | SQN=22.17 WR=56% trades=2019
+    H1@H4 nest=none sp=150.0 partial=True | SQN=21.28 WR=56% trades=2019
+    H1@H4 nest=none sp=200.0 partial=True | SQN=20.41 WR=56% trades=2019
+    H1@H4 nest=static sp=0.0 partial=True | SQN=12.98 WR=45% trades=1180
+
+============================================================
+  USTEC
+============================================================
+  488 configs
+    D1: 3,066 bars
+    H1: 61,331 bars
+    H4: 16,605 bars
+    M1: 242,287 bars
+    M15: 109,496 bars
+    M5: 128,475 bars
+    W1: 442 bars
+  Running sweep...
+  Done in 2167.3s — 488 results
+  Saved: results\sweeps\htf_triggered\USTEC.csv
+  Top 5 by SQN (min 30 trades):
+    H1@H4 nest=none sp=0.0 partial=True | SQN=25.05 WR=55% trades=2354
+    H1@H4 nest=none sp=100.0 partial=True | SQN=24.55 WR=55% trades=2354
+    H1@H4 nest=none sp=150.0 partial=True | SQN=24.30 WR=55% trades=2354
+    H1@H4 nest=none sp=200.0 partial=True | SQN=24.05 WR=55% trades=2354
+    H1@H4 nest=static sp=0.0 partial=False | SQN=14.23 WR=44% trades=1358
+
+============================================================
+Combined results: results\sweeps\htf_triggered\ALL_COMBINED.csv (3904 rows)
+
+Total time: 333.1 minutes
+Finished: 2026-04-08 11:13:43

@@ -115,6 +115,10 @@ def compute_metrics(records: list[SweepTradeRecord]) -> dict:
     avg_win_hold = sum(win_durations) / len(win_durations) if win_durations else 0.0
     avg_loss_hold = sum(loss_durations) / len(loss_durations) if loss_durations else 0.0
 
+    # --- Average SL size (risk_pips) ---
+    risk_arr = np.array([r.risk_pips for r in records], dtype=np.float64)
+    avg_sl_pips = float(risk_arr.mean()) if len(risk_arr) > 0 else 0.0
+
     # --- Exit reason breakdown ---
     tp_hits = sum(1 for r in records if r.exit_reason == "tp_hit")
     sl_hits = sum(1 for r in records if r.exit_reason == "sl_hit")
@@ -166,6 +170,8 @@ def compute_metrics(records: list[SweepTradeRecord]) -> dict:
         "avg_hold_hours": avg_hold_hours,
         "avg_win_hold_hours": avg_win_hold,
         "avg_loss_hold_hours": avg_loss_hold,
+        # SL size
+        "avg_sl_pips": avg_sl_pips,
     }
 
     # --- Breakdowns ---
@@ -197,6 +203,7 @@ def _empty_metrics() -> dict:
         "max_win_streak": 0, "max_loss_streak": 0,
         "avg_hold_hours": 0.0, "avg_win_hold_hours": 0.0,
         "avg_loss_hold_hours": 0.0,
+        "avg_sl_pips": 0.0,
     }
 
 

@@ -24,6 +24,53 @@ from iora.orchestrator.push_zone_engine import (
     init_push_zone_state,
     push_zone_engine_tick,
 )
+from iora.engine.cascade_state import CascadePhaseState, cascade_state_tick
+
+
+@dataclass(slots=True)
+class ZoneBirthEvent:
+    """A push zone born on a specific bar."""
+    timestamp: pd.Timestamp
+    zone_top: float
+    zone_bottom: float
+    zone_tf: str
+    zone_side: str       # "demand" or "supply"
+    is_push: bool
+    origin_time: pd.Timestamp  # Zone creation time (for identity)
+
+
+@dataclass(slots=True)
+class CascadeSnapshot:
+    """Per-bar snapshot of cascade phase state for windowed signal-flip."""
+    phase: str                          # e.g. "h4_correction", "d1_push"
+    h4_correction_tl_intact: bool
+    h4_impulse_tl_intact: bool
+    h1_correction_tl_intact: bool
+    h1_impulse_tl_intact: bool
+    m15_correction_bars_since_break: int = -1
+    m15_impulse_bars_since_break: int = -1
+    h1_push_zone_count: int = 0
+
+    # Layer 2.5: HTF level break timestamps (None = not broken this period)
+    d1_hi_brk_time: pd.Timestamp | None = None
+    d1_lo_brk_time: pd.Timestamp | None = None
+    h4_hi_brk_time: pd.Timestamp | None = None
+    h4_lo_brk_time: pd.Timestamp | None = None
+    h1_hi_brk_time: pd.Timestamp | None = None
+    h1_lo_brk_time: pd.Timestamp | None = None
+
+    # Layer 2.5: M15 TL state
+    m15_correction_tl_intact: bool = True
+    m15_impulse_tl_intact: bool = True
+    m15_trend: int = 0                  # +1 bullish, -1 bearish, 0 flat
+
+
+@dataclass(slots=True)
+class CandidateBuildResult:
+    """Result of build_retest_candidates with optional zone birth events."""
+    candidates: list['RetestCandidate']
+    zone_births: dict  # pd.Timestamp → list[ZoneBirthEvent], empty if not collected
+    cascade_timeline: dict = field(default_factory=dict)  # pd.Timestamp → CascadeSnapshot
 
 
 @dataclass(slots=True)
@@ -56,6 +103,10 @@ class RetestCandidate:
     # Each tuple: (zone_top, zone_bottom, zone_tf) of a broken LTF zone
     breaker_zones: list[tuple[float, float, str]] = field(default_factory=list)
 
+    # Nested LTF zones (populated when ltf_nesting="static")
+    # Each: (zone_top, zone_bottom, zone_tf, zone_side, is_push)
+    nested_ltf_zones: list[tuple[float, float, str, str, bool]] = field(default_factory=list)
+
     # HMA state at entry time (from reference TF)
     hma_direction_h1: int = 0       # +1 rising, -1 falling, 0 flat/unavailable
     hma_direction_h4: int = 0
@@ -69,6 +120,39 @@ class RetestCandidate:
     # Phase 3 bias context (from BiasStateRecord at entry time)
     d_to_w_relationship: str = "neutral"
     inside_w_zone: bool = False
+
+    # Cascade phase state (from push zone trendline engine)
+    cascade_phase: str = "unknown"
+    h1_push_zone_count: int = 0
+    h1_impulse_tl_intact: bool = True
+    h1_correction_tl_intact: bool = True
+    h4_impulse_tl_intact: bool = True
+    h4_correction_tl_intact: bool = True
+    is_reversal_target_zone: bool = False  # Zone tagged as CHoCH-causing
+
+    # TL break recency (bars since last break per TF/type, -1 = never)
+    h1_impulse_bars_since_break: int = -1
+    h1_correction_bars_since_break: int = -1
+    h4_impulse_bars_since_break: int = -1
+    h4_correction_bars_since_break: int = -1
+
+    # EW-derived exhaustion signals
+    h1_zone4_overlaps_zone1: bool = False
+    h1_wave3_extension_ratio: float = float('nan')
+
+    # CHoCH conviction classification
+    h4_choch_conviction: str = ""    # "strong", "weak", "pre", ""
+    h1_choch_conviction: str = ""
+
+    # Momentum consumption count (child TFs aligned after H4 CHoCH)
+    h4_consumption_count: int = 0
+    h4_consumption_complete: bool = False
+
+    # Structural overlap metrics (Phase 3)
+    pivot_cascade_depth: int = 0        # How many TFs confirm same direction
+    fvg_at_candidate: bool = False      # Unfilled candle FVG overlaps candidate zone
+    breaker_at_candidate: bool = False  # Breaker zone overlaps candidate zone
+    structural_fvg_position: str = "none"  # "inside_gap", "at_gap_boundary", "none"
 
     @property
     def direction(self) -> str:
@@ -132,6 +216,131 @@ def _find_breaker_zones(
         results.sort(key=lambda x: x[1], reverse=False)
 
     return results[:max_zones]
+
+
+def _find_nested_ltf_zones(
+    state: PushZoneEngineState,
+    ltf_tf: str,
+    zone_side: str,
+    ctx_zone_top: float,
+    ctx_zone_bottom: float,
+    require_push: bool = False,
+    max_zones: int = 5,
+) -> list[tuple[float, float, str, str, bool]]:
+    """Find LTF zones geometrically inside a context zone (same side).
+
+    For demand H4 zone: LTF demand zones with top <= H4 top AND bottom >= H4 bottom.
+    For supply H4 zone: LTF supply zones with bottom >= H4 bottom AND top <= H4 top.
+
+    Returns list of (zone_top, zone_bottom, zone_tf, zone_side, is_push) sorted by
+    proximity to price entry edge — for demand: zone_top descending (nearest first),
+    for supply: zone_bottom ascending (nearest first).
+    """
+    ts = state.tick_states.get(ltf_tf)
+    if ts is None:
+        return []
+
+    zone_list = ts.demand_zones if zone_side == "demand" else ts.supply_zones
+    results: list[tuple[float, float, str, str, bool]] = []
+
+    for z in zone_list:
+        # Geometric containment: LTF zone fully inside context zone
+        if z.top > ctx_zone_top or z.bottom < ctx_zone_bottom:
+            continue
+
+        if require_push and not z.is_push:
+            continue
+
+        results.append((z.top, z.bottom, ltf_tf, zone_side, z.is_push))
+
+    # Sort by proximity to where price first enters:
+    # demand = nearest to zone top (highest first)
+    # supply = nearest to zone bottom (lowest first)
+    if zone_side == "demand":
+        results.sort(key=lambda x: x[0], reverse=True)
+    else:
+        results.sort(key=lambda x: x[1], reverse=False)
+
+    return results[:max_zones]
+
+
+def _compute_pivot_cascade_depth(
+    state: "PushZoneEngineState",
+    zone_side: str,
+) -> int:
+    """Count how many TFs have trend matching the entry direction."""
+    entry_dir = 1 if zone_side == "demand" else -1
+    count = 0
+    for tf in ("D1", "W1", "H4", "H1", "M15", "M5"):
+        ts = state.tick_states.get(tf)
+        if ts is not None and ts.trend == entry_dir:
+            count += 1
+    return count
+
+
+def _check_fvg_at_zone(
+    state: "PushZoneEngineState",
+    zone_top: float,
+    zone_bottom: float,
+) -> bool:
+    """Check if any active FVG (any TF) overlaps the candidate zone."""
+    from iora.engine.fvg_tick import fvg_overlaps_zone
+    for tf, fvg_st in state.fvg_states.items():
+        if fvg_overlaps_zone(fvg_st.active_fvgs, zone_top, zone_bottom):
+            return True
+    return False
+
+
+def _check_structural_fvg(
+    state: "PushZoneEngineState",
+    zone_top: float,
+    zone_bottom: float,
+) -> str:
+    """Check zone's relationship to structural FVGs across all TF pairs."""
+    from iora.engine.structural_fvg import structural_fvg_at_zone
+    for key, sfvg_st in state.structural_fvg_states.items():
+        result = structural_fvg_at_zone(sfvg_st.active_fvgs, zone_top, zone_bottom)
+        if result != "none":
+            return result
+    return "none"
+
+
+def _check_breaker_at_zone(
+    state: "PushZoneEngineState",
+    zone_top: float,
+    zone_bottom: float,
+    zone_side: str,
+) -> bool:
+    """Check if any breaker zone overlaps the candidate zone.
+
+    For demand entries (long), look for demand breakers (former supply).
+    For supply entries (short), look for supply breakers (former demand).
+    """
+    for tf, ts in state.tick_states.items():
+        breakers = ts.demand_breakers if zone_side == "demand" else ts.supply_breakers
+        for b in breakers:
+            if b.top >= zone_bottom and b.bottom <= zone_top:
+                return True
+    return False
+
+
+def _zone_overlaps_reversal_target(
+    zone: "PushZone",
+    cascade_st: "CascadePhaseState",
+    atr: float,
+) -> bool:
+    """Check if a zone overlaps the H1 or H4 reversal target within 1 ATR tolerance."""
+    tolerance = atr
+    for rt_top, rt_bot in [
+        (cascade_st.h1_reversal_target_top, cascade_st.h1_reversal_target_bottom),
+        (cascade_st.h4_reversal_target_top, cascade_st.h4_reversal_target_bottom),
+    ]:
+        if isnan(rt_top) or isnan(rt_bot):
+            continue
+        # Overlap check with tolerance
+        if zone.top + tolerance >= rt_bot and zone.bottom - tolerance <= rt_top:
+            return True
+    return False
 
 
 def _find_ltf_choch_boundary(
@@ -319,15 +528,20 @@ def _precompute_hma_state(
     )
 
 
-def build_retest_candidates(
+def _build_candidates_core(
     data_by_tf: dict[str, pd.DataFrame],
     entry_tf: str = "M5",
     symbol: str = "UNKNOWN",
     period_depth: int = 3,
     hma_period: int = 24,
     hma_source: str = "close",
-) -> list[RetestCandidate]:
-    """Run zone engine + bias + event detection and return enriched RetestCandidates.
+    ltf_tf: str = "",
+    require_ltf_push: bool = False,
+    collect_births: bool = False,
+    birth_tfs: list[str] | None = None,
+    collect_cascade_timeline: bool = False,
+) -> CandidateBuildResult:
+    """Core candidate building logic with optional nesting enrichment and birth tracking.
 
     Mirrors _run_single_entry_tf() from opportunity_runner.py, but additionally
     captures zone.top, zone.bottom, period.cur_hi, period.cur_lo at event time.
@@ -339,12 +553,16 @@ def build_retest_candidates(
         period_depth: Period tracker history depth
         hma_period: HMA period for direction/cross computation
         hma_source: "close" or "ha_close" — source series for HMA
+        ltf_tf: LTF for nested zone lookup (static nesting). Empty = skip.
+        require_ltf_push: Only include LTF push zones in nesting.
+        collect_births: If True, track zone birth events across birth_tfs.
+        birth_tfs: TFs to monitor for zone births (dynamic nesting).
 
     Returns:
-        List of RetestCandidate with zone geometry and ATR attached.
+        CandidateBuildResult with candidates and optional zone_births dict.
     """
     if entry_tf not in data_by_tf:
-        return []
+        return CandidateBuildResult(candidates=[], zone_births={})
 
     tfs = list(data_by_tf.keys())
     aligned_df, _ = build_aligned_multi_tf(data_by_tf, entry_tf)
@@ -364,14 +582,91 @@ def build_retest_candidates(
         data_by_tf.get("H4"), base_df, hma_period, hma_source,
     ) if "H4" in data_by_tf and entry_tf not in ("H1", "H4") else None
 
+    # Determine LTF TFs to scan for nesting enrichment
+    # Always populate for H1@H4 and H1@D1 pairs when LTF data is available
+    nesting_ltf_tfs: list[str] = []
+    if ltf_tf:
+        nesting_ltf_tfs = [ltf_tf]
+    else:
+        # Auto-populate for qualifying pairs: check if M15, M5, M1 are in data
+        for candidate_ltf in ["M15", "M5", "M1"]:
+            if candidate_ltf in tfs and candidate_ltf != entry_tf:
+                nesting_ltf_tfs.append(candidate_ltf)
+
+    # Zone birth tracking state (dynamic nesting)
+    seen_zones: set[tuple] = set()
+    zone_births: dict[pd.Timestamp, list[ZoneBirthEvent]] = {}
+    cascade_timeline: dict[pd.Timestamp, CascadeSnapshot] = {}
+    _birth_tfs = birth_tfs or []
+
     candidates: list[RetestCandidate] = []
     prev_d_bias = ""
     prev_swing_cls: dict[str, dict[str, str]] = {}
     bar_idx = 0
+    cascade_phase_st = CascadePhaseState()
 
     for ctx in iter_bars(base_df, aligned_df, tfs):
         push_zone_engine_tick(state, ctx, config, bus=bus)
         bus.drain()
+
+        # Update cascade phase state (reads push zone trends + TL breaks)
+        cascade_state_tick(
+            cascade_phase_st,
+            state.tick_states,
+            state.tl_states,
+            state.bar_tl_events,
+            ctx.close,
+        )
+
+        # Cascade timeline for windowed signal-flip
+        if collect_cascade_timeline:
+            # Collect HTF period break timestamps from PeriodTracker
+            d1_ts = state.tick_states.get("D1")
+            h4_ts = state.tick_states.get("H4")
+            h1_ts = state.tick_states.get("H1")
+            cascade_timeline[ctx.timestamp] = CascadeSnapshot(
+                phase=cascade_phase_st.phase,
+                h4_correction_tl_intact=cascade_phase_st.h4_correction_tl_intact,
+                h4_impulse_tl_intact=cascade_phase_st.h4_impulse_tl_intact,
+                h1_correction_tl_intact=cascade_phase_st.h1_correction_tl_intact,
+                h1_impulse_tl_intact=cascade_phase_st.h1_impulse_tl_intact,
+                m15_correction_bars_since_break=cascade_phase_st.m15_correction_bars_since_break,
+                m15_impulse_bars_since_break=cascade_phase_st.m15_impulse_bars_since_break,
+                h1_push_zone_count=cascade_phase_st.h1_push_zone_count,
+                # Layer 2.5: HTF period break timestamps
+                d1_hi_brk_time=d1_ts.period.hi_brk_time if d1_ts else None,
+                d1_lo_brk_time=d1_ts.period.lo_brk_time if d1_ts else None,
+                h4_hi_brk_time=h4_ts.period.hi_brk_time if h4_ts else None,
+                h4_lo_brk_time=h4_ts.period.lo_brk_time if h4_ts else None,
+                h1_hi_brk_time=h1_ts.period.hi_brk_time if h1_ts else None,
+                h1_lo_brk_time=h1_ts.period.lo_brk_time if h1_ts else None,
+                # Layer 2.5: M15 TL state
+                m15_correction_tl_intact=cascade_phase_st.m15_correction_tl_intact,
+                m15_impulse_tl_intact=cascade_phase_st.m15_impulse_tl_intact,
+                m15_trend=cascade_phase_st.m15_trend,
+            )
+
+        # Zone birth tracking — detect new zones born on this bar
+        if collect_births and _birth_tfs:
+            births_this_bar: list[ZoneBirthEvent] = []
+            for btf in _birth_tfs:
+                bts = state.tick_states.get(btf)
+                if bts is None:
+                    continue
+                for side, zones in [("demand", bts.demand_zones), ("supply", bts.supply_zones)]:
+                    for z in zones:
+                        zkey = (z.top, z.bottom, z.origin_time, btf, side)
+                        if zkey not in seen_zones:
+                            seen_zones.add(zkey)
+                            births_this_bar.append(ZoneBirthEvent(
+                                timestamp=ctx.timestamp,
+                                zone_top=z.top, zone_bottom=z.bottom,
+                                zone_tf=btf, zone_side=side,
+                                is_push=z.is_push,
+                                origin_time=z.origin_time,
+                            ))
+            if births_this_bar:
+                zone_births[ctx.timestamp] = births_this_bar
 
         atr_val = atr_series.iloc[ctx.idx] if ctx.idx < len(atr_series) else 0.002
         if isnan(atr_val):
@@ -463,6 +758,20 @@ def build_retest_candidates(
                 matched_zone.top, matched_zone.bottom,
             )
 
+            # Nested LTF zones for static nesting (populate for HTF pairs)
+            nested_ltf: list[tuple[float, float, str, str, bool]] = []
+            if nesting_ltf_tfs and event.zone_tf != entry_tf:
+                for n_tf in nesting_ltf_tfs:
+                    if n_tf in state.tick_states:
+                        nested_ltf.extend(_find_nested_ltf_zones(
+                            state=state,
+                            ltf_tf=n_tf,
+                            zone_side=event.zone_side,
+                            ctx_zone_top=matched_zone.top,
+                            ctx_zone_bottom=matched_zone.bottom,
+                            require_push=require_ltf_push,
+                        ))
+
             # HMA state lookup
             i = ctx.idx
             hma_dir_h1 = int(hma_h1.direction.iloc[i]) if hma_h1 is not None and i < len(hma_h1.direction) else 0
@@ -489,6 +798,7 @@ def build_retest_candidates(
                 opposing_zone_h4=opp_h4,
                 opposing_zone_d1=opp_d1,
                 breaker_zones=breaker_zones,
+                nested_ltf_zones=nested_ltf,
                 hma_direction_h1=hma_dir_h1,
                 hma_direction_h4=hma_dir_h4,
                 ha_above_hma_h1=ha_above_h1,
@@ -499,6 +809,36 @@ def build_retest_candidates(
                 hma_cross_direction_h4=cross_dir_h4,
                 d_to_w_relationship=bias_rec.d_to_w_relationship,
                 inside_w_zone=is_inside_w,
+                cascade_phase=cascade_phase_st.phase,
+                h1_push_zone_count=cascade_phase_st.h1_push_zone_count,
+                h1_impulse_tl_intact=cascade_phase_st.h1_impulse_tl_intact,
+                h1_correction_tl_intact=cascade_phase_st.h1_correction_tl_intact,
+                h4_impulse_tl_intact=cascade_phase_st.h4_impulse_tl_intact,
+                h4_correction_tl_intact=cascade_phase_st.h4_correction_tl_intact,
+                is_reversal_target_zone=(
+                    matched_zone.caused_bos_choch == "CHoCH"
+                    or _zone_overlaps_reversal_target(
+                        matched_zone, cascade_phase_st, atr_val)
+                ),
+                h1_impulse_bars_since_break=cascade_phase_st.h1_impulse_bars_since_break,
+                h1_correction_bars_since_break=cascade_phase_st.h1_correction_bars_since_break,
+                h4_impulse_bars_since_break=cascade_phase_st.h4_impulse_bars_since_break,
+                h4_correction_bars_since_break=cascade_phase_st.h4_correction_bars_since_break,
+                h1_zone4_overlaps_zone1=cascade_phase_st.h1_zone4_overlaps_zone1,
+                h1_wave3_extension_ratio=cascade_phase_st.h1_wave3_extension_ratio,
+                h4_choch_conviction=cascade_phase_st.h4_last_choch_conviction,
+                h1_choch_conviction=cascade_phase_st.h1_last_choch_conviction,
+                h4_consumption_count=cascade_phase_st.h4_consumption_count,
+                h4_consumption_complete=cascade_phase_st.h4_consumption_complete,
+                pivot_cascade_depth=_compute_pivot_cascade_depth(
+                    state, event.zone_side),
+                fvg_at_candidate=_check_fvg_at_zone(
+                    state, matched_zone.top, matched_zone.bottom),
+                breaker_at_candidate=_check_breaker_at_zone(
+                    state, matched_zone.top, matched_zone.bottom,
+                    event.zone_side),
+                structural_fvg_position=_check_structural_fvg(
+                    state, matched_zone.top, matched_zone.bottom),
             ))
 
         # Update prev_swing_cls for next bar
@@ -512,4 +852,87 @@ def build_retest_candidates(
 
         bar_idx += 1
 
-    return candidates
+    return CandidateBuildResult(
+        candidates=candidates,
+        zone_births=zone_births,
+        cascade_timeline=cascade_timeline,
+    )
+
+
+def build_retest_candidates(
+    data_by_tf: dict[str, pd.DataFrame],
+    entry_tf: str = "M5",
+    symbol: str = "UNKNOWN",
+    period_depth: int = 3,
+    hma_period: int = 24,
+    hma_source: str = "close",
+    ltf_tf: str = "",
+    require_ltf_push: bool = False,
+) -> list[RetestCandidate]:
+    """Run zone engine + bias + event detection and return enriched RetestCandidates.
+
+    This is the standard entry point. For dynamic nesting (zone birth events),
+    use ``build_retest_candidates_with_births`` instead.
+
+    Args:
+        data_by_tf: OHLC DataFrames keyed by TF label (must include entry_tf)
+        entry_tf: Entry timeframe to iterate on
+        symbol: Symbol name (used for pip size)
+        period_depth: Period tracker history depth
+        hma_period: HMA period for direction/cross computation
+        hma_source: "close" or "ha_close" — source series for HMA
+        ltf_tf: LTF for nested zone lookup (static nesting). Empty = skip.
+        require_ltf_push: Only include LTF push zones in nesting.
+
+    Returns:
+        List of RetestCandidate with zone geometry and ATR attached.
+    """
+    result = _build_candidates_core(
+        data_by_tf=data_by_tf, entry_tf=entry_tf, symbol=symbol,
+        period_depth=period_depth, hma_period=hma_period, hma_source=hma_source,
+        ltf_tf=ltf_tf, require_ltf_push=require_ltf_push,
+        collect_births=False, birth_tfs=None,
+    )
+    return result.candidates
+
+
+def build_retest_candidates_with_births(
+    data_by_tf: dict[str, pd.DataFrame],
+    entry_tf: str = "M5",
+    symbol: str = "UNKNOWN",
+    period_depth: int = 3,
+    hma_period: int = 24,
+    hma_source: str = "close",
+    ltf_tf: str = "",
+    require_ltf_push: bool = False,
+    birth_tfs: list[str] | None = None,
+    collect_cascade_timeline: bool = False,
+) -> CandidateBuildResult:
+    """Run zone engine + bias + event detection with zone birth event collection.
+
+    Same as ``build_retest_candidates`` but additionally collects zone birth
+    events for dynamic nesting mode.
+
+    Args:
+        data_by_tf: OHLC DataFrames keyed by TF label (must include entry_tf)
+        entry_tf: Entry timeframe to iterate on
+        symbol: Symbol name (used for pip size)
+        period_depth: Period tracker history depth
+        hma_period: HMA period for direction/cross computation
+        hma_source: "close" or "ha_close" — source series for HMA
+        ltf_tf: LTF for nested zone lookup (static nesting). Empty = skip.
+        require_ltf_push: Only include LTF push zones in nesting.
+        birth_tfs: TFs to monitor for zone births (e.g. ["M15", "M5"]).
+                   If None or empty, birth tracking is disabled.
+        collect_cascade_timeline: If True, capture per-bar CascadeSnapshot for windowed mode.
+
+    Returns:
+        CandidateBuildResult with candidates, zone_births, and cascade_timeline.
+    """
+    return _build_candidates_core(
+        data_by_tf=data_by_tf, entry_tf=entry_tf, symbol=symbol,
+        period_depth=period_depth, hma_period=hma_period, hma_source=hma_source,
+        ltf_tf=ltf_tf, require_ltf_push=require_ltf_push,
+        collect_births=bool(birth_tfs), birth_tfs=birth_tfs,
+        collect_cascade_timeline=collect_cascade_timeline,
+    )

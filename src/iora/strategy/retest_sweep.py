@@ -11,7 +11,12 @@ from dataclasses import dataclass, field
 import pandas as pd
 
 from iora.strategy.retest_config import RetestConfig, ALL_TF_PAIRS
-from iora.strategy.retest_candidate import RetestCandidate, build_retest_candidates
+from iora.strategy.retest_candidate import (
+    RetestCandidate,
+    CandidateBuildResult,
+    build_retest_candidates,
+    build_retest_candidates_with_births,
+)
 from iora.strategy.retest_engine import evaluate_retest_config, RetestResult
 
 
@@ -639,6 +644,139 @@ def partial_tp_configs() -> list[RetestConfig]:
     return configs
 
 
+def htf_triggered_ltf_configs(symbol: str = "GBPUSD") -> list[RetestConfig]:
+    """Sweep configs for HTF-triggered LTF entry system.
+
+    Tests M15 and M5 zones nested inside H4 zones, triggered by H1@H4 retest.
+    Also includes standalone LTF pairs (M5@M15, M1@M5, M1@M15) with full feature set.
+    Spread values are symbol-aware via get_typical_spread_pips().
+    """
+    from iora.strategy.trade_converter import get_typical_spread_pips
+
+    configs: list[RetestConfig] = []
+    seen: set = set()
+
+    def _add(c: RetestConfig) -> None:
+        key = (
+            c.tf_pair, c.ltf_nesting, c.entry_tf_override,
+            c.trigger_window_bars, c.require_ltf_push,
+            c.trigger_also_trades, c.max_ltf_per_trigger,
+            c.spread_pips, c.partial_tp, c.partial_unit1_pct,
+            c.partial_unit1_rr, c.partial_unit2_tp,
+            c.bias_filter, c.min_sl_pips, c.min_sl_spread_mult,
+            c.limit_ttl, c.limit_edge, c.entry_mode,
+        )
+        if key not in seen:
+            seen.add(key)
+            configs.append(c)
+
+    typical_spread = get_typical_spread_pips(symbol)
+    spread_values = sorted({0.0, typical_spread, typical_spread * 1.5, typical_spread * 2.0})
+    sl_mult_values = [0, 2, 3, 5]
+
+    # Common base kwargs
+    base = dict(
+        tf_pair="H1@H4",
+        entry_mode="limit",
+        limit_edge="top",
+        limit_ttl=0,
+        sl_mode="zone",
+    )
+
+    partial_kw = dict(
+        partial_tp=True,
+        partial_unit1_pct=0.7,
+        partial_unit1_rr=3.0,
+        partial_unit2_tp="H1",
+    )
+
+    # --- Baselines (H1@H4 direct, no nesting) ---
+    for sp in spread_values:
+        _add(RetestConfig(**base, spread_pips=sp))
+        _add(RetestConfig(**base, spread_pips=sp, **partial_kw))
+
+    # --- Static nesting ---
+    for ltf in ["M15", "M5"]:
+        for spread in spread_values:
+            for sl_mult in sl_mult_values:
+                for push in [False, True]:
+                    _add(RetestConfig(**base,
+                        ltf_nesting="static",
+                        entry_tf_override=ltf,
+                        spread_pips=spread,
+                        min_sl_spread_mult=sl_mult,
+                        require_ltf_push=push,
+                        fixed_rr=3.0,
+                    ))
+                    _add(RetestConfig(**base,
+                        ltf_nesting="static",
+                        entry_tf_override=ltf,
+                        spread_pips=spread,
+                        min_sl_spread_mult=sl_mult,
+                        require_ltf_push=push,
+                        **partial_kw,
+                    ))
+
+    # --- Dynamic nesting ---
+    for ltf in ["M15", "M5"]:
+        for spread in spread_values:
+            for sl_mult in sl_mult_values:
+                for push in [False, True]:
+                    for window in [24, 48]:
+                        _add(RetestConfig(**base,
+                            ltf_nesting="dynamic",
+                            entry_tf_override=ltf,
+                            trigger_window_bars=window,
+                            spread_pips=spread,
+                            min_sl_spread_mult=sl_mult,
+                            require_ltf_push=push,
+                            fixed_rr=3.0,
+                        ))
+                        _add(RetestConfig(**base,
+                            ltf_nesting="dynamic",
+                            entry_tf_override=ltf,
+                            trigger_window_bars=window,
+                            spread_pips=spread,
+                            min_sl_spread_mult=sl_mult,
+                            require_ltf_push=push,
+                            **partial_kw,
+                        ))
+
+    # --- Standalone LTF pairs (NEVER TESTED with full feature set) ---
+    for pair, tp_htf in [
+        ("M5@M15", "H1"),
+        ("M1@M5", "M15"),
+        ("M1@M15", "H1"),
+    ]:
+        ltf_base = dict(
+            tf_pair=pair,
+            entry_mode="limit",
+            limit_edge="top",
+            limit_ttl=0,
+            sl_mode="zone",
+        )
+        ltf_partial = dict(
+            partial_tp=True,
+            partial_unit1_pct=0.7,
+            partial_unit1_rr=3.0,
+            partial_unit2_tp=tp_htf,
+        )
+        for spread in spread_values:
+            for sl_mult in sl_mult_values:
+                _add(RetestConfig(**ltf_base,
+                    spread_pips=spread,
+                    min_sl_spread_mult=sl_mult,
+                    fixed_rr=3.0,
+                ))
+                _add(RetestConfig(**ltf_base,
+                    spread_pips=spread,
+                    min_sl_spread_mult=sl_mult,
+                    **ltf_partial,
+                ))
+
+    return configs
+
+
 def _build_for_tf(
     data_by_tf: dict[str, pd.DataFrame],
     entry_tf: str,
@@ -672,7 +810,45 @@ def run_retest_sweep(
 
     valid_tfs = [tf for tf in entry_tfs if tf in data_by_tf]
 
-    if parallel and len(valid_tfs) > 1:
+    # Check if any config needs dynamic nesting or signal-flip (zone birth collection)
+    needs_signal_flip = any(c.exit_mode in ("signal_flip", "signal_flip_with_safety") for c in configs)
+    needs_births = any(c.ltf_nesting == "dynamic" for c in configs) or needs_signal_flip
+    birth_tfs_set: set[str] = set()
+    for c in configs:
+        if c.ltf_nesting == "dynamic" and c.entry_tf_override:
+            birth_tfs_set.add(c.entry_tf_override)
+        if c.exit_mode in ("signal_flip", "signal_flip_with_safety"):
+            birth_tfs_set.add(c.entry_tf)  # Need births on the entry TF for flip detection
+    birth_tfs = list(birth_tfs_set)
+
+    # Check if any config needs static nesting (LTF zone enrichment)
+    needs_static = any(c.ltf_nesting == "static" for c in configs)
+    static_ltf_tfs = list({c.entry_tf_override for c in configs
+                           if c.ltf_nesting == "static" and c.entry_tf_override})
+    any_require_push = any(c.require_ltf_push for c in configs
+                           if c.ltf_nesting == "static")
+
+    zone_births_by_tf: dict[str, dict] = {}
+    cascade_timeline_by_tf: dict[str, dict] = {}
+    # Only collect cascade_timeline for entry TFs that have windowed configs
+    windowed_entry_tfs = {c.entry_tf for c in configs if c.flip_window == "windowed"}
+
+    if needs_births or needs_static:
+        # Use build_retest_candidates_with_births for advanced candidate building
+        for entry_tf in valid_tfs:
+            need_tl_for_tf = entry_tf in windowed_entry_tfs
+            result = build_retest_candidates_with_births(
+                data_by_tf=data_by_tf, entry_tf=entry_tf, symbol=symbol,
+                ltf_tf="",  # Auto-populate: collect ALL available LTF zones (M15, M5, M1)
+                require_ltf_push=False,  # Don't filter at build time — filter at eval time
+                birth_tfs=birth_tfs if needs_births else None,
+                collect_cascade_timeline=need_tl_for_tf,
+            )
+            all_candidates.extend(result.candidates)
+            zone_births_by_tf[entry_tf] = result.zone_births
+            cascade_timeline_by_tf[entry_tf] = result.cascade_timeline
+            bar_data_by_entry_tf[entry_tf] = data_by_tf[entry_tf]
+    elif parallel and len(valid_tfs) > 1:
         # Try ProcessPoolExecutor first, fall back to ThreadPoolExecutor
         Executor = ProcessPoolExecutor
         try:
@@ -714,11 +890,247 @@ def run_retest_sweep(
         if cfg.unit2_trail != "none":
             trail_tf = cfg.unit2_trail.replace("ha_", "").upper()
             trail_tf_data = data_by_tf.get(trail_tf)
+        # Pass zone_births for dynamic nesting or signal-flip configs
+        needs_zb = (
+            cfg.ltf_nesting == "dynamic"
+            or cfg.exit_mode in ("signal_flip", "signal_flip_with_safety")
+        )
+        zb = zone_births_by_tf.get(cfg.entry_tf, {}) if needs_zb else None
+        ct = cascade_timeline_by_tf.get(cfg.entry_tf, {}) if cfg.flip_window == "windowed" else None
         result = evaluate_retest_config(
             candidates=all_candidates, config=cfg, symbol=symbol,
             bar_data=bar_data, all_candidates=all_candidates,
             trail_tf_data=trail_tf_data,
+            zone_births=zb,
+            cascade_timeline=ct,
         )
         results.append(result)
 
     return SweepSummary(results=results, symbol=symbol)
+
+
+def cascade_sweep_configs(symbol: str = "UNKNOWN") -> list[RetestConfig]:
+    """Generate cascade-specific sweep configs.
+
+    Base: H1@H4 limit, partial TP, TTL=0, symbol-specific spread.
+    Cross with cascade_phase_filter, tl_break_filter, h1_zone_count_filter,
+    ew_overlap_filter, ew_extension_filter, bias_filter, test_count_filter.
+
+    Target: ~200-400 configs per symbol.
+    """
+    from iora.strategy.trade_converter import _get_pip_size
+
+    configs: list[RetestConfig] = []
+    seen: set[tuple] = set()
+
+    # Symbol-specific spread (approximate)
+    pip_size = _get_pip_size(symbol)
+    spread_pips = 1.5  # Default FX
+    if symbol in ("XAUUSD",):
+        spread_pips = 3.0
+    elif symbol in ("US30", "US500", "JP225", "HK50", "UK100", "F40"):
+        spread_pips = 5.0
+
+    def _base(**kw) -> RetestConfig:
+        return RetestConfig(
+            tf_pair="H1@H4",
+            entry_mode="limit",
+            partial_tp=True,
+            partial_unit1_pct=0.5,
+            partial_unit1_rr=3.0,
+            partial_unit2_tp="H1",
+            limit_ttl=0,
+            spread_pips=spread_pips,
+            min_sl_spread_mult=3.0,
+            sl_buffer_atr=0.15,
+            **kw,
+        )
+
+    def _add(c: RetestConfig) -> None:
+        key = (
+            c.tf_pair, c.entry_mode, c.bias_filter,
+            c.cascade_phase_filter, c.tl_break_filter, c.tl_break_lookback,
+            c.h1_zone_count_filter, c.reversal_target_entry,
+            c.ew_overlap_filter, c.ew_extension_filter,
+            c.test_count_filter, c.fixed_rr, c.partial_tp,
+            c.direction, c.zone_role_filter,
+            c.choch_conviction_filter, c.min_consumption_count,
+            c.require_fvg_at_entry, c.min_pivot_cascade_depth,
+            c.require_breaker_zone, c.structural_fvg_filter,
+        )
+        if key not in seen:
+            seen.add(key)
+            configs.append(c)
+
+    # ── Section A: Baselines ─────────────────────────────────────────────
+    _add(_base())
+    _add(_base(bias_filter="with_daily"))
+    _add(_base(bias_filter="against_daily"))
+
+    # ── Section B: Cascade phase filter ──────────────────────────────────
+    for phase in ["d1_push", "h4_correction", "h4_correction_tl_break",
+                   "h1_extended", "h1_terminal", "at_reversal_target"]:
+        _add(_base(cascade_phase_filter=phase))
+        _add(_base(cascade_phase_filter=phase, bias_filter="with_daily"))
+        _add(_base(cascade_phase_filter=phase, bias_filter="against_daily"))
+
+    # ── Section C: TL break filter ───────────────────────────────────────
+    for tl in ["after_impulse_break", "after_correction_break"]:
+        # Sticky (lookback=0: any time since last D1 trend change)
+        _add(_base(tl_break_filter=tl))
+        _add(_base(tl_break_filter=tl, bias_filter="with_daily"))
+        _add(_base(tl_break_filter=tl, bias_filter="against_daily"))
+        # Recency lookbacks (in M5 bars)
+        for lb in [10, 20, 50]:
+            _add(_base(tl_break_filter=tl, tl_break_lookback=lb))
+            _add(_base(tl_break_filter=tl, tl_break_lookback=lb, bias_filter="against_daily"))
+
+    # ── Section D: H1 zone count filter ──────────────────────────────────
+    for zc in ["1-3", "4-7", "8+"]:
+        _add(_base(h1_zone_count_filter=zc))
+        _add(_base(h1_zone_count_filter=zc, bias_filter="with_daily"))
+        _add(_base(h1_zone_count_filter=zc, bias_filter="against_daily"))
+
+    # ── Section E: Reversal target entry ─────────────────────────────────
+    _add(_base(reversal_target_entry=True))
+    _add(_base(reversal_target_entry=True, bias_filter="with_daily"))
+    _add(_base(reversal_target_entry=True, bias_filter="against_daily"))
+
+    # ── Section F: EW overlap filter ─────────────────────────────────────
+    for ov in ["no_overlap", "overlap_only"]:
+        _add(_base(ew_overlap_filter=ov))
+        _add(_base(ew_overlap_filter=ov, h1_zone_count_filter="4-7"))
+        _add(_base(ew_overlap_filter=ov, h1_zone_count_filter="8+"))
+
+    # ── Section G: EW extension filter ───────────────────────────────────
+    for ext in ["extended", "not_extended"]:
+        _add(_base(ew_extension_filter=ext))
+        _add(_base(ew_extension_filter=ext, bias_filter="with_daily"))
+        _add(_base(ew_extension_filter=ext, bias_filter="against_daily"))
+
+    # ── Section H: Retest count combinations ─────────────────────────────
+    for tc in ["retested_1", "retested_2plus"]:
+        _add(_base(test_count_filter=tc))
+        _add(_base(test_count_filter=tc, cascade_phase_filter="h1_extended"))
+        _add(_base(test_count_filter=tc, cascade_phase_filter="h1_terminal"))
+
+    # ── Section I: High-conviction combos ────────────────────────────────
+    # Terminal + reversal target + against_daily
+    _add(_base(cascade_phase_filter="h1_terminal", reversal_target_entry=True,
+               bias_filter="against_daily"))
+    # Extended + overlap + against_daily
+    _add(_base(cascade_phase_filter="h1_extended", ew_overlap_filter="overlap_only",
+               bias_filter="against_daily"))
+    # Correction TL break + with_daily (continuation)
+    _add(_base(tl_break_filter="after_correction_break", bias_filter="with_daily",
+               cascade_phase_filter="h4_correction_tl_break"))
+    # Terminal + not_extended + against_daily (safe reversal)
+    _add(_base(cascade_phase_filter="h1_terminal", ew_extension_filter="not_extended",
+               bias_filter="against_daily"))
+    # D1 push + 1-3 zones + with_daily (early push continuation)
+    _add(_base(cascade_phase_filter="d1_push", h1_zone_count_filter="1-3",
+               bias_filter="with_daily"))
+
+    # ── Section J: Direction filters ─────────────────────────────────────
+    for direction in ["long", "short"]:
+        _add(_base(direction=direction))
+        _add(_base(direction=direction, cascade_phase_filter="h1_terminal"))
+        _add(_base(direction=direction, cascade_phase_filter="h1_extended"))
+
+    # ── Section K: RR variants ───────────────────────────────────────────
+    for rr in [2.0, 4.0, 5.0]:
+        _add(RetestConfig(
+            tf_pair="H1@H4", entry_mode="limit",
+            partial_tp=True, partial_unit1_pct=0.5,
+            partial_unit1_rr=rr, partial_unit2_tp="H1",
+            limit_ttl=0, spread_pips=spread_pips,
+            min_sl_spread_mult=3.0, sl_buffer_atr=0.15,
+        ))
+
+    # ── Section L: Zone role within cascade phases ───────────────────────
+    for role in ["push", "reversal", "continuation"]:
+        _add(_base(zone_role_filter=role))
+        _add(_base(zone_role_filter=role, cascade_phase_filter="h1_extended"))
+
+    # ── Section M: CHoCH conviction filter ──────────────────────────────
+    for conv in ["strong_only", "weak_only"]:
+        _add(_base(choch_conviction_filter=conv))
+        _add(_base(choch_conviction_filter=conv, bias_filter="with_daily"))
+        _add(_base(choch_conviction_filter=conv, bias_filter="against_daily"))
+    # High-conviction combo: strong CHoCH + terminal phase
+    _add(_base(choch_conviction_filter="strong_only",
+               cascade_phase_filter="h1_terminal"))
+    _add(_base(choch_conviction_filter="strong_only",
+               cascade_phase_filter="h1_terminal", bias_filter="against_daily"))
+    # Strong CHoCH + extended
+    _add(_base(choch_conviction_filter="strong_only",
+               cascade_phase_filter="h1_extended"))
+
+    # ── Section N: Momentum consumption count ───────────────────────────
+    for mc in [1, 2, 3]:
+        _add(_base(min_consumption_count=mc))
+        _add(_base(min_consumption_count=mc, bias_filter="with_daily"))
+        _add(_base(min_consumption_count=mc, bias_filter="against_daily"))
+    # Consumption + CHoCH conviction combos
+    _add(_base(min_consumption_count=2, choch_conviction_filter="strong_only"))
+    _add(_base(min_consumption_count=3, choch_conviction_filter="strong_only"))
+    _add(_base(min_consumption_count=2, choch_conviction_filter="strong_only",
+               bias_filter="against_daily"))
+
+    # ── Section O: FVG at entry ──────────────────────────────────────────
+    _add(_base(require_fvg_at_entry=True))
+    _add(_base(require_fvg_at_entry=True, bias_filter="against_daily"))
+    _add(_base(require_fvg_at_entry=True, cascade_phase_filter="h1_extended"))
+    _add(_base(require_fvg_at_entry=True, cascade_phase_filter="h1_terminal"))
+
+    # ── Section P: Pivot cascade depth ───────────────────────────────────
+    for depth in [2, 3, 4]:
+        _add(_base(min_pivot_cascade_depth=depth))
+        _add(_base(min_pivot_cascade_depth=depth, bias_filter="against_daily"))
+
+    # ── Section Q: Breaker zone at entry ─────────────────────────────────
+    _add(_base(require_breaker_zone=True))
+    _add(_base(require_breaker_zone=True, bias_filter="against_daily"))
+    _add(_base(require_breaker_zone=True, cascade_phase_filter="h1_extended"))
+
+    # ── Section R1: Structural FVG filter ────────────────────────────────
+    for sfvg in ["inside_gap", "at_gap_boundary"]:
+        _add(_base(structural_fvg_filter=sfvg))
+        _add(_base(structural_fvg_filter=sfvg, bias_filter="against_daily"))
+    _add(_base(structural_fvg_filter="inside_gap", cascade_phase_filter="h1_extended"))
+    _add(_base(structural_fvg_filter="at_gap_boundary", cascade_phase_filter="h1_terminal"))
+
+    # ── Section R2: High-conviction combos with Phase 3 filters ──────────
+    _add(_base(require_fvg_at_entry=True, min_pivot_cascade_depth=3))
+    _add(_base(require_fvg_at_entry=True, require_breaker_zone=True))
+    _add(_base(min_pivot_cascade_depth=3, choch_conviction_filter="strong_only"))
+    _add(_base(require_fvg_at_entry=True, cascade_phase_filter="h1_terminal",
+               bias_filter="against_daily"))
+    _add(_base(min_pivot_cascade_depth=4, cascade_phase_filter="h1_extended",
+               bias_filter="against_daily"))
+
+    # ── Section S: M1@M5 with cascade context ────────────────────────────
+    # M1@M5 uses the full cascade filtering to test if precision improves
+    m1_spread = 1.5 if "USD" in symbol else 3.0
+    def _m1_base(**kw):
+        return RetestConfig(
+            tf_pair="M1@M5",
+            entry_mode="limit",
+            partial_tp=True,
+            partial_unit1_pct=0.5,
+            partial_unit1_rr=3.0,
+            partial_unit2_tp="M15",
+            limit_ttl=0,
+            spread_pips=m1_spread,
+            min_sl_spread_mult=3.0,
+            sl_buffer_atr=0.15,
+            **kw,
+        )
+    _add(_m1_base())
+    _add(_m1_base(bias_filter="against_daily"))
+    _add(_m1_base(cascade_phase_filter="h1_extended"))
+    _add(_m1_base(cascade_phase_filter="h1_terminal"))
+    _add(_m1_base(require_fvg_at_entry=True))
+    _add(_m1_base(min_pivot_cascade_depth=3))
+
+    return configs

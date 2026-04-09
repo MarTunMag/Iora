@@ -1,0 +1,51 @@
+=== STRUCTURED EXTRACTION ===
+Title: Trendline Break and Supply/Demand Zone combo | Sniper Entries
+Channel: LutaMarkets
+URL: https://www.youtube.com/watch?v=gUkNXPp-eFI
+
+TRENDLINE DRAWING RULES:
+- A trend line is a diagonal line connecting two or more swing highs or swing lows
+- Acts as support during an uptrend (buyers protect it), resistance during downtrend (sellers defend it)
+- Must connect at least 2 points, preferably 3 or more
+- More touches = stronger trend line
+- Do not force the line - follow natural swing highs and lows
+- In an uptrend, connect swing lows (lowest points where price temporarily reverses upward)
+
+TRENDLINE BREAK RULES:
+- When price breaks a trend line, it signals a potential trend reversal
+- Do NOT jump in immediately on the break - wait for retest
+- Break of trend line means buyers losing control, sellers taking over (in uptrend break)
+- The break is the first clue of reversal, but requires confirmation
+
+ZONE-TO-TRENDLINE INTERACTION:
+- Supply zone: area where sellers aggressively entered, pushing price down (near market high/resistance)
+- Demand zone: area where buyers take control, pushing price higher (like a floor)
+- Supply/demand zones form where price consolidates briefly before a big movement (institutional orders)
+- Fresh zones (not retested multiple times) hold more power
+- KEY CONCEPT: The intersection of broken trendline retest + supply/demand zone = high probability entry
+- Broken trend line acts as resistance; supply zone reinforces selling pressure at the same level
+- This intersection creates a "sniper entry" with precision and minimal risk
+
+PIVOT IDENTIFICATION RULES:
+- Look for swing highs and swing lows
+- Identify areas where price makes a strong move away
+- Pay attention to consolidation before big movements
+
+ENTRY/EXIT RULES AROUND TRENDLINE BREAKS:
+- Step 1: Identify the trend line (connect swing lows in uptrend)
+- Step 2: Spot the supply/demand zone (significant strong move, area where price previously stalled and reversed)
+- Step 3: Wait for break of the trend line (shift in momentum)
+- Step 4: Wait for retest at the intersection of broken trendline + supply/demand zone
+- Confirmation: Look for bearish signals - rejection candle, bearish engulfing, or strong downward momentum
+- Stop loss: Just beyond the supply/demand zone
+- Target: Favorable risk-to-reward ratio in trend direction
+- Confirm entries with pin bars, engulfing candles, or rejection wicks
+
+MULTI-TF RULES:
+- Combine with higher time frames (4H or Daily) for more accurate setups
+- No specific multi-TF cascade described, but HTF alignment recommended
+=== END STRUCTURED EXTRACTION ===
+
+=== RAW TRANSCRIPT ===
+
+welcome back to luta markets your ultimate destination for mastering powerful Forex Trading strategies in today's video I'll show you a simple yet highly effective strategy that combines supply and demand zones trend line break and retest this method gives you sniper entries with precision and minimal risk if you've been struggling to time your trades stay tuned because this strategy could be a GameChanger for you let's Dive Right In let's start with the basics supply and demand zones a supply zone forms when sellers overpower buyers causing prices to drop think of it like a ceiling whenever price reaches this area selling pressure increases and the market often reverses downward a demand Zone on the other hand forms when buyers take control and push prices higher it's like a floor price tends to bounce back up when it reaches this Zone to identify these Zones look for areas where price makes a strong move away pay attention to areas where price consolidates briefly before that big movement this indicates institutional orders quick tip supply and demand zones are strongest when they have not been retested multiple times because fresh zones often hold more power now that we understand supply and demand let's define the trend line a trend line is a diagonal line connecting two or more swing highs or swing lows showing the direction of the trend it acts as support during an uptrend as buyers protect that line resistance during a downtrend as sellers defended here's what makes a valid trend line line it must connect at least two points preferably three or more the more touches the stronger the trend line the line should not be forced follow the natural swing highs and lows when price breaks a trend line it signals a potential Trend reversal but don't jump in yet always wait for a retest of the broken trend line before taking your entry this is where we combine it with supply and demand zones for the best results now let's combine everything and look at this powerful strategy step by step step one I identify the trend line to start we need to identify the trend line in the market a trend line is a diagonal line drawn to connect a series of price swings showing the Market's overall direction in an uptrend the trend line connects the swing lows the lowest points where price temporarily reverses upward the more times a trend line has been touched the stronger and more reliable it becomes key rule for a valid trend line you need at least two or more touches on the line example in this chart here we can clearly see an upward trend line that connects multiple swing lows each time the price touches this line it bounces back confirming that the market is in an uptrend the upward trend line signals that buyers are in control and the price is moving higher step two spot the supply zone or demand zone now that we've established the trend line we look for a supply Zone a supply zone is an area where sellers have aggressively enter the market pushing the price down it's typically found near a market high or a resistance level what to look for in a supply Zone a significant strong downward movement caused by sellers the area where price previously stalled and reversed downward the stronger and faster the price drops from The Zone the more powerful the supply Zone becomes example in this chart near the top of the market we see price stall and then make a sharp downward move this tells us that sellers have stepped in creating a supply Zone this Zone becomes the area where we anticipate price will reverse again if it comes back to test it step three break of the trend line the next step is crucial it's where we begin to spot a shift in Market momentum what happens the price breaks below the upward trend line This is a signal that the current uptrend might be weakening or reversing when price breaks the trend line it means buyers are losing control and sellers are starting to take over why is this important the break of the trend line is the first clue of a potential reversal however we don't jump into a trade just yet we wait for confirmation example in this chart notice how price clearly breaks below the upward trend line This signals that the uptrend has been violated and the market is Shifting Direction at this stage we're preparing for a potential sell trade but we wait for the price to retest step four retest plus intersection equals perfect entry this step is where the magic happens after the trend line breaks price often comes back to retest the trend line it just broke in this case something powerful happens price retests the broken trend line at the same time price also comes back to the supply Zone where sellers previously stepped in why is this intersection important the intersection of the trend line retest and the supply Zone creates a high probability entry point for a sell trade this is because the broken trend line now acts as a resistance level where sellers step in the supply Zone reinforces the selling pressure entry confirmation once price retests the intersection look for bearish signals like a rejection candle bearish engulfing pattern or strong downward momentum this combination gives you confidence to enter a cell trade with a tight stop loss above the supply Zone and a favorable risk to reward ratio example in this chart look closely at how price breaks the upward trend line and then moves back up to retest at the same point price touches the supply Zone this intersection is a perfect sell entry because it aligns two strong signals the broken trend line resistance and the selling pressure at the supply Zone this combination of factors a broken trend line retest and Supply Zone gives us a high probability trade setup why because sellers are defending the supply Zone and the broken trend line now acts as resistance price respects the intersection and moves sharply downward giving us a profitable trade quick tips for Success always confirm entries with strong price action signals like pin bars engulfing candles or rejection Wicks use a stop loss just beyond the supply demand Zone to protect your Capital combine this strategy with higher time frames like 4H or daily for even more accurate setups if you found this strategy helpful don't forget to like the video subscribe to luta markets and hit the notification Bell so you never miss a powerful trading setup but wait there's more I'll now show you a real-time video example of how to combine Supply zones with a trendline break and retest for precise entries so keep watching until the end and see this strategy in action thanks for watching and I'll see you in the next video Happy Trading

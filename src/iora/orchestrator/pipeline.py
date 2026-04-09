@@ -43,6 +43,10 @@ from iora.engine.htf_bias import (
     init_htf_bias_state,
     htf_bias_tick,
 )
+from iora.engine.cascade_state import (
+    CascadePhaseState,
+    cascade_state_tick,
+)
 
 from iora.orchestrator.zone_engine import (
     ZoneConfig,
@@ -149,6 +153,10 @@ class PipelineOutput:
     push_zones_by_tf: dict[str, list] = field(default_factory=dict)
     push_trend_by_tf: dict[str, int] = field(default_factory=dict)
     period_levels_by_tf: dict[str, dict] = field(default_factory=dict)
+
+    # --- Cascade Phase (push-zone based) ---
+    cascade_phase_state: CascadePhaseState | None = None
+    cascade_phase: str = "unknown"
 
 
 # ---------------------------------------------------------------------------
@@ -316,6 +324,7 @@ def _collect_outputs(
     structure_breaks: list[StructureBreak],
     tf_list: list[str],
     push_zone_state: PushZoneEngineState | None = None,
+    cascade_phase_state: CascadePhaseState | None = None,
 ) -> PipelineOutput:
     """Assemble final PipelineOutput from all engine states."""
     zones_by_tf: dict[str, list[FractalZone]] = {}
@@ -362,6 +371,8 @@ def _collect_outputs(
         push_zones_by_tf=push_zones_by_tf,
         push_trend_by_tf=push_trend_by_tf,
         period_levels_by_tf=period_levels_by_tf,
+        cascade_phase_state=cascade_phase_state,
+        cascade_phase=cascade_phase_state.phase if cascade_phase_state else "unknown",
     )
 
 
@@ -413,6 +424,7 @@ def run_pipeline(
     htf_bias_state = init_htf_bias_state()
     push_zone_state: PushZoneEngineState | None = None
     push_zone_config: PushZoneEngineConfig | None = None
+    cascade_phase_state: CascadePhaseState | None = None
     if config.push_zone_on:
         push_zone_state = init_push_zone_state(tf_list, config.period_history_depth)
         push_zone_config = PushZoneEngineConfig(
@@ -420,6 +432,7 @@ def run_pipeline(
             max_age=config.push_zone_max_age,
             period_history_depth=config.period_history_depth,
         )
+        cascade_phase_state = CascadePhaseState()
     bus = EventBus()
     structure_breaks: list[StructureBreak] = []
 
@@ -432,6 +445,16 @@ def run_pipeline(
 
         if push_zone_state is not None:
             push_zone_engine_tick(push_zone_state, ctx, push_zone_config, bus=bus)
+
+            # Cascade phase tick: reads push zone trends + trendline breaks
+            if cascade_phase_state is not None:
+                cascade_state_tick(
+                    cascade_phase_state,
+                    push_zone_state.tick_states,
+                    push_zone_state.tl_states,
+                    push_zone_state.bar_tl_events,
+                    ctx.close,
+                )
 
         # Early cascade: detect parent-TF structural shifts via child-TF CHoCH
         # and inject early anchors into XTF trendlines BEFORE structure_tick
@@ -454,4 +477,5 @@ def run_pipeline(
         zone_state, structure_state, bias_state, cycle_state_obj,
         cascade_state, htf_bias_state, structure_breaks, tf_list,
         push_zone_state=push_zone_state,
+        cascade_phase_state=cascade_phase_state,
     )

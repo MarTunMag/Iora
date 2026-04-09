@@ -64,6 +64,27 @@ def push_zone_tick(
                 broken.append(zones.pop(i))
             i -= 1
 
+    # Track broken zones as breakers (flipped polarity)
+    for bz in broken:
+        if bz.is_supply:
+            # Broken supply → demand breaker
+            state.demand_breakers.append(bz)
+            if len(state.demand_breakers) > state.MAX_BREAKERS_PER_SIDE:
+                state.demand_breakers.pop(0)
+        else:
+            # Broken demand → supply breaker
+            state.supply_breakers.append(bz)
+            if len(state.supply_breakers) > state.MAX_BREAKERS_PER_SIDE:
+                state.supply_breakers.pop(0)
+
+    # Remove breaker zones that get broken themselves (body-close)
+    state.supply_breakers = [
+        b for b in state.supply_breakers if not (close > b.top)
+    ]
+    state.demand_breakers = [
+        b for b in state.demand_breakers if not (close < b.bottom)
+    ]
+
     # Emit break events
     if bus is not None:
         for bz in broken:
@@ -135,7 +156,7 @@ def push_zone_tick(
             )
 
     # --- 3-5. Push validation, reversal, BOS/CHoCH ---
-    _push_validate(state, hi_fire, hi_txt, seq_hh, lo_fire, lo_txt, seq_ll)
+    _push_validate(state, hi_fire, hi_txt, seq_hh, lo_fire, lo_txt, seq_ll, timeframe)
 
     return broken
 
@@ -148,43 +169,60 @@ def _push_validate(
     lo_fire: bool,
     lo_txt: str,
     seq_ll: float,
+    timeframe: str = "",
 ) -> None:
-    """Push validation + reversal tagging + BOS/CHoCH classification.
+    """Push validation + reversal tagging + BOS/CHoCH classification + zone attribution.
 
     Pine reference: iora_push_zones_v2.pine lines 301-363.
+
+    Zone attribution (Level 4): When a BOS/CHoCH is classified, tag the last-created
+    zone on the OPPOSITE side as the "causing zone". This identifies reversal targets:
+    "the H1 zone that caused the H4 CHoCH".
     """
     # Bearish push: demand fires with LL -> tag most recent supply as PUSH
     if lo_fire and lo_txt == "LL":
         boundary_ok: bool = isnan(state.prev_push_extreme_lo) or seq_ll < state.prev_push_extreme_lo
         if boundary_ok:
+            struct_cls = _classify_struct(state.trend, is_bullish_push=False)
             # Tag most recent supply as PUSH
             for i in range(len(state.supply_zones) - 1, -1, -1):
                 z: PushZone = state.supply_zones[i]
                 z.is_push = True
-                z.struct_cls = _classify_struct(state.trend, is_bullish_push=False)
+                z.struct_cls = struct_cls
                 break
             # Tag most recent demand as REVERSAL (trigger zone)
             for i in range(len(state.demand_zones) - 1, -1, -1):
                 z = state.demand_zones[i]
                 z.is_reversal = True
                 break
+            # Zone attribution: the causing zone is the last supply (push direction)
+            if struct_cls in ("BOS", "CHoCH") and state.supply_zones:
+                causing = state.supply_zones[-1]
+                causing.caused_bos_choch = struct_cls
+                causing.caused_event_tf = timeframe
             state.prev_push_extreme_lo = seq_ll
 
     # Bullish push: supply fires with HH -> tag most recent demand as PUSH
     if hi_fire and hi_txt == "HH":
         boundary_ok = isnan(state.prev_push_extreme_hi) or seq_hh > state.prev_push_extreme_hi
         if boundary_ok:
+            struct_cls = _classify_struct(state.trend, is_bullish_push=True)
             # Tag most recent demand as PUSH
             for i in range(len(state.demand_zones) - 1, -1, -1):
                 z = state.demand_zones[i]
                 z.is_push = True
-                z.struct_cls = _classify_struct(state.trend, is_bullish_push=True)
+                z.struct_cls = struct_cls
                 break
             # Tag most recent supply as REVERSAL (trigger zone)
             for i in range(len(state.supply_zones) - 1, -1, -1):
                 z = state.supply_zones[i]
                 z.is_reversal = True
                 break
+            # Zone attribution: the causing zone is the last demand (push direction)
+            if struct_cls in ("BOS", "CHoCH") and state.demand_zones:
+                causing = state.demand_zones[-1]
+                causing.caused_bos_choch = struct_cls
+                causing.caused_event_tf = timeframe
             state.prev_push_extreme_hi = seq_hh
 
 

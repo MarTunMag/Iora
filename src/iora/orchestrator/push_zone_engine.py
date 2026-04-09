@@ -18,6 +18,17 @@ import pandas as pd
 
 from iora.engine.push_zone_models import PushZone, PushZoneTickState, PeriodTracker
 from iora.engine.push_zone_tick import push_zone_tick
+from iora.engine.push_trendline import (
+    PushTrendlineState,
+    PushTrendlineBreakEvent,
+    push_trendline_tick,
+)
+from iora.engine.fvg_tick import FVGState, FVGEvent, fvg_tick
+from iora.engine.structural_fvg import (
+    StructuralFVGState,
+    StructuralFVGEvent,
+    structural_fvg_tick,
+)
 from iora.engine.events import EventBus
 from iora.engine.models import BarContext
 from iora.constants import TF_ORDER
@@ -51,6 +62,11 @@ class PushZoneEngineConfig:
 @dataclass(slots=True)
 class PushZoneEngineState:
     tick_states: dict[str, PushZoneTickState] = field(default_factory=dict)
+    tl_states: dict[str, PushTrendlineState] = field(default_factory=dict)
+    fvg_states: dict[str, FVGState] = field(default_factory=dict)
+    structural_fvg_states: dict[str, StructuralFVGState] = field(default_factory=dict)
+    bar_idx: int = 0
+    bar_tl_events: dict[str, list[PushTrendlineBreakEvent]] = field(default_factory=dict)
 
 
 def init_push_zone_state(
@@ -60,11 +76,30 @@ def init_push_zone_state(
     if tf_list is None:
         tf_list = list(TF_ORDER)
     tick_states = {}
+    tl_states = {}
+    fvg_states = {}
+    structural_fvg_states = {}
     for tf in tf_list:
         ts = PushZoneTickState()
         ts.period = PeriodTracker(history_depth=period_depth)
         tick_states[tf] = ts
-    return PushZoneEngineState(tick_states=tick_states)
+        tl_states[tf] = PushTrendlineState()
+        fvg_states[tf] = FVGState()
+    # Structural FVG: one state per HTF→LTF pair
+    _SFVG_PAIRS = [
+        ("D1", "H4"), ("H4", "H1"), ("H1", "M15"), ("M15", "M5"), ("M5", "M1"),
+    ]
+    for htf, ltf in _SFVG_PAIRS:
+        if htf in tick_states and ltf in tick_states:
+            key = f"{htf}>{ltf}"
+            st = StructuralFVGState()
+            st.htf = htf
+            st.ltf = ltf
+            structural_fvg_states[key] = st
+    return PushZoneEngineState(
+        tick_states=tick_states, tl_states=tl_states,
+        fvg_states=fvg_states, structural_fvg_states=structural_fvg_states,
+    )
 
 
 def _check_nesting(
@@ -155,6 +190,8 @@ def push_zone_engine_tick(
     high = ctx.high
     low = ctx.low
     bar_time = ctx.timestamp
+    state.bar_idx += 1
+    state.bar_tl_events = {}
 
     # Process HIGH→LOW so parents populate before children
     tf_list = [tf for tf in reversed(TF_ORDER) if tf in state.tick_states]
@@ -252,6 +289,52 @@ def push_zone_engine_tick(
                 parent = _check_nesting(child, parent_all)
                 if parent is not None and child.is_supply != parent.is_supply:
                     child.is_terminal = True
+
+        # --- 5. Push trendline detection ---
+        tl_state = state.tl_states.get(tf)
+        if tl_state is not None:
+            tl_events = push_trendline_tick(
+                state=tl_state,
+                bar_idx=state.bar_idx,
+                bar_high=high,
+                bar_low=low,
+                bar_close=close,
+                prev_highs=ts.period.prev_highs,
+                prev_lows=ts.period.prev_lows,
+                trend=ts.trend,
+                break_mode="close",
+                tf=tf,
+            )
+            if tl_events:
+                state.bar_tl_events[tf] = tl_events
+
+        # --- 6. FVG detection (candle FVGs) ---
+        fvg_state = state.fvg_states.get(tf)
+        if fvg_state is not None:
+            fvg_tick(
+                state=fvg_state,
+                bar_high=high,
+                bar_low=low,
+                bar_idx=state.bar_idx,
+                timestamp=bar_time,
+                tf=tf,
+            )
+
+    # --- 7. Structural FVG detection (per HTF→LTF pair, after all TFs updated) ---
+    for key, sfvg_st in state.structural_fvg_states.items():
+        htf_ts = state.tick_states.get(sfvg_st.htf)
+        ltf_ts = state.tick_states.get(sfvg_st.ltf)
+        if htf_ts is not None and ltf_ts is not None:
+            structural_fvg_tick(
+                state=sfvg_st,
+                htf_prev_highs=htf_ts.period.prev_highs,
+                htf_prev_lows=htf_ts.period.prev_lows,
+                ltf_prev_highs=ltf_ts.period.prev_highs,
+                ltf_prev_lows=ltf_ts.period.prev_lows,
+                bar_high=high,
+                bar_low=low,
+                bar_idx=state.bar_idx,
+            )
 
 
 def _update_period(

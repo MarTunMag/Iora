@@ -1,0 +1,58 @@
+=== STRUCTURED EXTRACTION ===
+Title: The PERFECT ENTRY Strategy That Will 10x Your Results...
+Channel: JeaFx
+URL: https://www.youtube.com/watch?v=m-G1ag77aVc
+
+TRENDLINE DRAWING RULES:
+- (Not a trendline-focused video - focuses on supply/demand zone refinement for sniper entries)
+
+TRENDLINE BREAK RULES:
+- (Not covered directly - this video focuses on zone refinement technique)
+
+ZONE-TO-TRENDLINE INTERACTION:
+- Supply/demand zones are the primary framework (not trendlines)
+- Zone refinement: drop to lower TF to find smaller zones inside HTF zones for better R:R
+- Demand zone: last candle before impulse up (sideways candle with wicks, little movement before big push)
+- Supply zone: last candle before impulse down (consolidation before large bearish move)
+- Demand = institutional buying at discount price; Supply = institutional selling at premium price
+- Zone drawn as a box around the last candle before the impulse
+
+PIVOT IDENTIFICATION RULES:
+- Structural shift: break of structure from LH/LL to HH/HL (or vice versa) signals trend change
+- High-low structure tracked on LTF inside zones for confirmation entries
+- Standard confirmation: LTF structure changes in agreement with HTF trend direction
+  - e.g., in a buy setup: LTF creates new high above previous high = zone has buying strength
+
+ENTRY/EXIT RULES AROUND TRENDLINE BREAKS:
+- Zone Refinement Entry (core technique):
+  - Identify HTF zone (e.g., 4H demand zone)
+  - Drop to LTF (e.g., 1H) to find refined zone inside the HTF zone
+  - Place order at the "extreme zone" = furthest zone from price in the leg
+  - Extreme zone is safest + best R:R (less likely to get stopped out before reaching it)
+  - Stop loss: below the low of the zone (for buys) or above high (for sells)
+  - Target: recent swing high/low
+  - Example: 4H zone = 3R trade; refined to 1H zone = 5.58R trade (same target)
+- Multiple Zones (when LTF shows 2+ zones inside HTF zone):
+  - Default: place limit order at extreme zone (furthest from price, best R:R, safest)
+  - For closer zone: use "standard confirmation" - wait for LTF structure to shift in trade direction
+  - Standard confirmation = LTF creates new high above previous high (for buy) at the zone
+  - Then identify new demand inside that confirmation move and place buy limit
+- Over-refinement Warning:
+  - Do NOT refine too far (e.g., 4H -> 5m) - tiny zones rarely get hit
+  - "Two steps down" rule: 4H->1H->30m, Daily->4H->1H, 30m->15m->5m
+  - One step down is usually enough to dramatically improve R:R
+
+MULTI-TF RULES:
+- Zone refinement = core multi-TF technique
+- Step down rule: go 1-2 TFs lower max for zone refinement
+  - 4H -> 1H -> 30m (max)
+  - Daily -> 4H -> 1H (max)
+  - 30m -> 15m -> 5m (max)
+- HTF provides the trade premise (zone + direction), LTF provides the refined entry
+- Don't go more than 2 steps down - over-refinement leads to missed trades
+- Works across all assets (forex, commodities, etc.)
+=== END STRUCTURED EXTRACTION ===
+
+=== RAW TRANSCRIPT ===
+
+As traders, we all want to get sniper entries like this. But how exactly do you do it? Well, in this class, I'm going to teach you the supply and demand theories that we can use to get these sniper entries, zone refinement, multi-time frame analysis, and how this plays a big role in getting perfect entries on your trades, and all of these things ultimately will show you how to get sniper entries. Before we jump into zone refinement, it's important you understand the basics of supply and demand. If you already do, use the chapters to skip ahead. If not, I'm going to explain them to you now. So, a demand zone is an area of consolidation before a strong upward move. When we're looking at candlestick charts, it's going to be the candle like this. The candle that sits at the bottom of a large upward move. If we visualize it as a zone, this is what it looks like. Okay? It's drawn as a box. And my rule is to use the last candle before the impulse away. So, I'm looking for a sideways candle like this with wicks either side and little to no movement just before a large push upwards. And the idea is that a demand zone shows a price that institutional buying took place previously. So, very large players in the market placing very large orders. That's why we get these big drives away and that's what a demand zone is indicating. The idea here is that this is seen as a discount price to buy from. So future buying is expected if price returns to this level. Here is exactly what we would expect to see from a demand zone. We look to buy from the demand zone when it is retested because we expect to see more of that institutional buying kicking in. Now, if you haven't already guessed, a supply zone is just the same, but the other way round. It's an area of consolidation before a strong downward move, which would be visualized like this. Again, it's drawn as a box. And I used the rule of using the last candle before the impulse to mark my supply zones. This shows a price that institutional selling took place at previously. It's seen as a premium price to sell from. So future selling is expected once the market returns to this level. Here we look to sell from the supply zone when retested, expecting more institutional selling to kick in to the market. It's important to understand the basics of supply and demand because this is how we are going to refine to get sniper entries. If you need further lessons on this, there is a card in the top corner which is going to take you to a pure supply and demand course. You can come back to this video after that. But if you're ready to go ahead with zone refinement and get those sniper entries, we'll do that right now. All right, here's how zone refinement works. Let's say we begin on the 4hour time frame and we are looking at a supply zone. We want to sell from this area when price returns. The price return might look like this. our target. Nice and simple, just the recent low means our position may look like this. Now, this is a 1.9 risk-reward trade, which essentially means you will risk 1% to make 1.9%. You'd risk $1 to make $1.9 and so on. This is okay, but the risk-reward isn't great, and it's not exactly a sniper entry. It's not a trade that's going to bring you a massive reward. And if you take trades like this all of the time, yes, you can be profitable, but you're kind of on the edge because the risk-reward isn't that great. But what we can actually do then is look inside of the 4hour time frame to carry out zone refinement. What we want to do is look inside of the 4hour time frame. Go lower and identify smaller zones. What we can do here is zoom in to the 1 hour time frame to identify smaller supply zones inside of this 4hour zone. So here's an example of what the 1 hour time frame might look like. If we were to map on the 4hour zone, it may look like this because it's going to be covering a broader range of candles. But what we can actually do now is refine this supply zone to a smaller 1hour zone that exists inside of the 4hour zone. We see further imbalance and we see a smaller supply sitting at the top. Now what this allows us to do is use this for our positions. Okay, so now you can see we've dramatically amplified the risk-to-reward on this position. If we take it back to the 4hour time frame, our 4hour zone refined to the 1 hour zone would look like this. Meaning our position would look like this. Same exact trade, same exact target, same selling area. But because we refined, we turned that 1.9 risk-reward trade into a 6.25 risk-reward trade. Which means you're risking 1% to make 6.25%. You're risking $1 to make $6.25 in return. So, we're turning the same trades into massively profitable positions just by refining the zones. And we get that beautiful sniper entry. Now there is one thing you need to be careful of when you are refining zones and that is over refinement. You need to make sure that you don't refine your zones too far. Don't overrefine and don't take things too far because you're going to end up with missed positions. Now a simple rule that's good to follow to make sure you don't overrefine is to go two steps down. Okay, so two steps down simply means if we were on the 4hour time frame, we could go to the 1 hour time frame and at best we could go down to the 30 minute. If we were on the daily time frame, we could go to the 4hour time frame and then maybe to the 1 hour time frame. If we were on the 30 minute time frame, we could go to the 15 minute and then potentially the five. But we never really want to go too much lower than these.

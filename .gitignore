@@ -9,3 +9,4 @@ build/
 data/
 # Large raw event CSVs (250-300MB each) — matrices and audits are fine
 *_alltfs_opportunities.csv
+.playwright-mcp/

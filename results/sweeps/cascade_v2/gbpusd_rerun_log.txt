@@ -1,0 +1,30 @@
+
+============================================================
+  GBPUSD
+============================================================
+  131 configs (H1@H4 only)
+    M5: 130,163 bars
+    M15: 110,057 bars
+    H1: 102,517 bars
+    H4: 30,630 bars
+    D1: 5,104 bars
+    W1: 736 bars
+  Running sweep...
+  Done in 1959.0s — 131 results
+  Saved: results\sweeps\cascade_v2\gbpusd_cascade_sweep.csv
+
+  Top 10 by SQN:
+    phase=any                       tl=any                       zc=any   bias=any             trades=2968 WR=52.2% SQN=18.19 TotR=2792.3
+    phase=any                       tl=any                       zc=any   bias=any             trades=2827 WR=52.5% SQN=18.00 TotR=2721.5
+    phase=any                       tl=any                       zc=any   bias=any             trades=2943 WR=52.1% SQN=17.98 TotR=2740.3
+    phase=any                       tl=after_correction_break    zc=any   bias=any             trades=2851 WR=52.0% SQN=17.92 TotR=2709.5
+    phase=any                       tl=after_correction_break    zc=any   bias=any             trades=2851 WR=52.0% SQN=17.92 TotR=2709.5
+    phase=any                       tl=after_correction_break    zc=any   bias=any             trades=2851 WR=52.0% SQN=17.92 TotR=2709.5
+    phase=any                       tl=after_correction_break    zc=any   bias=any             trades=2851 WR=52.0% SQN=17.92 TotR=2709.5
+    phase=any                       tl=any                       zc=any   bias=any             trades=2618 WR=52.8% SQN=17.82 TotR=2623.8
+    phase=any                       tl=any                       zc=any   bias=any             trades=2773 WR=52.4% SQN=17.58 TotR=2629.4
+    phase=any                       tl=after_impulse_break       zc=any   bias=any             trades=2823 WR=52.0% SQN=17.52 TotR=2615.0
+
+============================================================
+  Complete: 1 symbols in 1961s
+============================================================

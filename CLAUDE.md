@@ -13,9 +13,18 @@ Iora is a multi-layer trading system with:
 
 The Python engine is the primary development focus. Pine indicators serve as reference implementations and visual validation tools.
 
-### Retest Entry System (Active Project)
+### Signal-Flip v4 (ACTIVE — Production Strategy)
 
-A 4-level data-first architecture for building a retest entry strategy:
+**M5@M15 signal-flip** — entry at M5 zone fire inside M15 context, exit when opposite M5 zone fires. Position always open, flipping direction. **82.5% WR, PF 36.92, 32K trades on GBPUSD.**
+
+- **SSOT:** `docs/system/strategy/strategy-v4-signal-flip-ssot.md`
+- **Baseline evidence:** `docs/system/analysis/signal-flip/m5m15-signal-flip-baseline-results.md`
+- **Spec:** `docs/superpowers/specs/2026-04-09-m1m5-mechanical-signal-flip-spec.md`
+- **JoMa production:** `C:\JoMa\docs\strategy\STRATEGY_V4_SIGNAL_FLIP.md`
+
+### Retest Entry System (Foundation — Complete)
+
+4-level data-first architecture that discovered and validated the strategy:
 
 | Level | Module | Status | Purpose |
 |-------|--------|--------|---------|
@@ -23,11 +32,9 @@ A 4-level data-first architecture for building a retest entry strategy:
 | 1 | Zone Audit | Complete | Zone lifecycle: creation, retests, breaks per TF |
 | 2 | Bias Timeline | Complete | Per-bar bias state: daily/weekly alignment, transitions |
 | 3 | Opportunity Counter | Complete | Event classification: touch type, zone role, bias alignment |
-| 4 | Strategy Sweep | Pending | Cascade logic, entry/exit rules, trendline integration |
+| 4 | Strategy Sweep | Complete | Cascade logic, signal-flip, trendline integration |
 
-**Analysis Gate:** Levels 1-3 data is analyzed in `docs/system/level1-3-data-analysis.md`. Level 4 design must use these findings.
-
-**Spec:** `docs/superpowers/specs/2026-04-02-retest-entry-system-design.md`
+**Analysis:** `docs/system/analysis/level1-3-data-analysis.md`
 
 ## Project Structure
 
@@ -63,18 +70,32 @@ src/iora/
   strategy/                            Trade conversion and position management
 
 tw_indicators/                         Pine Script v6 indicators
+  JoMa_Indicators/                     Production JoMa indicators (canonical set)
+    joma_zones_levels.pine             M1-H4 zones + HTF period Hi/Lo with break detection
+    joma_pivots_trendlines.pine        Multi-TF pivots + trendlines + divergence
+    joma_structural_fvg.pine           Structural FVG detection (HTF pivot vs LTF swing gap)
+  iora_joma/                           Extended Iora variants (M1-MN zones + structural FVG)
   iora_zones/                          Push zone indicators (reference implementations)
-    iora_push_zones_v2.pine            Push zones with BOS/CHoCH (Python reference)
   iora_structure/                      Structure indicators
-    iora_pivot_hl_trendlines.pine      Multi-TF pivot trendlines with break detection (Level 4+ ref)
-  system/                              System indicators (structure, zones, BOS/CHoCH)
+  iora_cascade/                        Cascade trendline indicators
 
 docs/
   pinescriptv6/                        Full Pine v6 reference (68 files)
-  system/                              Strategy rules, specs, and system documentation
-    level1-3-data-analysis.md          Cross-symbol Levels 1-3 findings for Level 4 design
-  superpowers/specs/                   Design specs
-  superpowers/plans/                   Implementation plans
+  system/                              Strategy rules, analysis, concepts
+    strategy/                          SSOT + mechanical rules + production configs
+      strategy-v4-signal-flip-ssot.md  ★ THE production strategy definition
+      mechanical-ruleset-validated.md  Proven rules 1-13 (v3 foundation)
+      mechanical-cascade-strategy.md   Cascade strategy with phase definitions
+      PRODUCTION_CONFIGS.md            Production config reference
+    analysis/                          All sweep and diagnostic results
+      signal-flip/                     M5@M15 signal-flip baseline results
+      cascade-sweeps/                  H1@H4 cascade sweep analyses
+      level4-sweeps/                   Level 4 sweep history (v2/v3 era)
+    concepts/                          Market structure, zones, blocks reference
+    sops/                              Standard operating procedures (sweep analysis)
+    audits/                            System audits and deep reviews
+  superpowers/specs/                   Design specs (dated)
+  superpowers/plans/                   Implementation plans (dated)
 
 scripts/                               CLI tools for running diagnostics
   run_zone_audit.py                    Level 1: zone audit across symbols

@@ -1,0 +1,227 @@
+V3 Realistic Execution Sweep: 105 configs x 4 symbols
+Parallel workers: 2
+Symbols: EURUSD, USDJPY, XAUUSD, GBPJPY
+
+======================================================================
+  EURUSD -- V3 Realistic Execution Sweep
+======================================================================
+
+======================================================================
+  USDJPY -- V3 Realistic Execution Sweep
+======================================================================
+  D1: 5,101 bars (2006-08-04 to 2026-04-02)
+  D1: 5,101 bars (2006-08-03 to 2026-04-02)
+  H1: 102,435 bars (2009-09-29 to 2026-04-02)
+  H1: 102,435 bars (2009-09-29 to 2026-04-02)
+  H4: 30,609 bars (2006-07-24 to 2026-04-02)
+  H4: 30,609 bars (2006-07-21 to 2026-04-02)
+  M15: 109,732 bars (2021-11-03 to 2026-04-02)
+  M15: 109,737 bars (2021-11-03 to 2026-04-02)
+  M5: 129,208 bars (2024-07-08 to 2026-04-02)
+  M5: 129,190 bars (2024-07-08 to 2026-04-02)
+  W1: 735 bars (2012-03-04 to 2026-03-29)
+  W1: 735 bars (2012-03-04 to 2026-03-29)
+
+  Completed in 4093.9s (68.2m)
+  Configs with trades: 105/105
+  Total trades across all configs: 255,406
+
+  TOP 10 BY SQN (min 30 trades):
+    #1: M5@M15 | limit | tp=rr=3.0 sl=zone ttl=0
+       Trades=6,541 WR=53.0% SQN=45.32 AvgR=1.119 PF=3.29 AvgWin=2.9p AvgLoss=-1.0p AvgHold=45.8h
+    #2: M5@M15 | limit | tp=rr=3.0 sl=zone ttl=12
+       Trades=4,607 WR=54.9% SQN=40.77 AvgR=1.196 PF=3.55 AvgWin=3.0p AvgLoss=-1.0p AvgHold=0.5h
+    #3: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=2,525 WR=63.6% SQN=40.36 AvgR=1.546 PF=4.86 AvgWin=3.3p AvgLoss=-1.2p AvgHold=0.1h
+    #4: M5@M15 | limit | tp=rr=3.0 sl=zone ttl=6
+       Trades=4,042 WR=55.9% SQN=39.58 AvgR=1.237 PF=3.68 AvgWin=3.1p AvgLoss=-1.1p AvgHold=0.4h
+    #5: M5@M15 | limit | tp=rr=3.0 sl=zone ttl=3
+       Trades=3,468 WR=57.2% SQN=38.33 AvgR=1.288 PF=3.87 AvgWin=3.2p AvgLoss=-1.1p AvgHold=0.3h
+    #6: M15@H1 | limit | tp=rr=3.0 sl=zone ttl=0
+       Trades=4,190 WR=51.8% SQN=34.76 AvgR=1.074 PF=3.30 AvgWin=5.6p AvgLoss=-1.8p AvgHold=218.3h
+    #7: M15@H1 | limit | tp=partial(50%@rr3.0+H1) sl=zone ttl=0
+       Trades=4,190 WR=51.8% SQN=34.76 AvgR=1.074 PF=3.30 AvgWin=5.6p AvgLoss=-1.8p AvgHold=218.3h
+    #8: M15@H1 | limit | tp=partial(50%@rr3.0+H1) sl=zone ttl=0 be_buf=0.25 trail=ha_m15
+       Trades=4,190 WR=51.8% SQN=34.76 AvgR=1.074 PF=3.30 AvgWin=5.6p AvgLoss=-1.8p AvgHold=218.3h
+    #9: M15@H1 | limit | tp=partial(50%@rr3.0+H1) sl=zone ttl=0 be_buf=0.25 trail=ha_h1
+       Trades=4,190 WR=51.8% SQN=34.76 AvgR=1.074 PF=3.30 AvgWin=5.6p AvgLoss=-1.8p AvgHold=218.3h
+    #10: M15@H1 | limit | tp=partial(50%@rr3.0+H1) sl=zone ttl=0 be_buf=0.25
+       Trades=4,190 WR=51.8% SQN=34.76 AvgR=1.074 PF=3.30 AvgWin=5.6p AvgLoss=-1.8p AvgHold=218.3h
+
+  Saved 105 configs to results\EURUSD\eurusd_v3_realistic_sweep.csv
+
+======================================================================
+  XAUUSD -- V3 Realistic Execution Sweep
+======================================================================
+
+  [1/4] EURUSD done in 4097s OK
+  D1: 3,263 bars (2013-08-09 to 2026-04-02)
+  H1: 65,272 bars (1998-04-22 to 2026-04-02)
+  H4: 19,581 bars (2001-12-21 to 2026-04-02)
+  M15: 109,277 bars (2021-08-18 to 2026-04-02)
+  M5: 127,821 bars (2024-06-13 to 2026-04-02)
+  W1: 470 bars (2017-04-02 to 2026-03-29)
+
+  Completed in 4199.6s (70.0m)
+  Configs with trades: 105/105
+  Total trades across all configs: 234,645
+
+  TOP 10 BY SQN (min 30 trades):
+    #1: M5@M15 | limit | tp=rr=3.0 sl=zone ttl=0
+       Trades=6,163 WR=52.1% SQN=42.66 AvgR=1.086 PF=3.09 AvgWin=5.4p AvgLoss=-1.9p AvgHold=73.6h
+    #2: M5@M15 | limit | tp=rr=3.0 sl=zone ttl=12
+       Trades=4,261 WR=54.7% SQN=38.98 AvgR=1.189 PF=3.42 AvgWin=5.5p AvgLoss=-2.0p AvgHold=0.6h
+    #3: M5@M15 | limit | tp=rr=3.0 sl=zone ttl=6
+       Trades=3,705 WR=55.6% SQN=37.45 AvgR=1.223 PF=3.54 AvgWin=5.6p AvgLoss=-2.0p AvgHold=0.4h
+    #4: M5@M15 | limit | tp=rr=3.0 sl=zone ttl=3
+       Trades=3,158 WR=57.0% SQN=36.35 AvgR=1.281 PF=3.73 AvgWin=5.7p AvgLoss=-2.0p AvgHold=0.2h
+    #5: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=2,312 WR=61.5% SQN=36.02 AvgR=1.458 PF=4.46 AvgWin=6.0p AvgLoss=-2.2p AvgHold=0.1h
+    #6: M15@H1 | limit | tp=rr=3.0 sl=zone ttl=0
+       Trades=3,877 WR=51.7% SQN=33.22 AvgR=1.067 PF=2.99 AvgWin=8.3p AvgLoss=-2.9p AvgHold=152.3h
+    #7: M15@H1 | limit | tp=partial(50%@rr3.0+H1) sl=zone ttl=0
+       Trades=3,877 WR=51.7% SQN=33.22 AvgR=1.067 PF=2.99 AvgWin=8.3p AvgLoss=-2.9p AvgHold=152.3h
+    #8: M15@H1 | limit | tp=partial(50%@rr3.0+H1) sl=zone ttl=0 be_buf=0.25 trail=ha_m15
+       Trades=3,877 WR=51.7% SQN=33.22 AvgR=1.067 PF=2.99 AvgWin=8.3p AvgLoss=-2.9p AvgHold=152.3h
+    #9: M15@H1 | limit | tp=partial(50%@rr3.0+H1) sl=zone ttl=0 be_buf=0.25 trail=ha_h1
+       Trades=3,877 WR=51.7% SQN=33.22 AvgR=1.067 PF=2.99 AvgWin=8.3p AvgLoss=-2.9p AvgHold=152.3h
+    #10: M15@H1 | limit | tp=partial(50%@rr3.0+H1) sl=zone ttl=0 be_buf=0.25
+       Trades=3,877 WR=51.7% SQN=33.22 AvgR=1.067 PF=2.99 AvgWin=8.3p AvgLoss=-2.9p AvgHold=152.3h
+
+  Saved 105 configs to results\USDJPY\usdjpy_v3_realistic_sweep.csv
+
+======================================================================
+
+  [2/4] USDJPY done in 4202s OK
+  GBPJPY -- V3 Realistic Execution Sweep
+======================================================================
+  D1: 5,101 bars (2006-08-04 to 2026-04-02)
+  H1: 102,435 bars (2009-09-29 to 2026-04-02)
+  H4: 30,609 bars (2006-07-21 to 2026-04-02)
+  M15: 109,732 bars (2021-11-03 to 2026-04-02)
+  M5: 129,189 bars (2024-07-08 to 2026-04-02)
+  W1: 735 bars (2012-03-04 to 2026-03-29)
+
+  Completed in 5263.4s (87.7m)
+  Configs with trades: 105/105
+  Total trades across all configs: 228,381
+
+  TOP 10 BY SQN (min 30 trades):
+    #1: M5@M15 | limit | tp=rr=3.0 sl=zone ttl=0
+       Trades=6,083 WR=51.1% SQN=40.79 AvgR=1.046 PF=3.19 AvgWin=260.7p AvgLoss=-85.6p AvgHold=29.5h
+    #2: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=2,447 WR=61.1% SQN=36.57 AvgR=1.442 PF=4.62 AvgWin=291.3p AvgLoss=-98.9p AvgHold=0.1h
+    #3: M5@M15 | limit | tp=rr=3.0 sl=zone ttl=12
+       Trades=4,378 WR=52.2% SQN=36.08 AvgR=1.090 PF=3.34 AvgWin=271.7p AvgLoss=-88.9p AvgHold=0.7h
+    #4: M5@M15 | limit | tp=rr=3.0 sl=zone ttl=6
+       Trades=3,830 WR=53.7% SQN=35.63 AvgR=1.148 PF=3.53 AvgWin=275.1p AvgLoss=-90.3p AvgHold=0.5h
+    #5: M5@M15 | limit | tp=rr=3.0 sl=zone ttl=3
+       Trades=3,335 WR=54.7% SQN=34.40 AvgR=1.187 PF=3.64 AvgWin=279.9p AvgLoss=-92.7p AvgHold=0.4h
+    #6: M15@H1 | limit | tp=rr=3.0 sl=zone ttl=0
+       Trades=3,876 WR=51.7% SQN=33.30 AvgR=1.069 PF=3.14 AvgWin=275.0p AvgLoss=-94.0p AvgHold=106.0h
+    #7: M15@H1 | limit | tp=partial(50%@rr3.0+H1) sl=zone ttl=0
+       Trades=3,876 WR=51.7% SQN=33.30 AvgR=1.069 PF=3.14 AvgWin=275.0p AvgLoss=-94.0p AvgHold=106.0h
+    #8: M15@H1 | limit | tp=partial(50%@rr3.0+H1) sl=zone ttl=0 be_buf=0.25 trail=ha_m15
+       Trades=3,876 WR=51.7% SQN=33.30 AvgR=1.069 PF=3.14 AvgWin=275.0p AvgLoss=-94.0p AvgHold=106.0h
+    #9: M15@H1 | limit | tp=partial(50%@rr3.0+H1) sl=zone ttl=0 be_buf=0.25 trail=ha_h1
+       Trades=3,876 WR=51.7% SQN=33.30 AvgR=1.069 PF=3.14 AvgWin=275.0p AvgLoss=-94.0p AvgHold=106.0h
+    #10: M15@H1 | limit | tp=partial(50%@rr3.0+H1) sl=zone ttl=0 be_buf=0.25
+       Trades=3,876 WR=51.7% SQN=33.30 AvgR=1.069 PF=3.14 AvgWin=275.0p AvgLoss=-94.0p AvgHold=106.0h
+
+  Saved 105 configs to results\XAUUSD\xauusd_v3_realistic_sweep.csv
+
+  [3/4] XAUUSD done in 5297s OK
+
+  Completed in 5317.1s (88.6m)
+  Configs with trades: 105/105
+  Total trades across all configs: 274,542
+
+  TOP 10 BY SQN (min 30 trades):
+    #1: M5@M15 | limit | tp=rr=3.0 sl=zone ttl=0
+       Trades=6,820 WR=52.4% SQN=45.29 AvgR=1.096 PF=3.24 AvgWin=7.1p AvgLoss=-2.4p AvgHold=55.3h
+    #2: M5@M15 | limit | tp=rr=3.0 sl=zone ttl=12
+       Trades=4,839 WR=54.8% SQN=41.59 AvgR=1.191 PF=3.57 AvgWin=7.2p AvgLoss=-2.4p AvgHold=0.5h
+    #3: M5@M15 | limit | tp=rr=3.0 sl=zone ttl=6
+       Trades=4,223 WR=56.1% SQN=40.65 AvgR=1.242 PF=3.76 AvgWin=7.3p AvgLoss=-2.5p AvgHold=0.3h
+    #4: M5@M15 | limit | tp=rr=3.0 sl=zone
+       Trades=2,627 WR=62.5% SQN=39.70 AvgR=1.500 PF=4.89 AvgWin=7.6p AvgLoss=-2.6p AvgHold=0.1h
+    #5: M5@M15 | limit | tp=rr=3.0 sl=zone ttl=3
+       Trades=3,679 WR=57.1% SQN=39.38 AvgR=1.285 PF=3.92 AvgWin=7.4p AvgLoss=-2.5p AvgHold=0.2h
+    #6: M15@H1 | limit | tp=rr=3.0 sl=zone ttl=0
+       Trades=4,501 WR=53.4% SQN=38.14 AvgR=1.135 PF=3.43 AvgWin=11.9p AvgLoss=-4.0p AvgHold=106.7h
+    #7: M15@H1 | limit | tp=partial(50%@rr3.0+H1) sl=zone ttl=0
+       Trades=4,501 WR=53.4% SQN=38.14 AvgR=1.135 PF=3.43 AvgWin=11.9p AvgLoss=-4.0p AvgHold=106.7h
+    #8: M15@H1 | limit | tp=partial(50%@rr3.0+H1) sl=zone ttl=0 be_buf=0.25 trail=ha_m15
+       Trades=4,501 WR=53.4% SQN=38.14 AvgR=1.135 PF=3.43 AvgWin=11.9p AvgLoss=-4.0p AvgHold=106.7h
+    #9: M15@H1 | limit | tp=partial(50%@rr3.0+H1) sl=zone ttl=0 be_buf=0.25 trail=ha_h1
+       Trades=4,501 WR=53.4% SQN=38.14 AvgR=1.135 PF=3.43 AvgWin=11.9p AvgLoss=-4.0p AvgHold=106.7h
+    #10: M15@H1 | limit | tp=partial(50%@rr3.0+H1) sl=zone ttl=0 be_buf=0.25
+       Trades=4,501 WR=53.4% SQN=38.14 AvgR=1.135 PF=3.43 AvgWin=11.9p AvgLoss=-4.0p AvgHold=106.7h
+
+  Saved 105 configs to results\GBPJPY\gbpjpy_v3_realistic_sweep.csv
+
+  [4/4] GBPJPY done in 5320s OK
+
+======================================================================
+  ALL DONE -- 4 symbols in 9522s (158.7m)
+======================================================================
+
+Output files:
+  EURUSD/eurusd_v3_realistic_sweep.csv (92.4 KB)
+  F40/f40_cross_tf_sweep.csv (57.3 KB)
+  F40/f40_partial_tp_sweep.csv (35.7 KB)
+  GBPAUD/gbpaud_cross_tf_sweep.csv (57.7 KB)
+  GBPAUD/gbpaud_partial_tp_sweep.csv (36.2 KB)
+  GBPJPY/gbpjpy_cross_tf_sweep.csv (57.8 KB)
+  GBPJPY/gbpjpy_partial_tp_sweep.csv (35.9 KB)
+  GBPJPY/gbpjpy_retest_sweep.csv (674.7 KB)
+  GBPJPY/gbpjpy_v3_realistic_sweep.csv (90.5 KB)
+  GBPNZD/gbpnzd_cross_tf_sweep.csv (58.4 KB)
+  GBPNZD/gbpnzd_partial_tp_sweep.csv (35.9 KB)
+  GBPUSD/gbpusd_cross_tf_sweep.csv (57.9 KB)
+  GBPUSD/gbpusd_partial_tp_sweep.csv (36.0 KB)
+  GBPUSD/gbpusd_v3_m1_precision_sweep.csv (28.8 KB)
+  GBPUSD/gbpusd_v3_realistic_sweep.csv (90.2 KB)
+  GBPUSD/gbpusd_v3_spread_test_sweep.csv (115.6 KB)
+  HK50/hk50_cross_tf_sweep.csv (57.2 KB)
+  HK50/hk50_partial_tp_sweep.csv (35.5 KB)
+  JP225/jp225_cross_tf_sweep.csv (57.0 KB)
+  JP225/jp225_partial_tp_sweep.csv (35.4 KB)
+  NZDJPY/nzdjpy_cross_tf_sweep.csv (57.7 KB)
+  NZDJPY/nzdjpy_partial_tp_sweep.csv (35.9 KB)
+  NZDUSD/nzdusd_cross_tf_sweep.csv (57.6 KB)
+  NZDUSD/nzdusd_partial_tp_sweep.csv (36.0 KB)
+  UK100/uk100_cross_tf_sweep.csv (57.9 KB)
+  UK100/uk100_partial_tp_sweep.csv (35.8 KB)
+  US30/us30_cross_tf_sweep.csv (57.7 KB)
+  US30/us30_partial_tp_sweep.csv (35.8 KB)
+  US500/us500_cross_tf_sweep.csv (57.6 KB)
+  US500/us500_partial_tp_sweep.csv (35.8 KB)
+  USDCAD/usdcad_cross_tf_sweep.csv (56.0 KB)
+  USDCAD/usdcad_partial_tp_sweep.csv (35.0 KB)
+  USDCHF/usdchf_cross_tf_sweep.csv (57.7 KB)
+  USDCHF/usdchf_partial_tp_sweep.csv (35.7 KB)
+  USDJPY/usdjpy_cross_tf_sweep.csv (57.4 KB)
+  USDJPY/usdjpy_partial_tp_sweep.csv (35.9 KB)
+  USDJPY/usdjpy_v3_realistic_sweep.csv (90.8 KB)
+  USDMXN/usdmxn_cross_tf_sweep.csv (56.6 KB)
+  USDMXN/usdmxn_partial_tp_sweep.csv (35.6 KB)
+  USDTRY/usdtry_cross_tf_sweep.csv (56.4 KB)
+  USDTRY/usdtry_partial_tp_sweep.csv (35.5 KB)
+  USDZAR/usdzar_cross_tf_sweep.csv (57.1 KB)
+  USDZAR/usdzar_partial_tp_sweep.csv (35.4 KB)
+  USTEC/ustec_cross_tf_sweep.csv (57.5 KB)
+  USTEC/ustec_partial_tp_sweep.csv (35.7 KB)
+  XAGUSD/xagusd_cross_tf_sweep.csv (58.0 KB)
+  XAGUSD/xagusd_partial_tp_sweep.csv (35.9 KB)
+  XAUUSD/xauusd_cross_tf_sweep.csv (57.9 KB)
+  XAUUSD/xauusd_partial_tp_sweep.csv (35.9 KB)
+  XAUUSD/xauusd_v3_realistic_sweep.csv (90.1 KB)
+  XBRUSD/xbrusd_cross_tf_sweep.csv (58.4 KB)
+  XBRUSD/xbrusd_partial_tp_sweep.csv (35.8 KB)
+  XNGUSD/xngusd_cross_tf_sweep.csv (57.8 KB)
+  XNGUSD/xngusd_partial_tp_sweep.csv (35.9 KB)
+  XPTUSD/xptusd_cross_tf_sweep.csv (58.2 KB)
+  XPTUSD/xptusd_partial_tp_sweep.csv (36.1 KB)
+  XTIUSD/xtiusd_cross_tf_sweep.csv (57.9 KB)
+  XTIUSD/xtiusd_partial_tp_sweep.csv (35.8 KB)

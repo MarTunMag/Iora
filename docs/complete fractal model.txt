@@ -1,0 +1,16 @@
+We need to test if we make the L15 H or L15 L -- if we sue the L1 H (for L15 L) - as our sl - as we push for new L15 L through teh L5/L1 (m1 and m5 supply zones) - as we buidl the m15 candels upa dn down to push to and from the m15 zones and L60 H/L -- as this again pushes to and from its H1 zones -- as they build up the L 24 L or L240 H -- psuyhing to and form the H4 zones -- as we build the L1440 H or L1440 L -- pushing to and from the Daily SupplY/Demadn zones as we make new weekly Hi or Lo x or hh/ll -- as we move through the weekly pivoes -- if w emake new L or H thorugh tis zones (push zones) as we piull throughth eltfs to confirm the next leg up to continue down low --- as we push up adn down -- top down, and bottom up throughthe m1_m5 zones as they build the L15 legs H/L/hi/lo as tehy builds and confirms the L60 legs that confirm the L240 legs -- up adn down, down and up,
+
+
+This is the complete fractal model — every TF simultaneously building the one above it while being built by the one below it. The key testable element you keep coming back to is: use the child TF's last pivot as the SL, ride to the parent TF's target.
+
+Let me add this specific SL/TP model to the prompt since it's the core execution mechanic that needs testing.
+
+
+Edited a file
+Edited a file
+
+Also update the FVG model doc with this fractal SL/TP concept:
+
+So we can test for how many m1 / m5 zones we should trail -- if we should first trial throgh m5 zones, tehn when a new new L60 L / H is confirmed -- or a L240 L/H (we need to test these) -- we can see and unterstand when teh L5 H / L is broken, and we use our m1 push zone to breka teh m5 H (in the M5 LH supply zone) -- as our push zone buy limit as we now expect teh L15 H leg up, to confirm the L60 L, and we can tehn understand and see and test when and where to trial the sl, when to stop addin on trades, when to exit fully, when to add new counter limti / market execution order, (limit at m1 push zone to breka the m5 last supply zone, to make the L15 L -- and if this was in the previous L60 L, we can see if we need to push up to test teh H4 Lo x -- or if we need ot make a new L240 H -- to cofirm a new L1440 L, and so on -- so we can mecahnically test our fractal legs -- through the m1_m5 supply demand zones -- as we build our legs as described
+
+Where we could test and see if we hsould use the L15 H -- is w emake L60 L to conenct our trendliens -- if oru L15 H are moving lower and lower, unbroken? and if broken, we use the M5 L and M5 L (HL) at the previous L15 L - as we now push up for a L15 H -- and then a new L60 H -- as we push to confirm a L240 L (HL or LL) -- as we've described before

@@ -1,0 +1,30 @@
+
+============================================================
+  EURUSD
+============================================================
+  107 configs
+    M5: 130,182 bars
+    M15: 110,062 bars
+    H1: 102,517 bars
+    H4: 30,630 bars
+    D1: 5,104 bars
+    W1: 736 bars
+  Running sweep...
+  Done in 2068.3s — 107 results
+  Saved: results\sweeps\cascade\eurusd_cascade_sweep.csv
+
+  Top 10 by SQN:
+    phase=any                       tl=any                       zc=any   bias=any             trades=2661 WR=50.7% SQN=17.35 TotR=2426.0
+    phase=any                       tl=any                       zc=any   bias=any             trades=2803 WR=50.6% SQN=17.16 TotR=2422.0
+    phase=any                       tl=any                       zc=any   bias=any             trades=2776 WR=50.7% SQN=17.05 TotR=2395.2
+    phase=any                       tl=after_impulse_break       zc=any   bias=any             trades=2709 WR=50.7% SQN=16.94 TotR=2335.6
+    phase=any                       tl=after_impulse_break       zc=any   bias=any             trades=2709 WR=50.7% SQN=16.94 TotR=2335.6
+    phase=any                       tl=after_impulse_break       zc=any   bias=any             trades=2709 WR=50.7% SQN=16.94 TotR=2335.6
+    phase=any                       tl=after_correction_break    zc=any   bias=any             trades=2736 WR=50.6% SQN=16.90 TotR=2320.8
+    phase=any                       tl=after_correction_break    zc=any   bias=any             trades=2736 WR=50.6% SQN=16.90 TotR=2320.5
+    phase=any                       tl=after_correction_break    zc=any   bias=any             trades=2736 WR=50.6% SQN=16.90 TotR=2320.5
+    phase=any                       tl=after_correction_break    zc=any   bias=any             trades=2736 WR=50.6% SQN=16.90 TotR=2320.5
+
+============================================================
+  Complete: 1 symbols in 2070s
+============================================================

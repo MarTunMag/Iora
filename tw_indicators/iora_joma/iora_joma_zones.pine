@@ -1,0 +1,616 @@
+//@version=6
+indicator("Iora JoMa Zones", shorttitle="JoMa Zones", overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, calc_bars_count = 2000)
+
+// =============================================================================
+// Merged indicator for JoMa automated trading system.
+// Layer 1: HA supply/demand zones (M1/M5/M15 for execution, H1-MN optional)
+// Layer 2: Previous-period Hi/Lo structure levels with break detection
+// Layer 3: Structural FVG detection (gap between broken HTF level and LTF swing)
+//
+// Security calls: 8 max (zone detection per TF)
+// Structure levels: 0 security calls (chart-TF period tracking)
+// =============================================================================
+
+// =============================================================================
+// TYPES
+// =============================================================================
+
+type Zone
+    float   top       = 0.0
+    float   bottom    = 0.0
+    bool    is_supply = false
+    int     origin_time = 0
+    box     bx
+
+type FVGBox
+    float   top       = 0.0
+    float   bottom    = 0.0
+    int     origin_time = 0
+    bool    is_bearish = false
+    box     bx
+
+// =============================================================================
+// INPUTS — ZONES
+// =============================================================================
+
+string GRP_ZONE  = "Zone Detection"
+float  i_doji    = input.float(5.0, "Doji Body %", group = GRP_ZONE, minval = 0.1, maxval = 50.0, tooltip = "Max body/range % to classify as doji candle")
+
+string GRP_TF    = "Zone Timeframes"
+bool   i_tf0_on  = input.bool(true,  "M1",     group = GRP_TF, inline = "t0")
+string i_tf0     = input.timeframe("1",   "",  group = GRP_TF, inline = "t0")
+bool   i_tf1_on  = input.bool(true,  "M5",     group = GRP_TF, inline = "t1")
+string i_tf1     = input.timeframe("5",   "",  group = GRP_TF, inline = "t1")
+bool   i_tf2_on  = input.bool(true,  "M15",    group = GRP_TF, inline = "t2")
+string i_tf2     = input.timeframe("15",  "",  group = GRP_TF, inline = "t2")
+bool   i_tf3_on  = input.bool(false, "H1",     group = GRP_TF, inline = "t3")
+string i_tf3     = input.timeframe("60",  "",  group = GRP_TF, inline = "t3")
+bool   i_tf4_on  = input.bool(false, "H4",     group = GRP_TF, inline = "t4")
+string i_tf4     = input.timeframe("240", "",  group = GRP_TF, inline = "t4")
+bool   i_tf5_on  = input.bool(false, "D",      group = GRP_TF, inline = "t5")
+string i_tf5     = input.timeframe("1D",  "",  group = GRP_TF, inline = "t5")
+bool   i_tf6_on  = input.bool(false, "W",      group = GRP_TF, inline = "t6")
+string i_tf6     = input.timeframe("1W",  "",  group = GRP_TF, inline = "t6")
+bool   i_tf7_on  = input.bool(false, "MN",     group = GRP_TF, inline = "t7")
+string i_tf7     = input.timeframe("1M",  "",  group = GRP_TF, inline = "t7")
+
+string GRP_AGE   = "Zone Age (max bars per TF)"
+int    i_age_m1  = input.int(50, "M1",  group = GRP_AGE, minval = 1)
+int    i_age_m5  = input.int(50, "M5",  group = GRP_AGE, minval = 1)
+int    i_age_m15 = input.int(50, "M15", group = GRP_AGE, minval = 1)
+int    i_age_h1  = input.int(50, "H1",  group = GRP_AGE, minval = 1)
+int    i_age_h4  = input.int(50, "H4",  group = GRP_AGE, minval = 1)
+int    i_age_d   = input.int(50, "D",   group = GRP_AGE, minval = 1)
+int    i_age_w   = input.int(30, "W",   group = GRP_AGE, minval = 1)
+int    i_age_mn  = input.int(20, "MN",  group = GRP_AGE, minval = 1)
+
+string GRP_ZCLR  = "Zone Colors"
+color  i_sup_bg  = input.color(color.new(#FF4444, 85), "Supply Fill",   group = GRP_ZCLR)
+color  i_sup_br  = input.color(color.new(#FF4444, 20), "Supply Border", group = GRP_ZCLR)
+color  i_dem_bg  = input.color(color.new(#2196F3, 85), "Demand Fill",   group = GRP_ZCLR)
+color  i_dem_br  = input.color(color.new(#2196F3, 20), "Demand Border", group = GRP_ZCLR)
+bool   i_labels  = input.bool(true, "Show Zone Labels", group = GRP_ZCLR)
+
+string GRP_HL    = "HA Sequence HH / LL Lines"
+bool   i_show_hl = input.bool(true,  "Show Sequence HH/LL", group = GRP_HL)
+color  i_hh_clr  = input.color(color.new(#FF9800, 0), "HH Color", group = GRP_HL)
+color  i_ll_clr  = input.color(color.new(#26C6DA, 0), "LL Color", group = GRP_HL)
+
+// =============================================================================
+// INPUTS — STRUCTURE LEVELS
+// =============================================================================
+
+string GRP_STR   = "Structure Levels (Prev Period Hi/Lo)"
+bool   i_s_m15_on = input.bool(true,  "M15",    group = GRP_STR, inline = "sm15")
+color  i_s_m15_clr = input.color(color.new(#90A4AE, 0), "", group = GRP_STR, inline = "sm15")
+bool   i_s_h1_on  = input.bool(true,  "H1",     group = GRP_STR, inline = "sh1")
+color  i_s_h1_clr = input.color(color.new(#CE93D8, 0), "", group = GRP_STR, inline = "sh1")
+bool   i_s_h4_on  = input.bool(true,  "H4",     group = GRP_STR, inline = "sh4")
+color  i_s_h4_clr = input.color(color.new(#BA68C8, 0), "", group = GRP_STR, inline = "sh4")
+bool   i_s_dy_on  = input.bool(true,  "Daily",  group = GRP_STR, inline = "sdy")
+color  i_s_dy_clr = input.color(color.new(#9C27B0, 0), "", group = GRP_STR, inline = "sdy")
+bool   i_s_wk_on  = input.bool(true,  "Weekly", group = GRP_STR, inline = "swk")
+color  i_s_wk_clr = input.color(color.new(#2196F3, 0), "", group = GRP_STR, inline = "swk")
+bool   i_s_mn_on  = input.bool(false, "Monthly", group = GRP_STR, inline = "smn")
+color  i_s_mn_clr = input.color(color.new(#FF9800, 0), "", group = GRP_STR, inline = "smn")
+bool   i_s_qt_on  = input.bool(false, "Quarterly", group = GRP_STR, inline = "sqt")
+color  i_s_qt_clr = input.color(color.new(#4CAF50, 0), "", group = GRP_STR, inline = "sqt")
+
+// =============================================================================
+// INPUTS — STRUCTURAL FVG
+// =============================================================================
+
+string GRP_FVG   = "Structural FVG"
+bool   i_fvg_on  = input.bool(true, "Show Structural FVGs", group = GRP_FVG)
+int    i_fvg_max = input.int(10, "Max FVGs Visible", group = GRP_FVG, minval = 1, maxval = 50)
+color  i_fvg_bull_bg = input.color(color.new(#26C6DA, 80), "Bullish FVG Fill", group = GRP_FVG)
+color  i_fvg_bull_br = input.color(color.new(#26C6DA, 40), "Bullish FVG Border", group = GRP_FVG)
+color  i_fvg_bear_bg = input.color(color.new(#FF9800, 80), "Bearish FVG Fill", group = GRP_FVG)
+color  i_fvg_bear_br = input.color(color.new(#FF9800, 40), "Bearish FVG Border", group = GRP_FVG)
+
+// =============================================================================
+// ZONE HELPERS
+// =============================================================================
+
+tf_max_age(string tf) =>
+    int sec = timeframe.in_seconds(tf)
+    int out = sec <= 60 ? i_age_m1 : sec <= 300 ? i_age_m5 : sec <= 900 ? i_age_m15 : sec <= 3600 ? i_age_h1 : sec <= 14400 ? i_age_h4 : sec <= 86400 ? i_age_d : sec <= 604800 ? i_age_w : i_age_mn
+    out
+
+tf_label(string tf) =>
+    int sec = timeframe.in_seconds(tf)
+    string out = sec <= 60 ? "M1" : sec <= 300 ? "M5" : sec <= 900 ? "M15" : sec <= 3600 ? "H1" : sec <= 14400 ? "H4" : sec <= 86400 ? "D" : sec <= 604800 ? "W" : "MN"
+    out
+
+// =============================================================================
+// HA ZONE DETECTION + SEQUENCE TRACKING
+// Runs on raw OHLC via request.security. HA candles computed manually.
+// Zone boundaries (ORIZ spec):
+//   Supply: top = OHLC high (structural extreme), bottom = HA low (order-block edge)
+//   Demand: top = HA high (order-block edge), bottom = OHLC low (structural extreme)
+// Classification: HH/LH for supply, LL/HL for demand
+// =============================================================================
+
+ha_detect(float doji_pct) =>
+    float haC = (open + high + low + close) / 4.0
+    float haO = float(na)
+    haO := na(haO[1]) ? (open + close) / 2.0 : (nz(haO[1]) + nz(haC[1])) / 2.0
+    float haH = math.max(high, math.max(haO, haC))
+    float haL = math.min(low, math.min(haO, haC))
+
+    bool is_blue = haC >= haO
+    bool is_red  = haC < haO
+
+    int max_run = math.min(50, bar_index)
+
+    var float prev_run_hi   = na
+    var float prev_run_lo   = na
+    var float seq_hh        = na
+    var float seq_ll        = na
+    var int   seq_hh_time   = na
+    var int   seq_ll_time   = na
+    var string hi1_txt      = ""
+    var string lo1_txt      = ""
+
+    bool  fire      = false
+    float ztop      = 0.0
+    float zbot      = 0.0
+    bool  is_sup    = false
+    int   zt_origin = time
+
+    // DEMAND: red -> blue
+    if is_blue and is_red[1]
+        float run_lo_ohlc = low[1]
+        int   ext_time    = time[1]
+        int   k           = 2
+        while k < max_run and is_red[k]
+            if low[k] < run_lo_ohlc
+                run_lo_ohlc := low[k]
+                ext_time    := time[k]
+            k += 1
+
+        bool is_new_ll = na(prev_run_lo) or run_lo_ohlc < prev_run_lo
+        seq_ll      := run_lo_ohlc
+        seq_ll_time := ext_time
+        prev_run_lo := run_lo_ohlc
+        lo1_txt     := is_new_ll ? "LL" : "HL"
+
+        float body = math.abs(haC - haO)
+        float rng  = haH - haL
+        bool  doji = rng > 0.0 and (body / rng * 100.0) < doji_pct
+
+        ztop      := doji ? nz(haH, high) : nz(haH[1], high[1])
+        zbot      := nz(run_lo_ohlc, low[1])
+        zt_origin := nz(ext_time, time[1])
+        fire      := true
+
+    // SUPPLY: blue -> red
+    else if is_red and is_blue[1]
+        float run_hi_ohlc = high[1]
+        int   ext_time    = time[1]
+        int   k           = 2
+        while k < max_run and is_blue[k]
+            if high[k] > run_hi_ohlc
+                run_hi_ohlc := high[k]
+                ext_time    := time[k]
+            k += 1
+
+        bool is_new_hh = na(prev_run_hi) or run_hi_ohlc > prev_run_hi
+        seq_hh      := run_hi_ohlc
+        seq_hh_time := ext_time
+        prev_run_hi := run_hi_ohlc
+        hi1_txt     := is_new_hh ? "HH" : "LH"
+
+        float body = math.abs(haC - haO)
+        float rng  = haH - haL
+        bool  doji = rng > 0.0 and (body / rng * 100.0) < doji_pct
+
+        ztop      := nz(run_hi_ohlc, high[1])
+        zbot      := doji ? nz(haL, low) : nz(haL[1], low[1])
+        zt_origin := nz(ext_time, time[1])
+        fire      := true
+        is_sup    := true
+
+    [fire, ztop, zbot, is_sup, zt_origin, seq_hh, seq_ll, seq_hh_time, seq_ll_time, hi1_txt, lo1_txt]
+
+// =============================================================================
+// ZONE MANAGEMENT
+// Body-close break detection (wicks = liquidity sweep, not a break)
+// =============================================================================
+
+method delete_zone(array<Zone> zones, int idx) =>
+    Zone z = zones.get(idx)
+    if not na(z.bx)
+        box.delete(z.bx)
+    zones.remove(idx)
+
+method process(array<Zone> zones, bool fire, float ztop, float zbot, bool is_sup, int z_time, string hi_txt, string lo_txt, string tf_str) =>
+    int tf_ms  = timeframe.in_seconds(tf_str) * 1000
+    int max_ms = tf_max_age(tf_str) * tf_ms
+
+    if zones.size() > 0
+        for i = zones.size() - 1 to 0
+            Zone z = zones.get(i)
+            bool expired = (time - z.origin_time) > max_ms
+            if expired
+                zones.delete_zone(i)
+                continue
+            bool broken = z.is_supply ? (close > z.top) : (close < z.bottom)
+            if broken
+                zones.delete_zone(i)
+
+    bool valid = not na(ztop) and not na(zbot) and not na(z_time) and ztop > zbot
+    if fire and (time - z_time) < max_ms and valid
+        string cls     = is_sup ? hi_txt : lo_txt
+        string lbl_txt = i_labels ? tf_label(tf_str) + (is_sup ? " S " : " D ") + cls : na
+        color  bg_clr  = is_sup ? i_sup_bg : i_dem_bg
+        color  br_clr  = is_sup ? i_sup_br : i_dem_br
+        color  tx_clr  = is_sup ? color.new(#FF4444, 0) : color.new(#2196F3, 0)
+        box new_box    = box.new(z_time, ztop, z_time + tf_ms * 6, zbot, xloc = xloc.bar_time, extend = extend.right, bgcolor = bg_clr, border_color = br_clr, border_width = 1, text = lbl_txt, text_size = size.tiny, text_color = tx_clr, text_halign = text.align_right, text_valign = text.align_top)
+        zones.push(Zone.new(ztop, zbot, is_sup, z_time, new_box))
+
+// =============================================================================
+// HH/LL LINE HELPERS
+// =============================================================================
+
+update_hl_line(line ln, float lvl, int origin, color clr) =>
+    if na(lvl) or na(origin)
+        ln
+    else if na(ln)
+        line.new(origin, lvl, time, lvl, xloc = xloc.bar_time, extend = extend.right, color = clr, style = line.style_dashed, width = 1)
+    else
+        ln.set_y1(lvl)
+        ln.set_y2(lvl)
+        ln.set_x1(origin)
+        ln.set_x2(time)
+        ln
+
+// =============================================================================
+// DATA REQUESTS — ZONES (8 calls on raw OHLC)
+// =============================================================================
+
+string _base_sym = ticker.standard(syminfo.tickerid)
+
+[f0_raw, zt0, zb0, s0, tm0, hh0, ll0, hht0, llt0, h1s0, l1s0] = request.security(_base_sym, i_tf0, ha_detect(i_doji))
+[f1_raw, zt1, zb1, s1, tm1, hh1, ll1, hht1, llt1, h1s1, l1s1] = request.security(_base_sym, i_tf1, ha_detect(i_doji))
+[f2_raw, zt2, zb2, s2, tm2, hh2, ll2, hht2, llt2, h1s2, l1s2] = request.security(_base_sym, i_tf2, ha_detect(i_doji))
+[f3_raw, zt3, zb3, s3, tm3, hh3, ll3, hht3, llt3, h1s3, l1s3] = request.security(_base_sym, i_tf3, ha_detect(i_doji))
+[f4_raw, zt4, zb4, s4, tm4, hh4, ll4, hht4, llt4, h1s4, l1s4] = request.security(_base_sym, i_tf4, ha_detect(i_doji))
+[f5_raw, zt5, zb5, s5, tm5, hh5, ll5, hht5, llt5, h1s5, l1s5] = request.security(_base_sym, i_tf5, ha_detect(i_doji))
+[f6_raw, zt6, zb6, s6, tm6, hh6, ll6, hht6, llt6, h1s6, l1s6] = request.security(_base_sym, i_tf6, ha_detect(i_doji))
+[f7_raw, zt7, zb7, s7, tm7, hh7, ll7, hht7, llt7, h1s7, l1s7] = request.security(_base_sym, i_tf7, ha_detect(i_doji))
+
+// Edge-detect: fire only once per HTF event
+bool f0 = f0_raw and not f0_raw[1]
+bool f1 = f1_raw and not f1_raw[1]
+bool f2 = f2_raw and not f2_raw[1]
+bool f3 = f3_raw and not f3_raw[1]
+bool f4 = f4_raw and not f4_raw[1]
+bool f5 = f5_raw and not f5_raw[1]
+bool f6 = f6_raw and not f6_raw[1]
+bool f7 = f7_raw and not f7_raw[1]
+
+// =============================================================================
+// ZONE ARRAYS + EXECUTION
+// =============================================================================
+
+var array<Zone> zones0 = array.new<Zone>()
+var array<Zone> zones1 = array.new<Zone>()
+var array<Zone> zones2 = array.new<Zone>()
+var array<Zone> zones3 = array.new<Zone>()
+var array<Zone> zones4 = array.new<Zone>()
+var array<Zone> zones5 = array.new<Zone>()
+var array<Zone> zones6 = array.new<Zone>()
+var array<Zone> zones7 = array.new<Zone>()
+
+if i_tf0_on
+    zones0.process(f0, zt0, zb0, s0, tm0, h1s0, l1s0, i_tf0)
+if i_tf1_on
+    zones1.process(f1, zt1, zb1, s1, tm1, h1s1, l1s1, i_tf1)
+if i_tf2_on
+    zones2.process(f2, zt2, zb2, s2, tm2, h1s2, l1s2, i_tf2)
+if i_tf3_on
+    zones3.process(f3, zt3, zb3, s3, tm3, h1s3, l1s3, i_tf3)
+if i_tf4_on
+    zones4.process(f4, zt4, zb4, s4, tm4, h1s4, l1s4, i_tf4)
+if i_tf5_on
+    zones5.process(f5, zt5, zb5, s5, tm5, h1s5, l1s5, i_tf5)
+if i_tf6_on
+    zones6.process(f6, zt6, zb6, s6, tm6, h1s6, l1s6, i_tf6)
+if i_tf7_on
+    zones7.process(f7, zt7, zb7, s7, tm7, h1s7, l1s7, i_tf7)
+
+// =============================================================================
+// HA SEQUENCE HH / LL LINES
+// =============================================================================
+
+var line ln_hh0 = na, var line ln_ll0 = na
+var line ln_hh1 = na, var line ln_ll1 = na
+var line ln_hh2 = na, var line ln_ll2 = na
+var line ln_hh3 = na, var line ln_ll3 = na
+var line ln_hh4 = na, var line ln_ll4 = na
+var line ln_hh5 = na, var line ln_ll5 = na
+var line ln_hh6 = na, var line ln_ll6 = na
+var line ln_hh7 = na, var line ln_ll7 = na
+
+if i_show_hl
+    if i_tf0_on
+        ln_hh0 := update_hl_line(ln_hh0, hh0, hht0, i_hh_clr)
+        ln_ll0 := update_hl_line(ln_ll0, ll0, llt0, i_ll_clr)
+    if i_tf1_on
+        ln_hh1 := update_hl_line(ln_hh1, hh1, hht1, i_hh_clr)
+        ln_ll1 := update_hl_line(ln_ll1, ll1, llt1, i_ll_clr)
+    if i_tf2_on
+        ln_hh2 := update_hl_line(ln_hh2, hh2, hht2, i_hh_clr)
+        ln_ll2 := update_hl_line(ln_ll2, ll2, llt2, i_ll_clr)
+    if i_tf3_on
+        ln_hh3 := update_hl_line(ln_hh3, hh3, hht3, i_hh_clr)
+        ln_ll3 := update_hl_line(ln_ll3, ll3, llt3, i_ll_clr)
+    if i_tf4_on
+        ln_hh4 := update_hl_line(ln_hh4, hh4, hht4, i_hh_clr)
+        ln_ll4 := update_hl_line(ln_ll4, ll4, llt4, i_ll_clr)
+    if i_tf5_on
+        ln_hh5 := update_hl_line(ln_hh5, hh5, hht5, i_hh_clr)
+        ln_ll5 := update_hl_line(ln_ll5, ll5, llt5, i_ll_clr)
+    if i_tf6_on
+        ln_hh6 := update_hl_line(ln_hh6, hh6, hht6, i_hh_clr)
+        ln_ll6 := update_hl_line(ln_ll6, ll6, llt6, i_ll_clr)
+    if i_tf7_on
+        ln_hh7 := update_hl_line(ln_hh7, hh7, hht7, i_hh_clr)
+        ln_ll7 := update_hl_line(ln_ll7, ll7, llt7, i_ll_clr)
+
+// =============================================================================
+// STRUCTURE LEVELS — Previous Period Hi/Lo with Break Detection
+// Runs on chart TF (0 security calls). Tracks exact bar of each extreme.
+// Broken lines stop at break candle with "X" marker. Unbroken extend right.
+// =============================================================================
+
+track_period(string tf) =>
+    bool new_period = ta.change(time(tf)) != 0
+
+    var float cur_hi   = na
+    var int   cur_hi_t = na
+    var float cur_lo   = na
+    var int   cur_lo_t = na
+    var float prev_hi   = na
+    var int   prev_hi_t = na
+    var float prev_lo   = na
+    var int   prev_lo_t = na
+    var int   hi_brk_t  = na
+    var int   lo_brk_t  = na
+
+    if new_period
+        prev_hi   := cur_hi
+        prev_hi_t := cur_hi_t
+        prev_lo   := cur_lo
+        prev_lo_t := cur_lo_t
+        cur_hi    := high
+        cur_hi_t  := time
+        cur_lo    := low
+        cur_lo_t  := time
+        hi_brk_t  := na
+        lo_brk_t  := na
+    else
+        if high >= nz(cur_hi)
+            cur_hi   := high
+            cur_hi_t := time
+        if low <= nz(cur_lo, 1e18)
+            cur_lo   := low
+            cur_lo_t := time
+
+    if na(hi_brk_t) and not na(prev_hi) and high > prev_hi
+        hi_brk_t := time
+    if na(lo_brk_t) and not na(prev_lo) and low < prev_lo
+        lo_brk_t := time
+
+    [prev_hi, prev_hi_t, prev_lo, prev_lo_t, hi_brk_t, lo_brk_t]
+
+[s_m15_hi, s_m15_hi_t, s_m15_lo, s_m15_lo_t, s_m15_hi_brk, s_m15_lo_brk] = track_period("15")
+[s_h1_hi,  s_h1_hi_t,  s_h1_lo,  s_h1_lo_t,  s_h1_hi_brk,  s_h1_lo_brk]  = track_period("60")
+[s_h4_hi,  s_h4_hi_t,  s_h4_lo,  s_h4_lo_t,  s_h4_hi_brk,  s_h4_lo_brk]  = track_period("240")
+[s_dy_hi,  s_dy_hi_t,  s_dy_lo,  s_dy_lo_t,  s_dy_hi_brk,  s_dy_lo_brk]  = track_period("1D")
+[s_wk_hi,  s_wk_hi_t,  s_wk_lo,  s_wk_lo_t,  s_wk_hi_brk,  s_wk_lo_brk]  = track_period("1W")
+[s_mn_hi,  s_mn_hi_t,  s_mn_lo,  s_mn_lo_t,  s_mn_hi_brk,  s_mn_lo_brk]  = track_period("1M")
+[s_qt_hi,  s_qt_hi_t,  s_qt_lo,  s_qt_lo_t,  s_qt_hi_brk,  s_qt_lo_brk]  = track_period("3M")
+
+// =============================================================================
+// STRUCTURE LEVEL DRAWING
+// Broken: dashed, stop at break candle. Unbroken: solid, extend right.
+// =============================================================================
+
+draw_level(line ln, label lbl, float lvl, int origin, int brk_time, color base_clr, string txt, bool is_hi, float frac) =>
+    if na(lvl) or na(origin)
+        [ln, lbl]
+    else
+        bool   broken = not na(brk_time)
+        string full   = txt + (broken ? " X" : "")
+        int    x2     = broken ? brk_time : time
+        string ext    = broken ? extend.none : extend.right
+        int    lx     = int(origin + (x2 - origin) * frac)
+        string lsty   = is_hi ? label.style_label_down : label.style_label_up
+        if na(ln)
+            line  new_ln  = line.new(origin, lvl, x2, lvl, xloc = xloc.bar_time, extend = ext, color = base_clr, style = line.style_solid, width = 2)
+            label new_lbl = label.new(lx, lvl, full, xloc = xloc.bar_time, style = lsty, color = color.new(color.white, 100), textcolor = base_clr, size = size.tiny)
+            [new_ln, new_lbl]
+        else
+            ln.set_x1(origin)
+            ln.set_y1(lvl)
+            ln.set_x2(x2)
+            ln.set_y2(lvl)
+            ln.set_color(base_clr)
+            ln.set_width(2)
+            ln.set_style(line.style_solid)
+            ln.set_extend(ext)
+            lbl.set_x(lx)
+            lbl.set_y(lvl)
+            lbl.set_text(full)
+            lbl.set_textcolor(base_clr)
+            lbl.set_style(lsty)
+            [ln, lbl]
+
+// Structure level state
+var line ln_sm15_hi = na, var label lb_sm15_hi = na
+var line ln_sm15_lo = na, var label lb_sm15_lo = na
+var line ln_sh1_hi  = na, var label lb_sh1_hi  = na
+var line ln_sh1_lo  = na, var label lb_sh1_lo  = na
+var line ln_sh4_hi  = na, var label lb_sh4_hi  = na
+var line ln_sh4_lo  = na, var label lb_sh4_lo  = na
+var line ln_sdy_hi  = na, var label lb_sdy_hi  = na
+var line ln_sdy_lo  = na, var label lb_sdy_lo  = na
+var line ln_swk_hi  = na, var label lb_swk_hi  = na
+var line ln_swk_lo  = na, var label lb_swk_lo  = na
+var line ln_smn_hi  = na, var label lb_smn_hi  = na
+var line ln_smn_lo  = na, var label lb_smn_lo  = na
+var line ln_sqt_hi  = na, var label lb_sqt_hi  = na
+var line ln_sqt_lo  = na, var label lb_sqt_lo  = na
+
+// Draw structure levels — frac staggers labels so different TFs don't overlap
+if i_s_m15_on
+    [a, b] = draw_level(ln_sm15_hi, lb_sm15_hi, s_m15_hi, s_m15_hi_t, s_m15_hi_brk, i_s_m15_clr, "M15 Hi", true, 0.06)
+    ln_sm15_hi := a
+    lb_sm15_hi := b
+    [c, d] = draw_level(ln_sm15_lo, lb_sm15_lo, s_m15_lo, s_m15_lo_t, s_m15_lo_brk, i_s_m15_clr, "M15 Lo", false, 0.06)
+    ln_sm15_lo := c
+    lb_sm15_lo := d
+
+if i_s_h1_on
+    [a, b] = draw_level(ln_sh1_hi, lb_sh1_hi, s_h1_hi, s_h1_hi_t, s_h1_hi_brk, i_s_h1_clr, "H1 Hi", true, 0.08)
+    ln_sh1_hi := a
+    lb_sh1_hi := b
+    [c, d] = draw_level(ln_sh1_lo, lb_sh1_lo, s_h1_lo, s_h1_lo_t, s_h1_lo_brk, i_s_h1_clr, "H1 Lo", false, 0.08)
+    ln_sh1_lo := c
+    lb_sh1_lo := d
+
+if i_s_h4_on
+    [a, b] = draw_level(ln_sh4_hi, lb_sh4_hi, s_h4_hi, s_h4_hi_t, s_h4_hi_brk, i_s_h4_clr, "H4 Hi", true, 0.09)
+    ln_sh4_hi := a
+    lb_sh4_hi := b
+    [c, d] = draw_level(ln_sh4_lo, lb_sh4_lo, s_h4_lo, s_h4_lo_t, s_h4_lo_brk, i_s_h4_clr, "H4 Lo", false, 0.09)
+    ln_sh4_lo := c
+    lb_sh4_lo := d
+
+if i_s_dy_on
+    [a, b] = draw_level(ln_sdy_hi, lb_sdy_hi, s_dy_hi, s_dy_hi_t, s_dy_hi_brk, i_s_dy_clr, "DY Hi", true, 0.10)
+    ln_sdy_hi := a
+    lb_sdy_hi := b
+    [c, d] = draw_level(ln_sdy_lo, lb_sdy_lo, s_dy_lo, s_dy_lo_t, s_dy_lo_brk, i_s_dy_clr, "DY Lo", false, 0.10)
+    ln_sdy_lo := c
+    lb_sdy_lo := d
+
+if i_s_wk_on
+    [a, b] = draw_level(ln_swk_hi, lb_swk_hi, s_wk_hi, s_wk_hi_t, s_wk_hi_brk, i_s_wk_clr, "WK Hi", true, 0.15)
+    ln_swk_hi := a
+    lb_swk_hi := b
+    [c, d] = draw_level(ln_swk_lo, lb_swk_lo, s_wk_lo, s_wk_lo_t, s_wk_lo_brk, i_s_wk_clr, "WK Lo", false, 0.15)
+    ln_swk_lo := c
+    lb_swk_lo := d
+
+if i_s_mn_on
+    [a, b] = draw_level(ln_smn_hi, lb_smn_hi, s_mn_hi, s_mn_hi_t, s_mn_hi_brk, i_s_mn_clr, "MN Hi", true, 0.20)
+    ln_smn_hi := a
+    lb_smn_hi := b
+    [c, d] = draw_level(ln_smn_lo, lb_smn_lo, s_mn_lo, s_mn_lo_t, s_mn_lo_brk, i_s_mn_clr, "MN Lo", false, 0.20)
+    ln_smn_lo := c
+    lb_smn_lo := d
+
+if i_s_qt_on
+    [a, b] = draw_level(ln_sqt_hi, lb_sqt_hi, s_qt_hi, s_qt_hi_t, s_qt_hi_brk, i_s_qt_clr, "QT Hi", true, 0.25)
+    ln_sqt_hi := a
+    lb_sqt_hi := b
+    [c, d] = draw_level(ln_sqt_lo, lb_sqt_lo, s_qt_lo, s_qt_lo_t, s_qt_lo_brk, i_s_qt_clr, "QT Lo", false, 0.25)
+    ln_sqt_lo := c
+    lb_sqt_lo := d
+
+// =============================================================================
+// STRUCTURAL FVG DETECTION
+// Type 2 FVG: Gap between a broken HTF structure level and the nearest
+// LTF zone sequence swing that fell short of reaching it.
+//
+// Example: H4 Lo at 3050 gets broken downward. The M15 seq_hh (last swing
+// high from M15 zones) only reached 3048. FVG = box from 3048 to 3050.
+// This gap represents unfinished institutional order flow.
+//
+// Detection pairs (HTF level -> LTF swing):
+//   H4 Hi broken  -> M15 seq_ll didn't reach down to H4 Hi => bearish FVG
+//   H4 Lo broken  -> M15 seq_hh didn't reach up to H4 Lo   => bullish FVG
+//   D1 Hi broken  -> H1 seq_ll didn't reach down to D1 Hi  => bearish FVG
+//   D1 Lo broken  -> H1 seq_hh didn't reach up to D1 Lo    => bullish FVG
+//   W1 Hi broken  -> H4 seq_ll didn't reach down to W1 Hi  => bearish FVG
+//   W1 Lo broken  -> H4 seq_hh didn't reach up to W1 Lo    => bullish FVG
+// =============================================================================
+
+var array<FVGBox> fvg_boxes = array.new<FVGBox>()
+
+method manage_fvgs(array<FVGBox> fvgs, int max_count) =>
+    // Remove filled FVGs (body-close through)
+    if fvgs.size() > 0
+        for i = fvgs.size() - 1 to 0
+            FVGBox f = fvgs.get(i)
+            bool filled = f.is_bearish ? (close < f.bottom) : (close > f.top)
+            if filled
+                if not na(f.bx)
+                    box.delete(f.bx)
+                fvgs.remove(i)
+    // Trim oldest if over limit
+    while fvgs.size() > max_count
+        FVGBox oldest = fvgs.shift()
+        if not na(oldest.bx)
+            box.delete(oldest.bx)
+
+method add_fvg(array<FVGBox> fvgs, float ftop, float fbot, bool is_bear, int max_count) =>
+    if ftop > fbot
+        color bg = is_bear ? i_fvg_bear_bg : i_fvg_bull_bg
+        color br = is_bear ? i_fvg_bear_br : i_fvg_bull_br
+        string txt = is_bear ? "FVG v" : "FVG ^"
+        box bx = box.new(time, ftop, time, fbot, xloc = xloc.bar_time, extend = extend.right, bgcolor = bg, border_color = br, border_width = 1, text = txt, text_size = size.tiny, text_color = br, text_halign = text.align_left, text_valign = text.align_center)
+        fvgs.push(FVGBox.new(ftop, fbot, time, is_bear, bx))
+        fvgs.manage_fvgs(max_count)
+
+if i_fvg_on
+    fvg_boxes.manage_fvgs(i_fvg_max)
+
+    // Track break edges (fire once per break)
+    var bool s_h4_hi_was_brk = false
+    var bool s_h4_lo_was_brk = false
+    var bool s_dy_hi_was_brk = false
+    var bool s_dy_lo_was_brk = false
+    var bool s_wk_hi_was_brk = false
+    var bool s_wk_lo_was_brk = false
+
+    bool h4_hi_just_broke = not na(s_h4_hi_brk) and not s_h4_hi_was_brk
+    bool h4_lo_just_broke = not na(s_h4_lo_brk) and not s_h4_lo_was_brk
+    bool dy_hi_just_broke = not na(s_dy_hi_brk) and not s_dy_hi_was_brk
+    bool dy_lo_just_broke = not na(s_dy_lo_brk) and not s_dy_lo_was_brk
+    bool wk_hi_just_broke = not na(s_wk_hi_brk) and not s_wk_hi_was_brk
+    bool wk_lo_just_broke = not na(s_wk_lo_brk) and not s_wk_lo_was_brk
+
+    s_h4_hi_was_brk := not na(s_h4_hi_brk)
+    s_h4_lo_was_brk := not na(s_h4_lo_brk)
+    s_dy_hi_was_brk := not na(s_dy_hi_brk)
+    s_dy_lo_was_brk := not na(s_dy_lo_brk)
+    s_wk_hi_was_brk := not na(s_wk_hi_brk)
+    s_wk_lo_was_brk := not na(s_wk_lo_brk)
+
+    // H4 Hi broken -> check M15 seq_ll gap (bearish FVG above)
+    if h4_hi_just_broke and not na(ll2) and not na(s_h4_hi) and ll2 > s_h4_hi
+        fvg_boxes.add_fvg(ll2, s_h4_hi, true, i_fvg_max)
+
+    // H4 Lo broken -> check M15 seq_hh gap (bullish FVG below)
+    if h4_lo_just_broke and not na(hh2) and not na(s_h4_lo) and hh2 < s_h4_lo
+        fvg_boxes.add_fvg(s_h4_lo, hh2, false, i_fvg_max)
+
+    // D1 Hi broken -> check H1 seq_ll gap (bearish FVG)
+    if dy_hi_just_broke and not na(ll3) and not na(s_dy_hi) and ll3 > s_dy_hi
+        fvg_boxes.add_fvg(ll3, s_dy_hi, true, i_fvg_max)
+
+    // D1 Lo broken -> check H1 seq_hh gap (bullish FVG)
+    if dy_lo_just_broke and not na(hh3) and not na(s_dy_lo) and hh3 < s_dy_lo
+        fvg_boxes.add_fvg(s_dy_lo, hh3, false, i_fvg_max)
+
+    // W1 Hi broken -> check H4 seq_ll gap (bearish FVG)
+    if wk_hi_just_broke and not na(ll4) and not na(s_wk_hi) and ll4 > s_wk_hi
+        fvg_boxes.add_fvg(ll4, s_wk_hi, true, i_fvg_max)
+
+    // W1 Lo broken -> check H4 seq_hh gap (bullish FVG)
+    if wk_lo_just_broke and not na(hh4) and not na(s_wk_lo) and hh4 < s_wk_lo
+        fvg_boxes.add_fvg(s_wk_lo, hh4, false, i_fvg_max)
